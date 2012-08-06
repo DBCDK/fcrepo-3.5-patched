@@ -93,6 +93,14 @@ public class FieldSearchServlet
                 && req.getParameter("dcmDate").equalsIgnoreCase("true")) {
             l.add("dcmDate");
         }
+        if (req.getParameter("relObj") != null
+                && req.getParameter("relObj").equalsIgnoreCase("true")) {
+            l.add("relObj");
+        }
+        if (req.getParameter("relPredObj") != null
+                && req.getParameter("relPredObj").equalsIgnoreCase("true")) {
+            l.add("relPredObj");
+        }
         if (req.getParameter("title") != null
                 && req.getParameter("title").equalsIgnoreCase("true")) {
             l.add("title");
@@ -249,6 +257,16 @@ public class FieldSearchServlet
                                 + (fieldHash.contains("dcmDate") ? " checked"
                                         : "")
                                 + "> <a href=\"#\" onClick=\"javascript:alert('Dublin Core Modified Date\\n\\nThe UTC date the DC datastream was last modified,\\nin YYYY-MM-DDTHH:MM:SS.SSSZ format')\">dcmDate</a><br>");
+                html
+                        .append("<input type=\"checkbox\" name=\"relObj\" value=\"true\""
+                                + (fieldHash.contains("relObj") ? " checked"
+                                        : "")
+                                + "> <a href=\"#\" onClick=\"javascript:alert('Relation')\">relObj</a><br>");
+                html
+                        .append("<input type=\"checkbox\" name=\"relPredObj\" value=\"true\""
+                                + (fieldHash.contains("relPredObj") ? " checked"
+                                        : "")
+                                + "> <a href=\"#\" onClick=\"javascript:alert('Predicate and relation')\">relPredObj</a><br>");
                 html.append("</font></td><td valign=top><font size=-1>");
                 html
                         .append("<input type=\"checkbox\" name=\"title\" value=\"true\" checked> <a href=\"#\" onClick=\"javascript:alert('Title\\n\\nA name given to the resource.\\nThis is a repeating field.')\">title</a><br>");
@@ -388,6 +406,8 @@ public class FieldSearchServlet
                         appendXML("cDate", f.getCDate(), formatter, xmlBuf);
                         appendXML("mDate", f.getMDate(), formatter, xmlBuf);
                         appendXML("dcmDate", f.getDCMDate(), formatter, xmlBuf);
+                        appendXML("relObj", f.getRelObj(), xmlBuf);
+                        appendXML("relPredObj", f.getRelPredObj(), xmlBuf);
                         appendXML("title", f.titles(), xmlBuf);
                         appendXML("creator", f.creators(), xmlBuf);
                         appendXML("subject", f.subjects(), xmlBuf);
@@ -435,6 +455,10 @@ public class FieldSearchServlet
                                     html.append(formatter
                                             .format(f.getDCMDate()));
                                 }
+                            } else if (l.equalsIgnoreCase("relObj")) {
+                                html.append(f.getRelObj());
+                            } else if (l.equalsIgnoreCase("relPredObj")) {
+                                html.append(f.getRelPredObj());
                             } else if (l.equalsIgnoreCase("title")) {
                                 html.append(getList(f.titles()));
                             } else if (l.equalsIgnoreCase("creator")) {
@@ -517,6 +541,14 @@ public class FieldSearchServlet
                         if (fieldHash.contains("dcmDate")) {
                             html
                                     .append("<input type=\"hidden\" name=\"dcmDate\" value=\"true\">");
+                        }
+                        if (fieldHash.contains("relObj")) {
+                            html
+                                    .append("<input type=\"hidden\" name=\"relObj\" value=\"true\">");
+                        }
+                        if (fieldHash.contains("relPredObj")) {
+                            html
+                                    .append("<input type=\"hidden\" name=\"relPredObj\" value=\"true\">");
                         }
                         if (fieldHash.contains("title")) {
                             html

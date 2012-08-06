@@ -431,6 +431,10 @@ public class DefaultSerializer {
                         if (f.getDCMDate() != null) {
                             html.append(DateUtility.convertDateToString(f.getDCMDate()));
                         }
+                    } else if (l.equalsIgnoreCase("relObj")) {
+                        html.append(f.getRelObj());
+                    } else if (l.equalsIgnoreCase("relPredObj")) {
+                        html.append(f.getRelPredObj());
                     } else if (l.equalsIgnoreCase("title")) {
                         html.append(join(f.titles()));
                     } else if (l.equalsIgnoreCase("creator")) {
@@ -549,6 +553,8 @@ public class DefaultSerializer {
                 appendXML("cDate", f.getCDate(), xmlBuf);
                 appendXML("mDate", f.getMDate(), xmlBuf);
                 appendXML("dcmDate", f.getDCMDate(), xmlBuf);
+                appendXML("relObj", f.getRelObj(), xmlBuf);
+                appendXML("relPredObj", f.getRelPredObj(), xmlBuf);
                 appendXML("title", f.titles(), xmlBuf);
                 appendXML("creator", f.creators(), xmlBuf);
                 appendXML("subject", f.subjects(), xmlBuf);

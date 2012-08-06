@@ -44,6 +44,10 @@ public class ObjectFields
 
     private Date m_dcmDate;
 
+    private String m_relObj;
+
+    private String m_relPredObj;
+
     private StringBuffer m_currentContent;
 
     private final boolean[] m_want = new boolean[26];
@@ -91,6 +95,10 @@ public class ObjectFields
     public final static int RIGHTS = 22;
 
     public final static int DCMDATE = 23;
+
+    public final static int RELOBJ = 24;
+
+    public final static int RELPREDOBJ = 25;
 
     public ObjectFields() {
     }
@@ -142,6 +150,10 @@ public class ObjectFields
                 m_want[RIGHTS] = true;
             } else if (s.equalsIgnoreCase("dcmDate")) {
                 m_want[DCMDATE] = true;
+            } else if (s.equalsIgnoreCase("relObj")) {
+                m_want[RELOBJ] = true;
+            } else if (s.equalsIgnoreCase("relPredObj")) {
+                m_want[RELPREDOBJ] = true;
             } else {
                 throw new UnrecognizedFieldException("Unrecognized field: '"
                         + s + "'");
@@ -207,6 +219,10 @@ public class ObjectFields
         } else if (m_want[DCMDATE] && localName.equals("dcmDate")) {
             setDCMDate(DateUtility.convertStringToDate(m_currentContent
                     .toString()));
+        } else if (m_want[RELOBJ] && localName.equals("relObj")) {
+            setRelObj(m_currentContent.toString());
+        } else if (m_want[RELPREDOBJ] && localName.equals("relPredObj")) {
+            setRelPredObj(m_currentContent.toString());
         } else if (m_want[TITLE] && localName.equals("title")) {
             titles().add(new DCField(m_currentContent.toString()));
         } else if (m_want[CREATOR] && localName.equals("creator")) {
@@ -295,4 +311,21 @@ public class ObjectFields
     public Date getDCMDate() {
         return m_dcmDate;
     }
+
+    public void setRelObj(String relObj) {
+        m_relObj = relObj;
+    }
+
+    public String getRelObj() {
+        return m_relObj;
+    }
+
+    public void setRelPredObj(String relPredObj) {
+        m_relPredObj = relPredObj;
+    }
+
+    public String getRelPredObj() {
+        return m_relPredObj;
+    }
+
 }

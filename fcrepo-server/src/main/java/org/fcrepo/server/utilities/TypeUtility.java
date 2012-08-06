@@ -147,6 +147,12 @@ public abstract class TypeUtility {
             if (sf.getDCMDate() != null) {
                 gf.setDcmDate(DateUtility.convertDateToString(sf.getDCMDate()));
             }
+            if (sf.getRelObj() != null) {
+                gf.setRelObj(sf.getRelObj());
+            }
+            if (sf.getRelPredObj() != null) {
+                gf.setRelPredObj(sf.getRelPredObj());
+            }
             // Dublin core fields
             if (sf.titles().size() != 0) {
                 gf.setTitle(toStringArray(sf.titles()));

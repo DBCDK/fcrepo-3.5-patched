@@ -37,7 +37,7 @@ import org.fcrepo.server.search.FieldSearchResult;
 @Path("/objects")
 public class FedoraObjectSearchResource extends BaseRestResource {
     static final String[] SEARCHABLE_FIELDS = { "pid", "label", "state", "ownerId",
-            "cDate", "mDate", "dcmDate", "title", "creator", "subject", "description",
+            "cDate", "mDate", "dcmDate", "relObj", "relPredObj", "title", "creator", "subject", "description",
             "publisher", "contributor", "date", "type", "format", "identifier",
             "source", "language", "relation", "coverage", "rights" };
 
