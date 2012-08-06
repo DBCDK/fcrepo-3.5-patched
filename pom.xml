@@ -485,10 +485,24 @@
       </snapshots>
     </repository>
 
+    <!-- for javax:transaction:jta:1.0.1B -->
     <repository>
-      <id>maven.glassfish.org</id>
-      <name>GlassFish Nexus Server</name>
-      <url>http://maven.glassfish.org/content/groups/glassfish</url>
+      <id>download.java.net</id>
+      <name>Java download repository</name>
+      <url>http://download.java.net/maven/2/</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+
+    <!-- for fast-md5:fast-md5:2.5 -->
+    <repository>
+      <id>repository.jboss.org</id>
+      <name>JBoss public repository</name>
+      <url>https://repository.jboss.org/nexus/content/groups/public/</url>
       <releases>
         <enabled>true</enabled>
       </releases>
