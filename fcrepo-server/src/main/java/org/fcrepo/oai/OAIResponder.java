@@ -607,7 +607,7 @@ public class OAIResponder
             tzOffset += cal.get(Calendar.DST_OFFSET);
         }
         Date UTCDate = new Date();
-        UTCDate.setTime(localDate.getTime() + tzOffset);
+        UTCDate.setTime(localDate.getTime() - tzOffset);
         return UTCDate;
     }
 
