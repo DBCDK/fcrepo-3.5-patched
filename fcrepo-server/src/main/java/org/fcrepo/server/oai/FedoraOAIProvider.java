@@ -331,12 +331,12 @@ public class FedoraOAIProvider
         SimpleDateFormat formatter =
                 new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
         if (from != null) {
-            out.append(" dcmDate>='");
+            out.append(" mDate>='");
             out.append(formatter.format(from));
             out.append("'");
         }
         if (until != null) {
-            out.append(" dcmDate<='");
+            out.append(" mDate<='");
             out.append(formatter.format(until));
             out.append("'");
         }
