@@ -78,10 +78,10 @@ public class FedoraOAIProvider
     private static Set s_emptySet = new HashSet();
 
     private static String[] s_headerFields =
-            new String[] {"pid", "dcmDate"};
+            new String[] {"pid", "dcmDate", "state"};
 
     private static String[] s_headerAndDCFields =
-            new String[] {"pid", "dcmDate", "title", "creator",
+            new String[] {"pid", "dcmDate", "state", "title", "creator",
                     "subject", "description", "publisher", "contributor",
                     "date", "type", "format", "identifier", "source",
                     "language", "relation", "coverage", "rights"};
@@ -161,7 +161,7 @@ public class FedoraOAIProvider
     }
 
     public DeletedRecordSupport getDeletedRecordSupport() {
-        return DeletedRecordSupport.NO;
+        return DeletedRecordSupport.TRANSIENT;
     }
 
     public DateGranularitySupport getDateGranularitySupport() {
@@ -275,7 +275,13 @@ public class FedoraOAIProvider
         String identifier = "oai:" + m_repositoryDomainName + ":" + f.getPid();
         Date datestamp = f.getDCMDate();
         HashSet<String> setSpecs = new HashSet<String>();
-        return new SimpleHeader(identifier, datestamp, setSpecs, true);
+
+        boolean state = true;
+        if(f.getState().equals("D")){
+            state = false;
+        }
+
+        return new SimpleHeader(identifier, datestamp, setSpecs, state);
     }
 
     private String getDCXML(DCFields dc) {
@@ -374,12 +380,7 @@ public class FedoraOAIProvider
         ArrayList<Object> ret = new ArrayList<Object>();
         for (int i = 0; i < l.size(); i++) {
             ObjectFields f = (ObjectFields) l.get(i);
-            String identifier =
-                    "oai:" + m_repositoryDomainName + ":" + f.getPid();
-            Date datestamp = f.getDCMDate();
-            HashSet<String> setSpecs = new HashSet<String>();
-
-            ret.add(new SimpleHeader(identifier, datestamp, setSpecs, true));
+            ret.add(getHeader(f));
         }
         if (fsr.getToken() != null) {
             ret.add(new SimpleResumptionToken(fsr.getToken(), fsr
@@ -413,11 +414,7 @@ public class FedoraOAIProvider
         ArrayList<Object> ret = new ArrayList<Object>();
         for (int i = 0; i < l.size(); i++) {
             ObjectFields f = (ObjectFields) l.get(i);
-            String identifier =
-                    "oai:" + m_repositoryDomainName + ":" + f.getPid();
-            Date datestamp = f.getDCMDate();
-            HashSet<String> setSpecs = new HashSet<String>();
-            ret.add(new SimpleHeader(identifier, datestamp, setSpecs, true));
+            ret.add(getHeader(f));
         }
         if (fsr.getToken() != null) {
             ret.add(new SimpleResumptionToken(fsr.getToken(), fsr
