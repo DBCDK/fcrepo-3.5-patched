@@ -20,9 +20,10 @@ public class TestZip
 
     private final String TMP_DIR = System.getProperty("java.io.tmpdir");
 
-    private final String ZIP_FILE = TMP_DIR + File.separator + "test.zip";
+    private final String ZIP_FILE = TMP_DIR + File.separator + "test" + System.nanoTime() + ".zip";
+    private final String TEST_STR = "test" + System.nanoTime();
 
-    private final String TEST_DIR = TMP_DIR + File.separator + "test";
+    private final String TEST_DIR = TMP_DIR + File.separator + TEST_STR;
 
     @Override
     protected void setUp() throws Exception {
@@ -55,12 +56,14 @@ public class TestZip
     }
 
     public void testZip() throws Exception {
-        File dir = new File(TMP_DIR + File.separator + "test");
+        File dir = new File(TMP_DIR + File.separator + TEST_STR);
         //Zip.zip(ZIP_FILE, TMP_DIR + File.separator + "test");
         Zip.zip(new File(ZIP_FILE), dir.listFiles());
     }
 
     public void testUnzip() throws Exception {
+        File dir = new File(TMP_DIR + File.separator + TEST_STR);
+        Zip.zip(new File(ZIP_FILE), dir.listFiles());
         FileInputStream fis = new FileInputStream(ZIP_FILE);
         Zip.unzip(fis, TEST_DIR);
 
