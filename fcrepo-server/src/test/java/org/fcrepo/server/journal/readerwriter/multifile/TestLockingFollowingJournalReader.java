@@ -451,7 +451,7 @@ public class TestLockingFollowingJournalReader
     }
 
     private File createTempDirectory(String name) {
-        File directory = new File(System.getProperty("java.io.tmpdir"), name);
+        File directory = new File(System.getProperty("java.io.tmpdir"), name + Long.toString(System.nanoTime()));
         directory.mkdir();
         cleanOutDirectory(directory);
         directory.deleteOnExit();
