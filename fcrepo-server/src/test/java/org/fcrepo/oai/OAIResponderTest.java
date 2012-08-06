@@ -212,9 +212,7 @@ public class OAIResponderTest
             "    <repositoryName>repositoryName</repositoryName>\n"+
             "    <baseURL>http://localhost:8080/fedora/oai</baseURL>\n"+
             "    <protocolVersion>protocolVersion</protocolVersion>\n"+
-            // Should be 1970-01-01T00:00:00Z
             "    <earliestDatestamp>1970-01-01T00:00:00Z</earliestDatestamp>\n"+
-            //"    <earliestDatestamp>1970-01-01T01:00:00Z</earliestDatestamp>\n"+
             "    <deletedRecord>transient</deletedRecord>\n"+
             "    <granularity>YYYY-MM-DDThh:mm:ssZ</granularity>\n"+
             "  </Identify>\n"+

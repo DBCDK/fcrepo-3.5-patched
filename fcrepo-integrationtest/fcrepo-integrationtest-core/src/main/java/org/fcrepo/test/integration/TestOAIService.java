@@ -6,12 +6,23 @@ package org.fcrepo.test.integration;
 
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
+import java.io.StringWriter;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TimeZone;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.Result;
+import javax.xml.transform.Source;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
 
 import org.custommonkey.xmlunit.NamespaceContext;
 import org.custommonkey.xmlunit.SimpleNamespaceContext;
@@ -21,6 +32,7 @@ import org.w3c.dom.Document;
 
 import junit.framework.Test;
 import junit.framework.TestSuite;
+import org.custommonkey.xmlunit.XpathEngine;
 
 import org.fcrepo.client.FedoraClient;
 
@@ -96,6 +108,52 @@ public class TestOAIService
         request = "/oai?verb=ListRecords&metadataPrefix=oai_dc&from=2000-01-01";
         result = getXMLQueryResult(request);
         assertXpathExists("/oai:OAI-PMH/oai:ListRecords/oai:record", result);
+
+        apim.purgeObject("demo:31", "for testing", false);
+    }
+
+    public void testListIdentifiersInterval() throws Exception {
+
+        DateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
+        format.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+        // Timestamp before ingest. Used for OAI request
+        Date from = new Date( System.currentTimeMillis() - 5000 );
+        String fromStr = format.format( from );
+
+        FedoraAPIM apim = client.getAPIM();
+        FileInputStream in =
+                new FileInputStream(FEDORA_HOME
+                                    + "/client/demo/foxml/local-server-demos/simple-document-demo/obj_demo_31.xml");
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        StreamUtility.pipeStream(in, out, 4096);
+
+        apim.ingest(out.toByteArray(), FOXML1_1.uri, "for testing");
+
+        // Timestamp after ingest. Used for OAI request
+        Date until = new Date( System.currentTimeMillis() + 5000 );
+        String untilStr = format.format( until );
+
+        String request = "/oai?verb=ListIdentifiers&metadataPrefix=oai_dc&from=" + fromStr + "&until=" + untilStr;
+        Document result = getXMLQueryResult(request);
+
+        Source source = new DOMSource(result);
+        StringWriter stringWriter = new StringWriter();
+        Result res = new StreamResult(stringWriter);
+        Transformer transformer = TransformerFactory.newInstance().newTransformer();
+        transformer.transform(source, res);
+        System.out.println( stringWriter.getBuffer().toString() );
+        assertXpathExists("/oai:OAI-PMH/oai:ListIdentifiers/oai:header/oai:datestamp", result);
+
+        XpathEngine xpathEngine = XMLUnit.newXpathEngine();
+        String datestampStr = xpathEngine.evaluate( "/oai:OAI-PMH/oai:ListIdentifiers/oai:header/oai:datestamp", result );
+        Date datestamp = format.parse( datestampStr );
+
+        System.out.println( datestamp );
+
+        assertTrue( datestampStr + ">" + fromStr, datestamp.after( from ));
+        assertTrue( datestampStr + "<" + untilStr, datestamp.before( until ));
 
         apim.purgeObject("demo:31", "for testing", false);
     }

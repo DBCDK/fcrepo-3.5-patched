@@ -234,8 +234,6 @@ public class FedoraOAIProviderTest
                 ObjectFields obj1 = new ObjectFields();
                 obj1.setPid("obj:1");
 
-                // mDate?
-//                obj1.setDCMDate(obj1Date);
                 obj1.setMDate(obj1Date);
                 obj1.setState("A");
 
@@ -317,8 +315,6 @@ public class FedoraOAIProviderTest
                 ObjectFields obj1 = new ObjectFields();
                 obj1.setPid("obj:1");
 
-                // mDate?
-                //obj1.setDCMDate(obj1Date);
                 obj1.setMDate(obj1Date);
                 obj1.setState("A");
 
@@ -404,8 +400,6 @@ public class FedoraOAIProviderTest
                 ObjectFields obj1 = new ObjectFields();
                 obj1.setPid("obj:1");
 
-                // mDate?
-//                obj1.setDCMDate(obj1Date);
                 obj1.setMDate(obj1Date);
                 obj1.setState("A");
 
@@ -490,16 +484,12 @@ public class FedoraOAIProviderTest
 
                 ObjectFields obj1 = new ObjectFields();
                 obj1.setPid("obj:1");
-                // To be changed to MDate:
-//                obj1.setDCMDate(obj1Date);
                 obj1.setMDate(obj1Date);
                 obj1.setState("A");
                 result.add(obj1);
 
                 ObjectFields obj2 = new ObjectFields();
                 obj2.setPid("obj:2");
-                // To be changed to MDate:
-//                obj2.setDCMDate(obj2Date);
                 obj2.setMDate(obj2Date);
                 obj2.setState("D");
                 result.add(obj2);
@@ -546,16 +536,12 @@ public class FedoraOAIProviderTest
 
                 ObjectFields obj1 = new ObjectFields();
                 obj1.setPid("obj:1");
-                // To be changed to MDate:
-//                obj1.setDCMDate(obj1Date);
                 obj1.setMDate(obj1Date);
                 obj1.setState("A");
                 result.add(obj1);
 
                 ObjectFields obj2 = new ObjectFields();
                 obj2.setPid("obj:2");
-                // To be changed to MDate:
-//                obj2.setDCMDate(obj2Date);
                 obj2.setMDate(obj2Date);
                 obj2.setState("D");
                 result.add(obj2);
