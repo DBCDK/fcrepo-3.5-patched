@@ -152,7 +152,7 @@ public class TestOAIService
         format.setTimeZone(TimeZone.getTimeZone("UTC"));
 
         // Timestamp before ingest. Used for OAI request
-        Date from = new Date( System.currentTimeMillis() - 10000 );
+        Date from = new Date( System.currentTimeMillis() - 1000 );
         String fromStr = format.format( from );
 
         FedoraAPIM apim = client.getAPIM();
@@ -166,7 +166,7 @@ public class TestOAIService
         apim.ingest(out.toByteArray(), FOXML1_1.uri, "for testing");
 
         // Timestamp after ingest. Used for OAI request
-        Date until = new Date( System.currentTimeMillis() + 10000 );
+        Date until = new Date( System.currentTimeMillis() + 1000 );
         String untilStr = format.format( until );
 
         String request = "/oai?verb=ListIdentifiers&metadataPrefix=oai_dc&from=" + fromStr + "&until=" + untilStr;
@@ -180,6 +180,7 @@ public class TestOAIService
         assertXpathExists("/oai:OAI-PMH/oai:ListIdentifiers/oai:header/oai:datestamp", result);
 
         // identifier datestamp must be inside the before-after interval
+        assertXpathEvaluatesTo( "oai:example.org:demo:31", "/oai:OAI-PMH/oai:ListIdentifiers/oai:header/oai:identifier", result );
         XpathEngine xpathEngine = XMLUnit.newXpathEngine();
         String datestampStr = xpathEngine.evaluate( "/oai:OAI-PMH/oai:ListIdentifiers/oai:header/oai:datestamp", result );
         Date datestamp = format.parse( datestampStr );
