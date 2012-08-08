@@ -181,7 +181,7 @@ public class FedoraOAIProviderTest
         Date date = provider.getEarliestDatestamp();
 
         // Verify Value
-        //assertEquals(new Date(), date);
+        assertEquals(0, date.getTime());
     }
 
     @Test

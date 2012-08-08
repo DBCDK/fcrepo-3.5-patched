@@ -27,7 +27,6 @@ package org.fcrepo.oai;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.*;
-import org.fcrepo.common.Constants;
 import org.fcrepo.utilities.DateUtility;
 import org.junit.AfterClass;
 import org.junit.Test;
@@ -71,7 +70,7 @@ public class OAIResponderTest
 
         @Override
         public DateGranularitySupport getDateGranularitySupport() throws RepositoryException {
-            return DateGranularitySupport.SECONDS;
+            throw new UnsupportedOperationException("Not supported yet.");
         }
 
         @Override
@@ -158,7 +157,6 @@ public class OAIResponderTest
 
     @BeforeClass
     public static void setUpClass() throws Exception {
-        System.setProperty("fedora.home", Constants.FEDORA_HOME);
     }
 
     @AfterClass
@@ -179,8 +177,8 @@ public class OAIResponderTest
 
         OAIProvider provider = new MockOAIProvider() {
             @Override
-            public Date getEarliestDatestamp() {
-                return new Date(0);
+            public DateGranularitySupport getDateGranularitySupport() throws RepositoryException {
+                return DateGranularitySupport.SECONDS;
             }
         };
 
@@ -229,6 +227,10 @@ public class OAIResponderTest
         final String untilStr = "2010-12-24T13:14:15Z";
 
         OAIProvider provider = new MockOAIProvider() {
+            @Override
+            public DateGranularitySupport getDateGranularitySupport() throws RepositoryException {
+                return DateGranularitySupport.SECONDS;
+            }
             @Override
             public List getHeaders(Date from, Date until, String metadataPrefix, String set)
                     throws CannotDisseminateFormatException, NoRecordsMatchException, NoSetHierarchyException, RepositoryException {
@@ -297,7 +299,13 @@ public class OAIResponderTest
     @Test
     public void testRespondToListIdentifiers() throws Exception {
 
-        OAIResponder responder = new OAIResponder(new MockOAIProvider());
+        final OAIProvider provider = new MockOAIProvider() {
+            @Override
+            public DateGranularitySupport getDateGranularitySupport() throws RepositoryException {
+                return DateGranularitySupport.SECONDS;
+            }
+        };
+        OAIResponder responder = new OAIResponder(provider);
 
         StringWriter writer = new StringWriter();
 
@@ -342,6 +350,10 @@ public class OAIResponderTest
         final String untilStr = "2010-12-24T13:14:15Z";
 
         OAIProvider provider = new MockOAIProvider() {
+            @Override
+            public DateGranularitySupport getDateGranularitySupport() throws RepositoryException {
+                return DateGranularitySupport.SECONDS;
+            }
             @Override
             public List getRecords(Date from, Date until, String metadataPrefix, String set)
                     throws CannotDisseminateFormatException, NoRecordsMatchException, NoSetHierarchyException, RepositoryException {

@@ -156,7 +156,7 @@ public class FedoraOAIProvider
     }
 
     public Date getEarliestDatestamp() {
-        return new Date();
+        return new Date( 0 );
     }
 
     public DeletedRecordSupport getDeletedRecordSupport() {
