@@ -370,7 +370,7 @@ public class FieldSearchServlet
                                                      fieldsArray,
                                                      maxResults,
                                                      new FieldSearchQuery(terms));
-                    } else {
+                    } else if (query != null && query.length() != 0) {
                         fsr =
                                 s_access
                                         .findObjects(context,
@@ -380,8 +380,9 @@ public class FieldSearchServlet
                                                              .getConditions(query)));
                     }
                 }
-                List<ObjectFields> searchResults = fsr.objectFieldsList();
-                if (!xml) {
+
+                List<ObjectFields> searchResults = (fsr == null) ? new ArrayList<ObjectFields>(0) : fsr.objectFieldsList();
+                if (!xml && fsr != null) {
                     html
                             .append("<center><table width=\"98%\" border=\"1\" cellpadding=\"2\" cellspacing=\"2\" bgcolor=\"silver\">\n");
                     html.append("<tr>");
@@ -498,7 +499,7 @@ public class FieldSearchServlet
                         html.append("\"></td></tr>");
                     }
                 }
-                if (!xml) {
+                if (!xml && fsr != null) {
                     html.append("</table>");
                     if (fsr != null && fsr.getToken() != null) {
                         if (fsr.getCursor() != -1) {

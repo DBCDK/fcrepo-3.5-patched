@@ -700,7 +700,7 @@ public class TestRESTAPI
      */
 
     public void testResumeFindObjects() throws Exception {
-        url = "/objects?pid=true&query=&resultFormat=xml";
+        url = "/objects?pid=true&query=pid~*&resultFormat=xml";
         if (this.getAuthAccess()) {
             assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
         }
@@ -715,7 +715,7 @@ public class TestRESTAPI
 
         url =
                 String
-                        .format("/objects?pid=true&query=&format=xml&sessionToken=%s",
+                        .format("/objects?pid=true&query=pid~*&format=xml&sessionToken=%s",
                                 sessionToken);
         if (this.getAuthAccess()) {
             assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
@@ -817,7 +817,7 @@ public class TestRESTAPI
         response = get(true);
         responseBody = new String(response.getResponseBody(), "UTF-8");
         assertTrue(responseBody.indexOf(DEMO_OWNERID) > 0);
-        
+
         // Delete the demo:REST object (ingested as part of setup)
         url = String.format("/objects/%s", pid.toString());
         assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());

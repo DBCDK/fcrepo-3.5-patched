@@ -109,10 +109,10 @@ public class TestHTTPStatusCodes
             "/listMethods/" + BOGUS_OBJ + "?xml=true";
 
     public static final String FIND_OBJECTS_PATH =
-            "/search?pid=true&terms=&query=&maxResults=120&xml=true";
+            "/search?pid=true&terms=*&query=&maxResults=120&xml=true";
 
     public static final String FIND_OBJECTS_BADREQ_PATH =
-            "/search?pid=true&terms=&query=&maxResults=unparsable&xml=true";
+            "/search?pid=true&terms=*&query=&maxResults=unparsable&xml=true";
 
     public static final String RI_SEARCH_PATH =
             "/risearch?type=triples&lang=spo&format=N-Triples&limit=&dt=on&stream=on&query=%3Cinfo%3Afedora%2Fdemo%3ASmileyStuff%3E+*+*";

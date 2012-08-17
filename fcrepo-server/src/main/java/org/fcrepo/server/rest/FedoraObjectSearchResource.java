@@ -70,7 +70,7 @@ public class FedoraObjectSearchResource extends BaseRestResource {
                 } else {
                     if ((terms != null) && (terms.length() != 0)) {
                         result = apiAService.findObjects(context, wantedFields, maxResults, new FieldSearchQuery(terms));
-                    } else {
+                    } else if ((query != null) && (query.length() != 0)) {
                         result = apiAService.findObjects(context, wantedFields, maxResults, new FieldSearchQuery(Condition.getConditions(query)));
                     }
                 }
