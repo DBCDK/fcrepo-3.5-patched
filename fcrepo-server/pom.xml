@@ -165,6 +165,7 @@
             <exclude>${integrationTests}</exclude>
             <exclude>${nestedClassTests}</exclude>
           </excludes>
+          <argLine>-javaagent:"${settings.localRepository}"/mockit/jmockit/0.999.4/jmockit-0.999.4.jar</argLine>
         </configuration>
         <executions>
           <execution>
