@@ -124,8 +124,6 @@ public class TestAdminAPI
 
         // get objects to modify from a basic search query, to provide xml input
         url = "/objects?pid=true&title=false&query=pid~demo%3A*&maxResults=1000&resultFormat=xml";
-        // Query above does not return any results when using FieldSearchLucene
-        //url = "/objects?pid=true&title=false&query=pid%3Ddemo%3A*&maxResults=1000&resultFormat=xml";
 
         HttpResponse res = get(getAuthAccess());
         assertEquals(SC_OK, res.getStatusCode());
