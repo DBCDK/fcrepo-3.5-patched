@@ -345,52 +345,39 @@
             whereas other disseminators use external services (described by
             WSDL) to do their work.</comment>
 		</param>
-	</module>
-	<module role="org.fcrepo.server.search.FieldSearch" class="org.fcrepo.server.search.FieldSearchSQLModule">
-		<comment>Supports the API-A simpleSearch and advancedSearch methods.
-		</comment>
-	    <param name="maxResults" value="100">
-	    	<comment>(required, must be > 0) 
-            The maximum number of records to 
-            return as the result of a search. Even if a client requests more 
-            results at a time, this is the cutoff value.</comment>
+    </module>
+    <module role="org.fcrepo.server.search.FieldSearch" class="dk.dbc.opensearch.fedora.search.FieldSearchLucene">
+      <comment>The dynamic behavior module for the access subsystem. This 
+        implements the methods necessary to fulfill API-A requests without 
+        regard to:
+            - dynamically associating a default behavior definition and mechanism with objects
+            - (Future) dynamically associating other behavior definitions and mechanisms
+              with objects
+            - running disseminations of dynamic behaviors</comment>
+        <param name="writeLockTimeout" value="1000">
+            <comment>Timeout in milliseconds. Specifies how long lucene should 
+            wait for the index to be released</comment>
         </param>
-	    <param name="maxSecondsPerSession" value="500">
-	    	<comment>(required, must be > 0) 
-            The maximum number of seconds that the server guarantees subsequent
-            search results may be obtained. This is only used in cases where the
-            number of results is greater than maxResults (as specified by the
-            server [above] or the client [in the search request]).</comment>
-	    </param>
-	    <param name="connectionPool" value="localDerbyPool">
-	    	<comment>(optional) To make unspecified, comment out or delete the 
-	    	whole param line as opposed to using an empty string,
-            default=ConnectionPoolManager's default) The connectionPool
-            providing the connection to the database to be used. Warning: When
-            setting these values, keep in mind that while a session is not timed
-            out (maxSecondsPerSession seconds haven't elapsed, and not all
-            results have been requested), a connection from the pool is tied up.
-            Therefore, the connectionPool should be at least of size n, large
-            enough to accomodate n simultaneous search sessions. The longer
-            maxSecondsPerSession is, the more chance you have of tying up all
-            available connections from the pool. Therefore, keep
-            maxSecondsPerSession fairly low, but still reasonable for an
-            automated program or user to serially get a long list of results,
-            and make sure you have a connectionPool large enough to accomodate
-            your users.</comment>
-    	</param>
-	    <param name="indexDCFields" value="true">
-	    	<comment>(optional, default is true) Whether the content of the DC 
-	    	datastream should be examined and the contents indexed, for each object.
-	        You may wish to save time and space by disabling DC field indexing, 
-	        particularly if you have an external search service (such as Fedora 
-	        Generic Search) that already fulfills this need. 
-	        Note: If you change this value on a Fedora repository that has been 
-	        running for some time, you will need to perform a SQL rebuild using the 
-	        Fedora Rebuilder tool if you want to change objects that have already 
-	        been ingested.</comment>
-		</param>
-	</module>
+        <param name="resultLifetime" value="1000">
+            <comment>The time a given search result should be valid in, in 
+            milliseconds</comment>
+        </param>
+        <param name="indexLocation" value="data/lucene_index">
+            <comment>directory where lucene stores it index. The speification 
+            of the path must be given in absolute terms. If a relative path 
+            is specified, the location of the index will be relative to the 
+            $HOME of the $USER running the server. Not applicable to 
+            RAMDirectory</comment>
+        </param>
+        <param name="luceneDirectory" value="NIOFSDirectory">
+            <comment>Type of directory that lucene uses. Accepted values are 
+            'RAMDirectory', 'NIOFSDirectory' or 'SimpleFSDirectory</comment>
+        </param>
+        <param name="maxResults" value="1000">
+            <comment>Maximum results that should be returned from a search 
+            at a time</comment>
+        </param>
+    </module>
 	<module role="org.fcrepo.server.resourceIndex.ResourceIndex" class="org.fcrepo.server.resourceIndex.ResourceIndexModule">
 		<comment>Supports the ResourceIndex.</comment>
 		<param name="level" value="0">
@@ -424,16 +411,16 @@
 			value="http://example.org/terms#" will allow a query to use 
 			test:apple instead of http://example.org/terms#apple</comment>
 		</param>
-	</module>
-	<module role="org.fcrepo.oai.OAIProvider" class="org.fcrepo.server.oai.FedoraOAIProviderModule">
-		<comment>Description: Exposes the repository for OAI harvesters.</comment>
-		<param name="repositoryName" value="Your Fedora Repository Name Here"/>
-		<param name="repositoryDomainName" value="example.org"/>
-		<param name="adminEmails" value="oai-admin@example.org bob@example.org"/>
-		<param name="friends" value="http://arXiv.org/oai2 http://memory.loc.gov/cgi-bin/oai2_0"/>
-		<param name="maxRecords" value="100"/>
-		<param name="maxHeaders" value="100"/>
-	</module>
+    </module>
+    <module role="org.fcrepo.oai.OAIProvider" class="org.fcrepo.server.oai.FedoraOAIProviderModule">
+        <comment>Description: Exposes the repository for OAI harvesters.</comment>
+        <param name="repositoryName" value="DBC Fedora Repository"/>
+        <param name="repositoryDomainName" value="dbc.dk"/>
+        <param name="adminEmails" value="shm@dbc.dk ja7@dbc.dk"/>
+        <param name="friends" value="http://arXiv.org/oai2 http://memory.loc.gov/cgi-bin/oai2_0"/>
+        <param name="maxRecords" value="100"/>
+        <param name="maxHeaders" value="100"/>
+    </module>
 	<module role="org.fcrepo.server.storage.translation.DOTranslator" class="org.fcrepo.server.storage.translation.DOTranslatorModule">
 		<comment>Supports translation from DigitalObject to a stream of some
 		         format, and vice-versa. The parameters below specify

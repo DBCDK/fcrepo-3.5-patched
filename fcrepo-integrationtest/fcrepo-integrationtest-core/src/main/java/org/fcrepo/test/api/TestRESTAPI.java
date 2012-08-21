@@ -724,7 +724,9 @@ public class TestRESTAPI
     }
 
     public void testFindObjectsBadSyntax() throws Exception {
-        url = "/objects?pid=true&query=label%3D%3F&maxResults=20";
+        //url = "/objects?pid=true&query=label%3D%3F&maxResults=20";
+        // Above query will not fail with FieldSearchLucene
+        url = "/objects?pid=true&query=label%3D~&maxResults=20";
         // Try > 100 times; will hang if the connection isn't properly released
         for (int i = 0; i < 101; i++) {
             assertEquals(SC_INTERNAL_SERVER_ERROR, get(getAuthAccess())

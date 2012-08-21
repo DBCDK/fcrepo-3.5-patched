@@ -15,6 +15,9 @@
       <MaxFileSize>20MB</MaxFileSize>
     </triggeringPolicy>
   </appender>
+  <logger level="TRACE" name="dk.dbc.opensearch.fedora.search" additivity="false">
+    <appender-ref ref="FEDORA"/>
+  </logger>
   <logger name="org.fcrepo" additivity="false" level="INFO">
     <appender-ref ref="FEDORA"/>
   </logger>

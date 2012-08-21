@@ -8,6 +8,9 @@
   <logger name="org.fcrepo" additivity="false" level="INFO">
     <appender-ref ref="STDOUT"/>
   </logger>
+  <logger name="dk.dbc" additivity="false" level="OFF">
+    <appender-ref ref="STDOUT"/>
+  </logger>
   <root additivity="false" level="WARN">
     <appender-ref ref="STDOUT"/>
   </root>
