@@ -1,10 +1,8 @@
 /* The contents of this file are subject to the license and copyright terms
- * detailed in the license directory at the root of the source tree (also 
+ * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
 package org.fcrepo.server.oai;
-
-import java.text.SimpleDateFormat;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -39,13 +37,14 @@ import org.fcrepo.server.search.FieldSearchQuery;
 import org.fcrepo.server.search.FieldSearchResult;
 import org.fcrepo.server.search.ObjectFields;
 import org.fcrepo.server.utilities.DCFields;
+import org.fcrepo.utilities.DateUtility;
 
 
 
 
 /**
  * Simple FieldSearch-based OAI provider.
- * 
+ *
  * @author Chris Wilper
  */
 public class FedoraOAIProvider
@@ -78,10 +77,10 @@ public class FedoraOAIProvider
     private static Set s_emptySet = new HashSet();
 
     private static String[] s_headerFields =
-            new String[] {"pid", "dcmDate", "state"};
+            new String[] {"pid", "mDate", "state"};
 
     private static String[] s_headerAndDCFields =
-            new String[] {"pid", "dcmDate", "state", "title", "creator",
+            new String[] {"pid", "mDate", "state", "title", "creator",
                     "subject", "description", "publisher", "contributor",
                     "date", "type", "format", "identifier", "source",
                     "language", "relation", "coverage", "rights"};
@@ -157,7 +156,7 @@ public class FedoraOAIProvider
     }
 
     public Date getEarliestDatestamp() {
-        return new Date();
+        return new Date( 0 );
     }
 
     public DeletedRecordSupport getDeletedRecordSupport() {
@@ -201,7 +200,7 @@ public class FedoraOAIProvider
                             .objectFieldsList();
         } catch (ServerException se) {
             throw new RepositoryException(se.getClass().getName() + ": "
-                    + se.getMessage());
+                    + se.getMessage(), se);
         }
         if (l.size() > 0) {
             ObjectFields f = (ObjectFields) l.get(0);
@@ -273,7 +272,7 @@ public class FedoraOAIProvider
 
     private Header getHeader(ObjectFields f) {
         String identifier = "oai:" + m_repositoryDomainName + ":" + f.getPid();
-        Date datestamp = f.getDCMDate();
+        Date datestamp = f.getMDate();
         HashSet<String> setSpecs = new HashSet<String>();
 
         boolean state = true;
@@ -331,19 +330,17 @@ public class FedoraOAIProvider
         // and Fedora stores dates down to the millisecond level.
         // This should not matter since OAI requests specify
         // date ranges (from-until), and as long as the requests
-        // are always in the same units, subsequent requests can pick 
+        // are always in the same units, subsequent requests can pick
         // up at the last end-point in time (in seconds) without
         // concern for millisecond granularity.
-        SimpleDateFormat formatter =
-                new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
         if (from != null) {
             out.append(" mDate>='");
-            out.append(formatter.format(from));
+            out.append(DateUtility.convertDateToString(from, false));
             out.append("'");
         }
         if (until != null) {
             out.append(" mDate<='");
-            out.append(formatter.format(until));
+            out.append(DateUtility.convertDateToString(until, false));
             out.append("'");
         }
         return out.toString();

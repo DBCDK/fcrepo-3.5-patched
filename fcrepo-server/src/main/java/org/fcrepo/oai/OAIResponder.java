@@ -1,5 +1,5 @@
 /* The contents of this file are subject to the license and copyright terms
- * detailed in the license directory at the root of the source tree (also 
+ * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
 package org.fcrepo.oai;
@@ -10,11 +10,11 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
+import java.text.DateFormat;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 
-import java.util.Calendar;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
@@ -28,20 +28,19 @@ import org.fcrepo.server.Server;
 import org.fcrepo.server.errors.authorization.AuthzException;
 import org.fcrepo.server.errors.authorization.AuthzOperationalException;
 import org.fcrepo.server.security.Authorization;
+import org.fcrepo.utilities.DateUtility;
 
 
 
 /**
  * OAIResponder.
- * 
+ *
  * @author Chris Wilper
  */
 public class OAIResponder
         implements Constants {
 
     private final OAIProvider m_provider;
-
-    private DateGranularitySupport m_granularity;
 
     private Authorization m_authorization;
 
@@ -63,7 +62,6 @@ public class OAIResponder
                             .getModule("org.fcrepo.server.security.Authorization");
         }
         m_authorization.enforceOAIRespond(context);
-        m_granularity = m_provider.getDateGranularitySupport();
         PrintWriter out = null;
         try {
             out =
@@ -125,53 +123,7 @@ public class OAIResponder
                                   descriptions,
                                   out);
             } else if (verb.equals("ListIdentifiers")) {
-                String rToken = (String) args.get("resumptionToken");
-                List headers;
-                if (rToken != null) {
-                    if (args.size() > 2) {
-                        throw new BadArgumentException("ListIdentifiers request specified resumptionToken with other arguments.");
-                    }
-                    headers = m_provider.getHeaders(rToken);
-                } else {
-                    Iterator iter = args.keySet().iterator();
-                    boolean badParam = false;
-                    Date from = null;
-                    Date until = null;
-                    String metadataPrefix = null;
-                    String set = null;
-                    while (iter.hasNext()) {
-                        String name = (String) iter.next();
-                        if (name.equals("metadataPrefix")) {
-                            metadataPrefix = (String) args.get(name);
-                        } else if (name.equals("set")) {
-                            set = (String) args.get(name);
-                        } else if (name.equals("from")) {
-                            from = getUTCDate((String) args.get(name), false);
-                        } else if (name.equals("until")) {
-                            until = getUTCDate((String) args.get(name), true);
-                        } else if (!name.equals("verb")) {
-                            badParam = true;
-                        }
-                    }
-                    if (from != null && until != null) {
-                        assertSameGranularity((String) args.get("from"),
-                                              (String) args.get("until"));
-                    }
-                    if (badParam) {
-                        throw new BadArgumentException("ListIdentifiers request specified illegal argument(s).");
-                    }
-                    if (metadataPrefix == null) {
-                        throw new BadArgumentException("ListIdentifiers request did not specify metadataPrefix argument.");
-                    }
-                    headers =
-                            m_provider.getHeaders(from,
-                                                  until,
-                                                  metadataPrefix,
-                                                  set);
-                }
-                if (headers.size() == 0) {
-                    throw new NoRecordsMatchException("No records match the providied criteria.");
-                }
+                List headers = processListIdentifiers(args);
                 ResumptionToken resumptionToken = null;
                 if (m_provider.getMaxHeaders() > 0) {
                     if (headers.size() > m_provider.getMaxHeaders()) {
@@ -200,53 +152,8 @@ public class OAIResponder
                 respondToListMetadataFormats(args, baseURL, m_provider
                         .getMetadataFormats(identifier), out);
             } else if (verb.equals("ListRecords")) {
-                String rToken = (String) args.get("resumptionToken");
-                List records;
-                if (rToken != null) {
-                    if (args.size() > 2) {
-                        throw new BadArgumentException("ListRecords request specified resumptionToken with other arguments.");
-                    }
-                    records = m_provider.getRecords(rToken);
-                } else {
-                    Iterator iter = args.keySet().iterator();
-                    boolean badParam = false;
-                    Date from = null;
-                    Date until = null;
-                    String metadataPrefix = null;
-                    String set = null;
-                    while (iter.hasNext()) {
-                        String name = (String) iter.next();
-                        if (name.equals("metadataPrefix")) {
-                            metadataPrefix = (String) args.get(name);
-                        } else if (name.equals("set")) {
-                            set = (String) args.get(name);
-                        } else if (name.equals("from")) {
-                            from = getUTCDate((String) args.get(name), false);
-                        } else if (name.equals("until")) {
-                            until = getUTCDate((String) args.get(name), true);
-                        } else if (!name.equals("verb")) {
-                            badParam = true;
-                        }
-                    }
-                    if (from != null && until != null) {
-                        assertSameGranularity((String) args.get("from"),
-                                              (String) args.get("until"));
-                    }
-                    if (badParam) {
-                        throw new BadArgumentException("ListRecords request specified illegal argument(s).");
-                    }
-                    if (metadataPrefix == null) {
-                        throw new BadArgumentException("ListRecords request did not specify metadataPrefix argument.");
-                    }
-                    records =
-                            m_provider.getRecords(from,
-                                                  until,
-                                                  metadataPrefix,
-                                                  set);
-                }
-                if (records.size() == 0) {
-                    throw new NoRecordsMatchException("No records match the providied criteria.");
-                }
+                List records = processListRecords( args );
+
                 ResumptionToken resumptionToken = null;
                 if (m_provider.getMaxRecords() > 0) {
                     if (records.size() > m_provider.getMaxRecords()) {
@@ -305,7 +212,7 @@ public class OAIResponder
     private void respondToGetRecord(Map args,
                                     String baseURL,
                                     Record record,
-                                    PrintWriter out) {
+                                    PrintWriter out) throws RepositoryException {
         appendTop(out);
         appendRequest(args, baseURL, out);
         out.println("  <GetRecord>");
@@ -314,7 +221,7 @@ public class OAIResponder
         appendBottom(out);
     }
 
-    private void respondToIdentify(Map args,
+    void respondToIdentify(Map args,
                                    String baseURL,
                                    String repositoryName,
                                    String protocolVersion,
@@ -323,7 +230,7 @@ public class OAIResponder
                                    Set adminEmails,
                                    Set compressions,
                                    Set descriptions,
-                                   PrintWriter out) {
+                                   PrintWriter out) throws RepositoryException {
         appendTop(out);
         appendRequest(args, baseURL, out);
         out.println("  <Identify>");
@@ -339,11 +246,11 @@ public class OAIResponder
         }
         out.println("    <earliestDatestamp>"
                 + getUTCString(earliestDatestamp,
-                               m_granularity == DateGranularitySupport.SECONDS)
+                               m_provider.getDateGranularitySupport() == DateGranularitySupport.SECONDS)
                 + "</earliestDatestamp>");
         out.println("    <deletedRecord>" + deletedRecord.toString()
                 + "</deletedRecord>");
-        out.println("    <granularity>" + m_granularity.toString()
+        out.println("    <granularity>" + m_provider.getDateGranularitySupport().toString()
                 + "</granularity>");
         iter = compressions.iterator();
         while (iter.hasNext()) {
@@ -362,12 +269,63 @@ public class OAIResponder
         appendBottom(out);
     }
 
+    List processListIdentifiers(Map args) throws OAIException, RepositoryException {
+        String rToken = (String) args.get("resumptionToken");
+        List headers;
+        if (rToken != null) {
+            if (args.size() > 2) {
+                throw new BadArgumentException("ListIdentifiers request specified resumptionToken with other arguments.");
+            }
+            headers = m_provider.getHeaders(rToken);
+        } else {
+            Iterator iter = args.keySet().iterator();
+            boolean badParam = false;
+            Date from = null;
+            Date until = null;
+            String metadataPrefix = null;
+            String set = null;
+            while (iter.hasNext()) {
+                String name = (String) iter.next();
+                if (name.equals("metadataPrefix")) {
+                    metadataPrefix = (String) args.get(name);
+                } else if (name.equals("set")) {
+                    set = (String) args.get(name);
+                } else if (name.equals("from")) {
+                    from = getUTCDate((String) args.get(name), false);
+                } else if (name.equals("until")) {
+                    until = getUTCDate((String) args.get(name), true);
+                } else if (!name.equals("verb")) {
+                    badParam = true;
+                }
+            }
+            if (from != null && until != null) {
+                assertSameGranularity((String) args.get("from"),
+                        (String) args.get("until"));
+            }
+            if (badParam) {
+                throw new BadArgumentException("ListIdentifiers request specified illegal argument(s).");
+            }
+            if (metadataPrefix == null) {
+                throw new BadArgumentException("ListIdentifiers request did not specify metadataPrefix argument.");
+            }
+            headers =
+                    m_provider.getHeaders(from,
+                    until,
+                    metadataPrefix,
+                    set);
+        }
+        if (headers.isEmpty()) {
+            throw new NoRecordsMatchException("No records match the providied criteria.");
+        }
+        return headers;
+    }
+
     // resumptionToken may be null
-    private void respondToListIdentifiers(Map args,
+    void respondToListIdentifiers(Map args,
                                           String baseURL,
                                           List headers,
                                           ResumptionToken resumptionToken,
-                                          PrintWriter out) {
+                                          PrintWriter out) throws RepositoryException {
         appendTop(out);
         appendRequest(args, baseURL, out);
         out.println("  <ListIdentifiers>");
@@ -402,12 +360,60 @@ public class OAIResponder
         appendBottom(out);
     }
 
+    List processListRecords(Map args) throws OAIException, RepositoryException {
+        String rToken = (String) args.get("resumptionToken");
+        List records;
+        if (rToken != null) {
+            if (args.size() > 2) {
+                throw new BadArgumentException("ListRecords request specified resumptionToken with other arguments.");
+            }
+            records = m_provider.getRecords(rToken);
+        } else {
+            Iterator iter = args.keySet().iterator();
+            boolean badParam = false;
+            Date from = null;
+            Date until = null;
+            String metadataPrefix = null;
+            String set = null;
+            while (iter.hasNext()) {
+                String name = (String) iter.next();
+                if (name.equals("metadataPrefix")) {
+                    metadataPrefix = (String) args.get(name);
+                } else if (name.equals("set")) {
+                    set = (String) args.get(name);
+                } else if (name.equals("from")) {
+                    from = getUTCDate((String) args.get(name), false);
+                } else if (name.equals("until")) {
+                    until = getUTCDate((String) args.get(name), true);
+                } else if (!name.equals("verb")) {
+                    badParam = true;
+                }
+            }
+            if (from != null && until != null) {
+                assertSameGranularity((String) args.get("from"),
+                                      (String) args.get("until"));
+            }
+            if (badParam) {
+                throw new BadArgumentException("ListRecords request specified illegal argument(s).");
+            }
+            if (metadataPrefix == null) {
+                throw new BadArgumentException("ListRecords request did not specify metadataPrefix argument.");
+            }
+            records =
+                    m_provider.getRecords(from,
+                                          until,
+                                          metadataPrefix,
+                                          set);
+        }
+        return records;
+    }
+
     // resumptionToken may be null
     private void respondToListRecords(Map args,
                                       String baseURL,
                                       List records,
                                       ResumptionToken resumptionToken,
-                                      PrintWriter out) {
+                                      PrintWriter out) throws RepositoryException {
         appendTop(out);
         appendRequest(args, baseURL, out);
         out.println("  <ListRecords>");
@@ -446,7 +452,7 @@ public class OAIResponder
         appendBottom(out);
     }
 
-    private void appendRecord(String indent, Record record, PrintWriter out) {
+    private void appendRecord(String indent, Record record, PrintWriter out) throws RepositoryException {
         Header header = record.getHeader();
         String metadata = record.getMetadata();
         Set abouts = record.getAbouts();
@@ -466,7 +472,7 @@ public class OAIResponder
         out.println(indent + "</record>");
     }
 
-    private void appendHeader(String indent, Header header, PrintWriter out) {
+    private void appendHeader(String indent, Header header, PrintWriter out) throws RepositoryException {
         String identifier = header.getIdentifier();
         Date datestamp = header.getDatestamp();
         Set setSpecs = header.getSetSpecs();
@@ -481,7 +487,7 @@ public class OAIResponder
         out.println(indent
                 + "  <datestamp>"
                 + getUTCString(datestamp,
-                               m_granularity == DateGranularitySupport.SECONDS)
+                               m_provider.getDateGranularitySupport() == DateGranularitySupport.SECONDS)
                 + "</datestamp>");
         Iterator iter = setSpecs.iterator();
         while (iter.hasNext()) {
@@ -531,7 +537,7 @@ public class OAIResponder
         out.println("         xsi:schemaLocation=\"" + OAI_PMH.uri + " "
                 + OAI_PMH2_0.xsdLocation + "\">");
         out.println("  <responseDate>"
-                + getUTCString(getUTCDate(new Date()), true)
+                + getUTCString( new Date(), true)
                 + "</responseDate>");
     }
 
@@ -558,40 +564,44 @@ public class OAIResponder
         appendBottom(out);
     }
 
-    private static String getUTCString(Date utcDate, boolean fineGranularity) {
-        SimpleDateFormat formatter;
-        if (fineGranularity) {
-            formatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
-        } else {
-            formatter = new SimpleDateFormat("yyyy-MM-dd");
+    static String getUTCString(Date utcDate, boolean seconds) {
+        if (seconds)
+        {
+            // Date and time with seconds precision
+            return DateUtility.convertDateToString( utcDate, false );
         }
-        return formatter.format(utcDate);
+        else
+        {
+            // Date without timestamp
+            // DateUtility.convertDateToDateString appends 'Z' to string
+            // so it can't be used
+
+            DateFormat df = new SimpleDateFormat("yyyy-MM-dd");
+            df.setTimeZone(TimeZone.getTimeZone("UTC"));
+            return df.format(utcDate);
+        }
     }
 
-    private Date getUTCDate(String formattedDate, boolean isUntil)
-            throws BadArgumentException {
+    Date getUTCDate(String formattedDate, boolean isUntil)
+            throws BadArgumentException, RepositoryException {
         if (formattedDate == null) {
             return null;
         }
         try {
             if (formattedDate.endsWith("Z")) {
-                if (m_granularity == DateGranularitySupport.SECONDS) {
-                    SimpleDateFormat formatter =
-                            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
-                    return formatter.parse(formattedDate);
+                if (m_provider.getDateGranularitySupport() == DateGranularitySupport.SECONDS) {
+                    // Should seconds be inclusive too (i.e.  + 0.999 ) ?
+                    return DateUtility.parseDateStrict( formattedDate );
                 } else {
                     throw new BadArgumentException("Repository does not support that granularity.");
                 }
             } else {
-                SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
+                // Date without time
                 if (isUntil) {
-                    SimpleDateFormat sdf =
-                            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
-                    return sdf.parse(formatter.format(formatter
-                            .parse(formattedDate))
-                            + "T23:59:59Z");
+                    // Include entire 'until' day in interval
+                    return DateUtility.parseDateStrict( formattedDate + "T23:59:59.999Z" );
                 } else {
-                    return formatter.parse(formattedDate);
+                    return DateUtility.parseDateStrict( formattedDate );
                 }
             }
         } catch (ParseException pe) {
@@ -599,21 +609,10 @@ public class OAIResponder
         }
     }
 
-    private Date getUTCDate(Date localDate) {
-        Calendar cal = Calendar.getInstance();
-        int tzOffset = cal.get(Calendar.ZONE_OFFSET);
-        TimeZone tz = cal.getTimeZone();
-        if (tz.inDaylightTime(localDate)) {
-            tzOffset += cal.get(Calendar.DST_OFFSET);
-        }
-        Date UTCDate = new Date();
-        UTCDate.setTime(localDate.getTime() - tzOffset);
-        return UTCDate;
-    }
 
     /**
      * Returns an XML-appropriate encoding of the given String.
-     * 
+     *
      * @param in
      *        The String to encode.
      * @return A new, encoded String.
@@ -627,7 +626,7 @@ public class OAIResponder
     /**
      * Appends an XML-appropriate encoding of the given String to the given
      * StringBuffer.
-     * 
+     *
      * @param in
      *        The String to encode.
      * @param buf
@@ -642,7 +641,7 @@ public class OAIResponder
     /**
      * Appends an XML-appropriate encoding of the given range of characters to
      * the given StringBuffer.
-     * 
+     *
      * @param in
      *        The char buffer to read from.
      * @param start
@@ -661,7 +660,7 @@ public class OAIResponder
     /**
      * Appends an XML-appropriate encoding of the given character to the given
      * StringBuffer.
-     * 
+     *
      * @param in
      *        The character.
      * @param out

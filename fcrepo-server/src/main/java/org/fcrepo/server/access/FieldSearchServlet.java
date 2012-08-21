@@ -342,12 +342,12 @@ public class FieldSearchServlet
                 html
                         .append("</font></td><td bgcolor=silver valign=top>&nbsp;&nbsp;&nbsp;</td><td valign=top>");
                 html
-                        .append("Search all fields for phrase: <input type=\"text\" name=\"terms\" size=\"15\" value=\""
+                        .append("Search all fields for phrase: <input type=\"text\" name=\"terms\" size=\"24\" value=\""
                                 + (terms == null ? "" : StreamUtility
                                         .enc(terms))
                                 + "\"> <a href=\"#\" onClick=\"javascript:alert('Search All Fields\\n\\nEnter a phrase.  Objects where any field contains the phrase will be returned.\\nThis is a case-insensitive search, and you may use the * or ? wildcards.\\n\\nExamples:\\n\\n  *o*\\n    finds objects where any field contains the letter o.\\n\\n  ?edora\\n    finds objects where a word starts with any letter and ends with edora.')\"><i>help</i></a><p> ");
                 html
-                        .append("Or search specific field(s): <input type=\"text\" name=\"query\" size=\"15\" value=\""
+                        .append("Or search specific field(s): <input type=\"text\" name=\"query\" size=\"24\" value=\""
                                 + (query == null ? "" : StreamUtility
                                         .enc(query))
                                 + "\"> <a href=\"#\" onClick=\"javascript:alert('Search Specific Field(s)\\n\\nEnter one or more conditions, separated by space.  Objects matching all conditions will be returned.\\nA condition is a field (choose from the field names on the left) followed by an operator, followed by a value.\\nThe = operator will match if the field\\'s entire value matches the value given.\\nThe ~ operator will match on phrases within fields, and accepts the ? and * wildcards.\\nThe &lt;, &gt;, &lt;=, and &gt;= operators can be used with numeric values, such as dates.\\n\\nExamples:\\n\\n  pid~demo:* description~fedora\\n    Matches all demo objects with a description containing the word fedora.\\n\\n  cDate&gt;=1976-03-04 creator~*n*\\n    Matches objects created on or after March 4th, 1976 where at least one of the creators has an n in their name.\\n\\n  mDate&gt;2002-10-2 mDate&lt;2002-10-2T12:00:00\\n    Matches objects modified sometime before noon (UTC) on October 2nd, 2002')\"><i>help</i></a><p> ");
@@ -383,7 +383,7 @@ public class FieldSearchServlet
                 List<ObjectFields> searchResults = fsr.objectFieldsList();
                 if (!xml) {
                     html
-                            .append("<center><table width=\"90%\" border=\"1\" cellpadding=\"5\" cellspacing=\"5\" bgcolor=\"silver\">\n");
+                            .append("<center><table width=\"98%\" border=\"1\" cellpadding=\"2\" cellspacing=\"2\" bgcolor=\"silver\">\n");
                     html.append("<tr>");
                     for (String element : fieldsArray) {
                         html
