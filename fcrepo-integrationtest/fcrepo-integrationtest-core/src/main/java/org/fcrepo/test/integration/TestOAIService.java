@@ -180,7 +180,7 @@ public class TestOAIService
         assertXpathExists("/oai:OAI-PMH/oai:ListIdentifiers/oai:header/oai:datestamp", result);
 
         // identifier datestamp must be inside the before-after interval
-        assertXpathEvaluatesTo( "oai:example.org:demo:31", "/oai:OAI-PMH/oai:ListIdentifiers/oai:header/oai:identifier", result );
+        assertXpathEvaluatesTo( "oai:dbc.dk:demo:31", "/oai:OAI-PMH/oai:ListIdentifiers/oai:header/oai:identifier", result );
         XpathEngine xpathEngine = XMLUnit.newXpathEngine();
         String datestampStr = xpathEngine.evaluate( "/oai:OAI-PMH/oai:ListIdentifiers/oai:header/oai:datestamp", result );
         Date datestamp = format.parse( datestampStr );

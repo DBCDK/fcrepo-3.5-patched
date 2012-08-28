@@ -34,7 +34,7 @@ import org.fcrepo.server.search.FieldSearchQuery;
 import org.fcrepo.server.search.FieldSearchResult;
 import org.fcrepo.server.storage.DOManager;
 import org.fcrepo.server.storage.DOReader;
-import org.fcrepo.server.storage.types.DatastreamXMLMetadata;
+import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.RelationshipTuple;
 import org.fcrepo.server.utilities.DCField;
 import org.fcrepo.server.utilities.DCFields;
@@ -132,7 +132,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         String version = this.getClass().getPackage().getImplementationVersion();
         log.info( "Running FieldSearchLucene version {}", version );
 
-        // doManager        
+        // doManager
         doManager = (DOManager) getServer().getModule( "org.fcrepo.server.storage.DOManager" );
         if( null == doManager )
         {
@@ -176,7 +176,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         try
         {
             directory = initializeDirectoryString( sDirectory );
-        } 
+        }
         catch( IOException ex )
         {
             String error = String.format( "FATAL: Could not initialize lucene directory '%s': %s", sDirectory, ex.getMessage() );
@@ -190,7 +190,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         try
         {
             fsl = new FieldSearchLuceneImpl( luceneWriteLockTimeout, analyzer, directory, resultLifeTimeInSeconds );
-        } 
+        }
         catch( IOException ex )
         {
             log.error( "FATAL:", ex );
@@ -217,19 +217,8 @@ public final class FieldSearchLucene extends Module implements FieldSearch
 
         DCFields dcFields = null;
         Date dcmCreatedDate = null;
-        DatastreamXMLMetadata dcmd = null;
-        try
-        {
-            dcmd = (DatastreamXMLMetadata) reader.GetDatastream( "DC", null );
-            log.debug( "Retrieved Dublin Core metadata from digital object" );
-        } 
-        catch( ClassCastException cce )
-        {
-            String pid = objectPID;
-            String error = String.format( "Object %s has a DC datastream, but it's not inline XML.", pid );
-            log.error( error, cce );
-            log.warn( "This means that the object with pid {} will have no dc values indexed", pid );
-        }
+        Datastream dcmd = reader.GetDatastream( "DC", null );
+        log.debug( "Retrieved Dublin Core metadata from digital object" );
         if( null != dcmd )
         {
             dcFields = new DCFields( dcmd.getContentStream() );
@@ -259,7 +248,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
                              dcFields,
                              dcmCreatedDate,
                              relations );
-        } 
+        }
         catch( CorruptIndexException ex )
         {
             // because of insufficient information on this exception type, the
@@ -269,7 +258,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
             String error = String.format( "FATAL: Could not write fields to index: %s", ex.getMessage() );
             log.error( error, ex );
             throw new InvalidStateException( error );
-        } 
+        }
         catch( IOException ex )
         {
             // because of insufficient information on this exception type, the
@@ -306,7 +295,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
     /**
      * Find {@link FedoraFieldName object resultFields} filtered by {@code resultFields}, limited
      * by {@code maxResults} and specified by the {@code FieldSearchQuery} object.
-     * 
+     *
      * @param returnFields the resultFields for which values should be returned
      * @param maxResults maximum number of hits for each of the resultFields in {@code resultFields}
      * @param fsq the query, wrapped in a {@code FieldSearchQuery} object
@@ -408,7 +397,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         try
         {
             this.fsl.shutdown();
-        } 
+        }
         catch( IOException ex )
         {
             // todo: This same string is in FieldSearchLuceneImpl.shutdown();
@@ -461,7 +450,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
                     throw new ModuleInitializationException( String.format( "parameter %s is not a valid value", directoryName ), getRole() );
                 }
                 log.debug( "Returning a {} instance, at {}", directoryName, location.getAbsolutePath() );
-            } 
+            }
             catch( IOException ex )
             {
                 String error = String.format( "FATAL: Could not initialize instance of %s", directoryName );

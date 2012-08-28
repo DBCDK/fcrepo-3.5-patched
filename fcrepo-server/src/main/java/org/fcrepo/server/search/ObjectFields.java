@@ -1,11 +1,13 @@
 /* The contents of this file are subject to the license and copyright terms
- * detailed in the license directory at the root of the source tree (also 
+ * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
 package org.fcrepo.server.search;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 import java.util.Date;
 
@@ -44,9 +46,9 @@ public class ObjectFields
 
     private Date m_dcmDate;
 
-    private String m_relObj;
+    private List<DCField> m_relObj = new ArrayList<DCField>();
 
-    private String m_relPredObj;
+    private List<DCField> m_relPredObj = new ArrayList<DCField>();
 
     private StringBuffer m_currentContent;
 
@@ -220,9 +222,9 @@ public class ObjectFields
             setDCMDate(DateUtility.convertStringToDate(m_currentContent
                     .toString()));
         } else if (m_want[RELOBJ] && localName.equals("relObj")) {
-            setRelObj(m_currentContent.toString());
+            relObjs().add(new DCField(m_currentContent.toString()));
         } else if (m_want[RELPREDOBJ] && localName.equals("relPredObj")) {
-            setRelPredObj(m_currentContent.toString());
+            relPredObjs().add(new DCField(m_currentContent.toString()));
         } else if (m_want[TITLE] && localName.equals("title")) {
             titles().add(new DCField(m_currentContent.toString()));
         } else if (m_want[CREATOR] && localName.equals("creator")) {
@@ -312,19 +314,11 @@ public class ObjectFields
         return m_dcmDate;
     }
 
-    public void setRelObj(String relObj) {
-        m_relObj = relObj;
-    }
-
-    public String getRelObj() {
+    public List<DCField> relObjs() {
         return m_relObj;
     }
 
-    public void setRelPredObj(String relPredObj) {
-        m_relPredObj = relPredObj;
-    }
-
-    public String getRelPredObj() {
+    public List<DCField> relPredObjs() {
         return m_relPredObj;
     }
 

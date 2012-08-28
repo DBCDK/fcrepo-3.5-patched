@@ -29,7 +29,7 @@ import org.fcrepo.server.search.FieldSearchResult;
 import org.fcrepo.server.search.ObjectFields;
 import org.fcrepo.server.storage.DOReader;
 import org.fcrepo.server.storage.RepositoryReader;
-import org.fcrepo.server.storage.types.DatastreamXMLMetadata;
+import org.fcrepo.server.storage.types.Datastream;
 
 import java.io.IOException;
 import java.util.Date;
@@ -39,6 +39,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.lucene.queryParser.ParseException;
+import org.fcrepo.server.utilities.DCField;
 
 
 /**
@@ -137,10 +138,6 @@ class FieldSearchResultLucene implements FieldSearchResult
 
             ObjectFields objectFields = null;
 
-            // Holds a comma separated string of all RELPREDOBJ values.
-            StringBuilder relPredObj = null;
-            StringBuilder relObj = null;
-
             for( Pair<FedoraFieldName, String> resultPair : resultList )
             {
                 log.trace( "resultPair = <%{}, %{}>", resultPair.getFirst(), resultPair.getSecond() );
@@ -167,39 +164,13 @@ class FieldSearchResultLucene implements FieldSearchResult
                 }
                 else if( fieldName.equals(FedoraFieldName.RELPREDOBJ) )
                 {
-                    if ( relPredObj == null)
-                        relPredObj = new StringBuilder();
-
-                    relPredObj.append( resultPair.getSecond() );
-                    relPredObj.append( ',' );
+                    objectFields.relPredObjs().add( new DCField( resultPair.getSecond() ) );
                 }
                 else if( fieldName == FedoraFieldName.RELOBJ )
                 {
-                    if ( relObj == null)
-                        relObj = new StringBuilder();
-
-                    relObj.append( resultPair.getSecond() );
-                    relObj.append( ',' );
+                    objectFields.relObjs().add( new DCField( resultPair.getSecond() ) );
                 }
             }
-
-            if( objectFields != null && relPredObj != null )
-            {
-                // Add concatenated RELPREDOBJ string to ObjectFields while
-                // removing trailing comma.
-                objectFields.setRelPredObj( 
-                    relPredObj.deleteCharAt( relPredObj.length()-1 ).toString()
-                );
-            }
-            if( objectFields != null && relObj != null )
-            {
-                // Add concatenated RELPREDOBJ string to ObjectFields while
-                // removing trailing comma.
-                objectFields.setRelObj(
-                    relObj.deleteCharAt( relObj.length()-1 ).toString()
-                );
-            }
-
             localResultCounter++;
         }
 
@@ -254,14 +225,14 @@ class FieldSearchResultLucene implements FieldSearchResult
     @Override
     public long getCursor()
     {
-        /** 
+        /**
          * Because the fedora logic around FieldSearch is bound to database
          * metaphors, we'll need to make the result from the indicies behave like
          * a java.sql.ResultSet:
          * (http://java.sun.com/javase/6/docs/api/java/sql/ResultSet.html)
          *
          * This is a naïve implementation which simply returns the position in
-         * the result list. 
+         * the result list.
          */
         return this.cursor;
     }
@@ -330,9 +301,7 @@ class FieldSearchResultLucene implements FieldSearchResult
         log.debug( "Trying to retrieve DC datastream from pid {}", pid );
         // If there's a DC record available, use SAX to parse the most
         // recent version of it into fields.
-        DatastreamXMLMetadata dcmd = null;
-
-        dcmd = (DatastreamXMLMetadata) objectReader.GetDatastream( "DC", null );
+        Datastream dcmd = objectReader.GetDatastream( "DC", null );
 
         log.debug( "Putting {} result fields into ObjectFields object", this.resultFields.length );
 

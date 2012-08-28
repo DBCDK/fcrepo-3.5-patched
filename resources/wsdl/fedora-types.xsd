@@ -721,8 +721,9 @@
             <element name="cDate" nillable="true" type="string" minOccurs="0"/>
             <element name="mDate" nillable="true" type="string" minOccurs="0"/>
             <element name="dcmDate" nillable="true" type="string" minOccurs="0"/>
-            <element name="relObj" nillable="true" type="string" minOccurs="0"/>
-            <element name="relPredObj" nillable="true" type="string" minOccurs="0"/>
+            <element name="relObj" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
+            <!--element name="relPredObj" nillable="true" type="fedora-types:RelPredObj" minOccurs="0" maxOccurs="unbounded"/-->
+            <element name="relPredObj" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
             <element name="title" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
             <element name="creator" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
             <element name="subject" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
@@ -738,6 +739,13 @@
             <element name="relation" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
             <element name="coverage" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
             <element name="rights" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
+        </sequence>
+    </complexType>
+
+    <complexType name="RelPredObj">
+        <sequence>
+            <element name="predicate" type="xsd:string"/>
+            <element name="object" type="xsd:string"/>
         </sequence>
     </complexType>
 

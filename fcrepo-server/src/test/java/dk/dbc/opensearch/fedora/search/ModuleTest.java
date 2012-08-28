@@ -45,6 +45,7 @@ import org.fcrepo.server.storage.types.DatastreamXMLMetadata;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -58,6 +59,7 @@ import mockit.Expectations;
 import mockit.Mocked;
 import mockit.Mockit;
 import mockit.NonStrictExpectations;
+import org.fcrepo.server.utilities.DCField;
 
 import org.junit.After;
 import org.junit.Before;
@@ -91,7 +93,7 @@ public class ModuleTest
     private static final Date yesterDate = new Date( timeNow - 86400000L );
     private static final Date toDate = new Date( timeNow );
     private static final Date tomorrowDate = new Date( timeNow + 86400000L );
-    
+
     /**
      * Mock-outs of the entire Fedora Server complex. The mocks are primarily
      * and almost exclusively used in Expectations.
@@ -120,7 +122,7 @@ public class ModuleTest
         simpleUtcFormatter = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSS" );
         simpleUtcFormatter.setTimeZone( TimeZone.getTimeZone( "UTC" ) );
         simpleTimeFormatter = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSS" );
-        
+
         final Map<String, String> params = getParameters();
 
         final DOManager domareal = new DefaultDOManager( params, server, "DOManager" );
@@ -1199,7 +1201,7 @@ public class ModuleTest
         assertEquals( 1, fsr.objectFieldsList().size() );
         assertEquals( subject, objectFieldsList.get( 0 ).getPid() );
         assertEquals( expectedRelPredObj,
-            objectFieldsList.get( 0 ).getRelPredObj() );
+            objectFieldsList.get( 0 ).relPredObjs().get( 0 ).getValue() );
     }
 
     /**
@@ -1244,13 +1246,14 @@ public class ModuleTest
 
         List< ObjectFields > objectFieldsList = fsr.objectFieldsList();
 
-        String expectedRelPredObj = String.format( "%s|%s,%s|%s", predicate1,
-            object1, predicate2, object2 );
-
         assertEquals( 1, fsr.objectFieldsList().size() );
         assertEquals( subject, objectFieldsList.get( 0 ).getPid() );
-        assertEquals( expectedRelPredObj,
-            objectFieldsList.get( 0 ).getRelPredObj() );
+
+        assertEquals( String.format( "%s|%s", predicate1, object1 ),
+            objectFieldsList.get( 0 ).relPredObjs().get( 0 ).getValue() );
+
+        assertEquals( String.format( "%s|%s", predicate2, object2 ),
+            objectFieldsList.get( 0 ).relPredObjs().get( 1 ).getValue() );
     }
 
 
@@ -1316,7 +1319,7 @@ public class ModuleTest
                 reader.getOwnerId(); returns( anyString );
                 reader.GetDatastream( anyString, (Date) any ); returns( (Datastream) dsxml );
                 reader.getRelationships(); returns( new LinkedHashSet< RelationshipTuple >() );
-            
+
                 dsxml.getContentStream();returns( metadata );
         }};
     }
@@ -1407,7 +1410,7 @@ public class ModuleTest
         final Map<String, String> params = new HashMap<String, String>();
         params.put( "writeLockTimeout", "1000" );
         params.put( "resultLifetime", "10" );
-        //TODO: a separate tests should verify that invalid values cannot be 
+        //TODO: a separate tests should verify that invalid values cannot be
         // given as parameters
         params.put( "luceneDirectory", "SimpleFSDirectory" );
         params.put( "indexLocation", indexLocation );
