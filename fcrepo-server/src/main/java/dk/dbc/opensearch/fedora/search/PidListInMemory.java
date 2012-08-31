@@ -20,6 +20,7 @@
 package dk.dbc.opensearch.fedora.search;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -60,6 +61,12 @@ public class PidListInMemory implements IPidList
         {
             return pidList.get( cursor++ );
         }
+        return null;
+    }
+
+    @Override
+    public Collection< String > getNextPids( int wanted )
+    {
         return null;
     }
 

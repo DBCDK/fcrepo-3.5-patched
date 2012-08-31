@@ -19,6 +19,9 @@
 
 package dk.dbc.opensearch.fedora.search;
 
+import java.io.IOException;
+import java.util.Collection;
+
 /**
  * Allows for a list of PIDs to be built and traversed
  */
@@ -29,16 +32,29 @@ public interface IPidList
      * ignoring null values
      *
      * @param pid to be appended to this list
+     * @throws IOException If unable to read PID from the list
      */
-    void addPid( String pid );
+    void addPid( String pid ) throws IOException;
 
     /**
      * Returns the next PID element in the list and advances
      * cursor position to the following element
      *
      * @return PID element or null if list is exhausted
+     * @throws IOException If unable to read PID from the list
      */
-    String getNextPid();
+    String getNextPid() throws IOException;
+
+    /**
+     * Get multiple next PID elements in the list and advances
+     * cursor position to the following element.
+     * If less than the requested number of PID remain, fewer
+     * that requested will be returned
+     * @param wanted Number of PID wanted
+     * @return Collection of PID
+     * @throws IOException If unable to read PID from the list
+     */
+    Collection< String > getNextPids( int wanted ) throws IOException;
 
     /**
      * Gets the current cursor position in the list
