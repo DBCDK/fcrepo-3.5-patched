@@ -28,7 +28,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Iterator;
-import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -67,7 +66,7 @@ public class PidListInFileTest
     @Before
     public void setUp() throws IOException
     {
-        tempFile = File.createTempFile( "PidListInFile", ".csv", new File("target/test-classes") );
+        tempFile = File.createTempFile( "PidListInRandFile", ".bin", new File("target/test-classes") );
     }
 
     @After
@@ -112,7 +111,6 @@ public class PidListInFileTest
         PidListInFile pidList = new PidListInFile( tempFile, memPidList );
 
         assertEquals( 5, pidList.size() );
-        assertEquals( pidsStr, FileUtils.readFileToString( tempFile ) );
     }
 
     @Test
@@ -127,7 +125,6 @@ public class PidListInFileTest
         }
 
         assertEquals( 5, pidList.size() );
-        assertEquals( pidsStr, FileUtils.readFileToString( tempFile ) );
     }
 
 
@@ -143,7 +140,6 @@ public class PidListInFileTest
         }
 
         assertEquals( 5, pidList.size() );
-        assertEquals( pidsStr, FileUtils.readFileToString( tempFile ) );
 
         for( int i = 0; i < pidsArray.length; i++ )
         {
@@ -154,7 +150,6 @@ public class PidListInFileTest
         // File must be deleted when pid list is exhausted
         assertFalse( tempFile.exists() );
     }
-
 
     @Test
     public void testGetNextPids() throws IOException
@@ -189,7 +184,7 @@ public class PidListInFileTest
     {
         // File must not exist at test start time
         tempFile.delete();
-        PidListInRandomAccessFile pidList = new PidListInRandomAccessFile( tempFile );
+        PidListInFile pidList = new PidListInFile( tempFile );
         for( String pid : pidsArray )
         {
             pidList.addPid( pid );
@@ -217,7 +212,7 @@ public class PidListInFileTest
     {
         // File must not exist at test start time
         tempFile.delete();
-        PidListInRandomAccessFile pidList = new PidListInRandomAccessFile( tempFile );
+        PidListInFile pidList = new PidListInFile( tempFile );
         for( String pid : pidsArray )
         {
             pidList.addPid( pid );
@@ -252,7 +247,6 @@ public class PidListInFileTest
         }
 
         assertEquals( 5, pidList.size() );
-        assertEquals( pidsStr, FileUtils.readFileToString( tempFile ) );
 
         for( int i = 0; i < pidsArray.length; i++ )
         {
@@ -285,7 +279,7 @@ public class PidListInFileTest
         tempFile.delete();
 
         PidListInMemory memPidList = new PidListInMemory();
-        int size = 100000;
+        int size = 1000000;
 
         System.out.println( "Create memory list with size: " + size );
 
@@ -310,6 +304,7 @@ public class PidListInFileTest
         end = System.currentTimeMillis();
 
         System.out.println( "File size is:" + tempFile.length() );
+
         System.out.println( "Time: " + ( end - start ) );
 
         assertEquals( size, pidList.size() );
@@ -325,7 +320,7 @@ public class PidListInFileTest
         tempFile.delete();
 
         PidListInFile pidList = new PidListInFile( tempFile );
-        int size = 100000;
+        int size = 10000000;
 
         System.out.println( "Create file list with size: " + size );
 
@@ -336,15 +331,15 @@ public class PidListInFileTest
             String pid = String.format( "obj:%08d", i );
             pidList.addPid( pid );
         }
+        System.out.println( "File size is:" + tempFile.length() );
 
         long end = System.currentTimeMillis();
 
-        System.out.println( "File size is:" + tempFile.length() );
         System.out.println( "Time: " + ( end - start ) );
 
         assertEquals( size, pidList.size() );
 
-        System.out.println( "Iterate file list with size " + size + ", single step" );
+        System.out.println( "Iterate file list with size " + size + ", single step");
         start = System.currentTimeMillis();
 
         int total = 0;
@@ -359,7 +354,6 @@ public class PidListInFileTest
         assertEquals( size, total );
     }
 
-
     // Small performance test. Should normally be disabled
     @Test
     @Ignore
@@ -369,7 +363,7 @@ public class PidListInFileTest
         tempFile.delete();
 
         PidListInFile pidList = new PidListInFile( tempFile );
-        int size = 100000;
+        int size = 1000000;
 
         System.out.println( "Create file list with size: " + size );
 
@@ -382,15 +376,16 @@ public class PidListInFileTest
         }
 
         long end = System.currentTimeMillis();
-
         System.out.println( "File size is:" + tempFile.length() );
+
         System.out.println( "Time: " + ( end - start ) );
 
         assertEquals( size, pidList.size() );
 
         //int batchSize = 13;
-        //int batchSize = 123;
-        int batchSize = 973;
+        int batchSize = 123;
+        //int batchSize = 973;
+        //int batchSize = 1000;
 
         System.out.println( "Iterate file list with size " + size + ", " + batchSize + " at a time" );
         start = System.currentTimeMillis();
@@ -400,7 +395,7 @@ public class PidListInFileTest
         do
         {
             got = pidList.getNextPids( batchSize).size();
-            //System.out.println( "Got " + got );
+            System.out.println( "Got " + got );
             total += got;
         }
         while ( got == batchSize );
