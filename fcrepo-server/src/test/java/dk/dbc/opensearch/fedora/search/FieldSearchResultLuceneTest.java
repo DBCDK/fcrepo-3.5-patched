@@ -30,6 +30,7 @@ import org.fcrepo.server.storage.RepositoryReader;
 import org.fcrepo.server.storage.types.DatastreamXMLMetadata;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.Date;
 import java.util.List;
@@ -416,7 +417,7 @@ public class FieldSearchResultLuceneTest
     }
 
 
-    private IPidList getNDemoSearchResults( int numberOfNs )
+    private IPidList getNDemoSearchResults( int numberOfNs ) throws IOException
     {
         IPidList searchResult = new PidListInMemory();
         for( int i = 0; i < numberOfNs; i++ )
