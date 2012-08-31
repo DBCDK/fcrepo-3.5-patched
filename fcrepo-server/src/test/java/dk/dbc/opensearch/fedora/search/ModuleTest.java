@@ -63,6 +63,7 @@ import org.fcrepo.server.utilities.DCField;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -1165,6 +1166,7 @@ public class ModuleTest
      * single object relationship ingested and retrieved via a search on the
      * relationship object identifier through a FieldSearchResultLucene instance
      */
+    @Ignore
     @Test
     public void testRetrievalOfObjectWithsingleRelationship() throws Exception
     {
@@ -1210,6 +1212,7 @@ public class ModuleTest
      * of the relationship object identifiers through a FieldSearchResultLucene
      * instance
      */
+    @Ignore
     @Test
     public void testRetrievalOfObjectWithMultipleRelationships()
         throws Exception

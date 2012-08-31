@@ -24,6 +24,7 @@ package dk.dbc.opensearch.fedora.search;
 import org.fcrepo.common.rdf.RDFName;
 import org.fcrepo.server.Module;
 import org.fcrepo.server.Server;
+import org.fcrepo.server.errors.GeneralException;
 import org.fcrepo.server.errors.InvalidStateException;
 import org.fcrepo.server.errors.ModuleInitializationException;
 import org.fcrepo.server.errors.ModuleShutdownException;
@@ -317,7 +318,15 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         }
 
         log.trace( "Retrieving search result" );
-        FieldSearchResult fsr = new FieldSearchResultLucene( this.fsl.luceneindexer, this.doManager, validReturnFields, fsq, maxResults, this.fsl.resultLifeTimeInSeconds );
+        FieldSearchResult fsr;
+        try
+        {
+            fsr = new FieldSearchResultLucene( this.fsl.luceneindexer, this.doManager, validReturnFields, fsq, maxResults, this.fsl.resultLifeTimeInSeconds );
+        }
+        catch( IOException e )
+        {
+            throw new GeneralException( "Unable to create FieldSearchResult", e );
+        }
 
         String currentToken = fsr.getToken();
 
@@ -361,7 +370,15 @@ public final class FieldSearchLucene extends Module implements FieldSearch
             throw new IllegalStateException( error );
         }
 
-        FieldSearchResult fsr = cachedFsr.stepAndCacheResult();
+        FieldSearchResult fsr;
+        try
+        {
+            fsr = cachedFsr.stepAndCacheResult();
+        }
+        catch( IOException e )
+        {
+            throw new GeneralException( "Unable to create FieldSearchResult", e );
+        }
 
         this.fsl.cachedResult.remove( token );
 

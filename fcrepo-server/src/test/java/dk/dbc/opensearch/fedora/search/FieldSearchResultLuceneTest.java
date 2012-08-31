@@ -104,7 +104,7 @@ public class FieldSearchResultLuceneTest
         final String[] resultFields = getResultFields( "pid" );
         FieldSearchQuery query = constructQuery();
 
-        setExpectationsForIndexSearch( query, resultFields, 1 );
+        setExpectationsForIndexSearch( query, 1 );
 
         FieldSearchResultLucene resultInstance = new FieldSearchResultLucene( indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds );
 
@@ -131,7 +131,7 @@ public class FieldSearchResultLuceneTest
         final String[] resultFields = getResultFields( "pid", "dcmdate" );
         FieldSearchQuery query = constructQuery();
 
-        setExpectationsForIndexSearch( query, resultFields, 1 );
+        setExpectationsForIndexSearch( query, 1 );
 
         FieldSearchResultLucene resultInstance = new FieldSearchResultLucene( indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds );
 
@@ -159,7 +159,7 @@ public class FieldSearchResultLuceneTest
         final String[] resultFields = getResultFields( Integer.toString( maxResults + 1 ) );
         FieldSearchQuery query = constructQuery();
 
-        setExpectationsForIndexSearch( query, resultFields, maxResults + 1 );
+        setExpectationsForIndexSearch( query, maxResults + 1 );
 
         FieldSearchResultLucene resultInstance = new FieldSearchResultLucene( indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds );
         FieldSearchResultLucene resultInstance2 = new FieldSearchResultLucene( indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds );
@@ -179,7 +179,7 @@ public class FieldSearchResultLuceneTest
         final String[] resultFields = getResultFields( "pid" );
         FieldSearchQuery query = constructQuery();
 
-        setExpectationsForIndexSearch( query, resultFields, 1 );
+        setExpectationsForIndexSearch( query, 1 );
 
         FieldSearchResultLucene result = new FieldSearchResultLucene( indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds );
         long expectedCursor = 0L;
@@ -197,7 +197,7 @@ public class FieldSearchResultLuceneTest
         final String[] resultFields = getResultFields( Integer.toString( maxResults + 1 ) );
         FieldSearchQuery query = constructQuery();
 
-        setExpectationsForIndexSearch( query, resultFields, maxResults + 1 );
+        setExpectationsForIndexSearch( query, maxResults + 1 );
 
         FieldSearchResultLucene result = new FieldSearchResultLucene( indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds );
         long cursor = result.getCursor();
@@ -216,7 +216,7 @@ public class FieldSearchResultLuceneTest
         final String[] resultFields = getResultFields( "pid" );
         FieldSearchQuery query = constructQuery();
 
-        setExpectationsForIndexSearch( query, resultFields, maxResults - 1 );
+        setExpectationsForIndexSearch( query, maxResults - 1 );
 
         FieldSearchResultLucene result = new FieldSearchResultLucene( indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds );
 
@@ -232,7 +232,7 @@ public class FieldSearchResultLuceneTest
         final String[] resultFields = getResultFields( Integer.toString( maxResults + 1 ) );
         FieldSearchQuery query = constructQuery();
 
-        setExpectationsForIndexSearch( query, resultFields, maxResults + 1 );
+        setExpectationsForIndexSearch( query, maxResults + 1 );
 
         FieldSearchResultLucene largerResult = new FieldSearchResultLucene( indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds );
 
@@ -248,7 +248,7 @@ public class FieldSearchResultLuceneTest
         final String[] resultFields = getResultFields( Integer.toString( maxResults ) );
         FieldSearchQuery query = constructQuery();
 
-        setExpectationsForIndexSearch( query, resultFields, maxResults - 1 );
+        setExpectationsForIndexSearch( query, maxResults - 1 );
 
         FieldSearchResultLucene largerResult = new FieldSearchResultLucene( indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds );
 
@@ -267,7 +267,7 @@ public class FieldSearchResultLuceneTest
         final String[] resultFields = getResultFields( Integer.toString( maxResults + 1 ) );
         FieldSearchQuery query = constructQuery();
 
-        setExpectationsForIndexSearch( query, resultFields, maxResults + 1 );
+        setExpectationsForIndexSearch( query, maxResults + 1 );
 
         FieldSearchResultLucene resultInstance = new FieldSearchResultLucene( indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds );
 
@@ -286,7 +286,7 @@ public class FieldSearchResultLuceneTest
         final String[] resultFields = getResultFields( Integer.toString( maxResults * 2 ) );
         FieldSearchQuery query = constructQuery();
 
-        setExpectationsForIndexSearch( query, resultFields, maxResults * 2 );
+        setExpectationsForIndexSearch( query, maxResults * 2 );
 
         FieldSearchResultLucene resultInstance = new FieldSearchResultLucene( indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds );
 
@@ -304,7 +304,7 @@ public class FieldSearchResultLuceneTest
         final String[] resultFields = getResultFields( Integer.toString( maxResults + 1 ) );
         final FieldSearchQuery query = constructQuery();
 
-        setExpectationsForIndexSearch( query, resultFields, maxResults + 1 );
+        setExpectationsForIndexSearch( query, maxResults + 1 );
 
         FieldSearchResultLucene resultInstance = new FieldSearchResultLucene( indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds );
         assertEquals( maxResults + 1, resultInstance.getCompleteListSize() );
@@ -357,15 +357,15 @@ public class FieldSearchResultLuceneTest
     }
 
 
-    private Expectations setExpectationsForIndexSearch( final FieldSearchQuery query, final String[] resultFields, int numberOfSearchResults ) throws Exception
+    private Expectations setExpectationsForIndexSearch( final FieldSearchQuery query, int numberOfSearchResults ) throws Exception
     {
-        final List<List<Pair<FedoraFieldName, String>>> indexResult = getNDemoSearchResults( numberOfSearchResults );
+        final IPidList indexResult = getNDemoSearchResults( numberOfSearchResults );
         return new NonStrictExpectations()
         {
 
 
             {
-                mockIndex.search( query, resultFields );
+                mockIndex.search( query );
                 returns( indexResult );
             }
 
@@ -416,15 +416,12 @@ public class FieldSearchResultLuceneTest
     }
 
 
-    private List<List<Pair<FedoraFieldName, String>>> getNDemoSearchResults( int numberOfNs )
+    private IPidList getNDemoSearchResults( int numberOfNs )
     {
-        List<List<Pair<FedoraFieldName, String>>> searchResult = new LinkedList<List<Pair<FedoraFieldName, String>>>();
-        List<Pair<FedoraFieldName, String>> result;
+        IPidList searchResult = new PidListInMemory();
         for( int i = 0; i < numberOfNs; i++ )
         {
-            result  = new LinkedList<Pair<FedoraFieldName, String>>();
-            result.add( new Pair<FedoraFieldName, String>( FedoraFieldName.PID, "demo:" + (i + 1) ) );
-            searchResult.add( result );
+            searchResult.addPid( "demo:" + (i + 1) );
         }
         return searchResult;
     }

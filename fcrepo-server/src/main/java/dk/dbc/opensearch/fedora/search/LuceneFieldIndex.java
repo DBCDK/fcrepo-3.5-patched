@@ -595,49 +595,32 @@ public final class LuceneFieldIndex
 
 
     /**
-     * This method takes a {@link List} of queries constructed of {@link Pair}s
-     * of {@link FedoraFieldName}s and {@link String}s, and a {@code String[]}
-     * denoting the {@code FedoraFieldName}s for which the client wishes results to
-     * be returned.
+     * This method takes a {@link FieldSearchQuery} consisting of {@link Pair}s
+     * of {@link FedoraFieldName}s and {@link String}s and executes the
+     * corresponding search against the lucene index
      *
      * For a Query consisting of
      * <pre>
      * List< Pair< "CREATOR", "Friedrich Nietzche" > >
      * </pre>
      *
-     * and a resultFields array consisting of
-     *
-     * <pre>
-     * [ "PID", "TITLE" ]
-     * </pre>
-     *
-     * the search will retrieve all titles and pids matching that query::
-     * <pre>
-     * List< List< Pair< "PID", "demo:1" >,
-     *             Pair< "TITLE", "Also Sprach Zarathustra" > >,
-     *       List< Pair< "PID", "demo:2" >,
-     *             Pair< "TITLE", "Jenseits von Gut und Böse" > > >
-     * </pre><br/>
+     * the search will retrieve all pids matching that query
      *
      * @param fsq a FieldSearchQuery object containing the query
-     * @param resultFieldsList a List containing the ObjectFields that are to be returned as a resultFieldName of the search
-     * @return a List of Lists of Pairs containing the requested resultFieldName fields and their values grouped together
+     * @return all PIDs in result set as IPidList object
      */
-    List<List<Pair<FedoraFieldName, String>>> search( final FieldSearchQuery fsq, final String[] resultFieldsList ) throws IOException, ParseException
+    IPidList search( final FieldSearchQuery fsq ) throws IOException, ParseException
     {
         long time = System.currentTimeMillis();
 
-        log.trace( "Entering search with result fields: {}", Arrays.toString( resultFieldsList ) );
-
         Query luceneQuery = constructQuery( fsq );
 
-        List<List<Pair<FedoraFieldName, String>>> results = new LinkedList<List<Pair<FedoraFieldName, String>>>();
+        IPidList results = null;
 
         if( luceneQuery instanceof AllFieldsQuery )
         {
             log.info( "AllFieldsQuery detected, returning all documents from index" );
-            List<List<Pair<FedoraFieldName, String>>> allDocs = getAll( resultFieldsList );
-            results.addAll( allDocs );
+            results = getAll();
         }
         else
         {
@@ -661,7 +644,7 @@ public final class LuceneFieldIndex
                     if ( newReader != null )
                     {
                         log.debug( "Reader has changed. Creating new reader and searcher.");
-                        // Release reference to old reader. reader will automatically close when reference couunt reaches 0
+                        // Release reference to old reader. reader will automatically close when reference count reaches 0
                         reader.decRef();
                         reader = newReader;
                         searcher = new IndexSearcher( reader );
@@ -680,16 +663,16 @@ public final class LuceneFieldIndex
                 // DONE
                 log.trace( "number of deleted documents in reader: {}", localReader.numDeletedDocs() );
                 log.trace( "number of documents in reader: {}", localReader.numDocs() );
-                final FieldCollector fCollector = new FieldCollector( localSearcher, resultFieldsList );//, resultsList );
+                final PidCollector pidCollector = new PidCollector();
                 log.debug( "Query: {}", luceneQuery.toString() );
-                localSearcher.search( luceneQuery, fCollector );
-                results.addAll( fCollector.getResults() );
+                localSearcher.search( luceneQuery, pidCollector );
+                results = pidCollector.getResults();
             }
             finally
             {
                 if( null != localReader )
                 {
-                    // Release reference. reader will automatically close when noone holds a reference to them
+                    // Release reference. reader will automatically close when no-one holds a reference to them
                     localReader.decRef();
                 }
             }
@@ -700,20 +683,25 @@ public final class LuceneFieldIndex
         totalSearchTimeMS.addAndGet( time );
         searchesPerformed.incrementAndGet();
 
+        log.trace( "Size of result set: {}, time {} ms", results.size(), time );
+
+        /*
+        For this to be enabled, we need a method to (re)set cursor position on a
+        pid list!!!
 
         if( log.isTraceEnabled() )
         {
             log.trace( "Size of result set: {}, time {} ms", results.size(), time );
             int i = 1;
-            for( List<Pair<FedoraFieldName, String>> resultList : results )
+            String pid = results.getNextPid();
+            while( pid != null )
             {
-                log.trace( "result no i{}", i++ );
-                for( Pair<FedoraFieldName, String> resultPair : resultList )
-                {
-                    log.trace( "resultPair: <{}, {}>", resultPair.getFirst(), resultPair.getSecond() );
-                }
+                log.trace( "result no {} has PID {}", i++, pid );
+                pid = results.getNextPid();
             }
         }
+        */
+
         return results;
     }
 
@@ -721,13 +709,12 @@ public final class LuceneFieldIndex
      * For queries that are beforehand known to retrieve all (active) documents
      * from the index, this method can bypass the performance penalty of an
      * actual search, and simply return all documents from an IndexReader.
-     * @param resultFieldsList List of the fields that are wanted in the result
-     * @return The requested field value for all objects in the repository
+     * @return all PIDs in index as IPidList object
      * @throws IOException if IndexWriter or IndexReader throws an exception
      */
-    List<List<Pair<FedoraFieldName, String>>> getAll( final String[] resultFieldsList ) throws IOException
+    IPidList getAll() throws IOException
     {
-        List<List<Pair<FedoraFieldName, String>>> results = new LinkedList<List<Pair<FedoraFieldName, String>>>();
+        IPidList results = null;
 
         // KULMULE
         // OLD:
@@ -762,67 +749,27 @@ public final class LuceneFieldIndex
             localReader.incRef();
         }
 
-        Set<String> dubleteliminator = new HashSet<String>();
-
         try
         {
             int numDocs = localReader.numDocs();
             int numDelDocs = localReader.numDeletedDocs();
             log.debug( "getAll, reader has {} documents, {} deleted documents", numDocs, numDelDocs );
+            PidCollector pidCollector = new PidCollector();
+            pidCollector.setNextReader( localReader, 0 );
             for( int i = 0; i < numDocs+numDelDocs ; i++ )
             {
-                if (localReader.isDeleted( i))
+                if( localReader.isDeleted( i ) )
                 {
                     // Skip deleted documents
                     log.trace( "Skipping deleted document {}", i );
                     continue;
-                    /** todo: With this fix, dubleteliminator is probably not needed anymor. Dublettes may have been found
-                     * because both deleted and non-deleted documents were processed before */
                 }
-                Document doc = localReader.document( i );
+
                 log.trace( "Getting doc id {}", i );
-
-                List<Pair<FedoraFieldName, String>> resultPerPid = new LinkedList<Pair<FedoraFieldName, String>>();
-                String pidForResult = null;
-
-                for( String fieldName : resultFieldsList )
-                {
-                    // KULMULE
-                    // OLD:
-                    // Field resultField = doc.getField( fieldName.toLowerCase() );
-                    // NEW:
-                    // note: Is this used at all???
-                    Fieldable resultField = doc.getFieldable( fieldName.toLowerCase() );
-                    // DONE
-                    FedoraFieldName fedoraFieldName = FedoraFieldName.valueOf( fieldName.toUpperCase() );
-                    if( null == resultField )
-                    {
-                        // Ignore this. Many search results will not have all fields present. See also bug 12361
-                        //log.warn( "Field named '{}' could not be retrieved from the index Document", fieldName.toString() );
-                        continue;
-                    }
-
-                    String[] values = doc.getValues( fieldName.toString().toLowerCase() );
-
-                    if( fedoraFieldName == FedoraFieldName.PID && values.length > 0 )
-                    {
-                        pidForResult = values[0];
-                    }
-
-                    for ( String value : values )
-                    {
-                        resultPerPid.add( new Pair<FedoraFieldName, String>( fedoraFieldName, value ) );
-                    }
-                }
-
-                if( !dubleteliminator.contains( pidForResult ) )
-                {
-                    dubleteliminator.add( pidForResult );
-                    log.trace( "Putting results for pid {}: {}", pidForResult, resultPerPid );
-                    results.add( resultPerPid );
-                    pidForResult = null;
-                }
+                pidCollector.collect( i );
             }
+
+            results = pidCollector.getResults();
         }
         finally
         {
