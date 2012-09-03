@@ -69,4 +69,10 @@ public interface IPidList
      * @return size
      */
     int size();
+
+    /**
+     * Dispose of the search result, freeing any underlying resources
+     */
+    void dispose();
+
 }
