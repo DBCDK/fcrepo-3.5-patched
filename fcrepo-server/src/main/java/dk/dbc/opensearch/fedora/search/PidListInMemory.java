@@ -81,4 +81,11 @@ public class PidListInMemory implements IPidList
     {
         return pidList.size();
     }
+
+    @Override
+    public void dispose()
+    {
+        pidList.clear();
+        cursor = 0;
+    }
 }

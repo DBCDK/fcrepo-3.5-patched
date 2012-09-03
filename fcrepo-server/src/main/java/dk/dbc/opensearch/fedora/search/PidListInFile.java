@@ -240,12 +240,20 @@ public class PidListInFile implements IPidList
         return readOffset;
     }
 
-
     @Override
     public int size()
     {
         log.trace( "Getting size {}", size );
         return size;
+    }
+
+    @Override
+    public void dispose()
+    {
+        log.debug( "Disposing search result in file '{}'", pidFile );
+        pidFile.delete();
+        readOffset = 0;
+        size = 0;
     }
 
 }
