@@ -88,6 +88,12 @@ public class PidListInFileTest
         PidListInFile pidList = new PidListInFile( tempFile );
     }
 
+    @Test ( expected = NullPointerException.class )
+    public void testConstructorNullFile() throws Exception
+    {
+        PidListInFile pidList = new PidListInFile( null );
+    }
+
     @Test( expected = IOException.class )
     public void testConstructorExistingFile() throws IOException
     {

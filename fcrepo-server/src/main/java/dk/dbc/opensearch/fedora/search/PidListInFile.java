@@ -38,7 +38,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- *
+ * PID list backed by a file.
+ * File stores binary data with a one byte length field and then the PID encoded ad UTF-8
+ * Binary file is used for faster seek time, since the file is not kept open between PID
+ * retrievals
  */
 public class PidListInFile implements IPidList
 {
@@ -65,13 +68,26 @@ public class PidListInFile implements IPidList
         this.pidFile = pidFile;
     }
 
+    /**
+     * Copy constructor. Copy pids from an existing list
+     * @param pidFile The file to store the PIDs in.
+     * @param pids Source list to copy PIDs from
+     * @throws IOException
+     */
     public PidListInFile( File pidFile, IPidList pids ) throws IOException
     {
         this( pidFile );
         initializePidFile( pidFile, pids );
     }
 
-    final void initializePidFile( File pidFile, IPidList pids ) throws IOException
+
+    /**
+     * Copy PIDs from another PID list
+     * @param pidFile File to store PIDs in
+     * @param pids Source PID list
+     * @throws IOException
+     */
+    private void initializePidFile( File pidFile, IPidList pids ) throws IOException
     {
         log.debug( "Copying {} PIDs from source list", pids.size());
 
@@ -107,7 +123,12 @@ public class PidListInFile implements IPidList
         }
     }
 
-
+    /**
+     * Append a single PID to an already open stream
+     * @param stream Stream to append to
+     * @param pid PID to append
+     * @throws IOException
+     */
     private void appendPid( OutputStream stream, String pid ) throws IOException
     {
         log.trace( "Appending PID '{}'", pid );
@@ -121,11 +142,18 @@ public class PidListInFile implements IPidList
     }
 
 
+    /**
+     * Read a PID from an already open file
+     * @param file The file to read from
+     * @return The read PID, or null if the end of the file is reached
+     * @throws IOException
+     */
+
     private String readPid( RandomAccessFile file ) throws IOException
     {
         String pid = null;
 
-        // Read next length field
+        // Read byte with the next length field
         int length = file.read();
         readOffset++;
 
