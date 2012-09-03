@@ -21,8 +21,11 @@ package dk.dbc.opensearch.fedora.search;
 
 import org.junit.Test;
 
+import java.util.Collection;
+
 import static junit.framework.Assert.assertEquals;
 import static junit.framework.Assert.assertNull;
+import static junit.framework.Assert.assertTrue;
 
 
 /**
@@ -36,6 +39,7 @@ public class PidListInMemoryTest
 {
     private final static String PID_1 = "pid_1";
     private final static String PID_2 = "pid_2";
+    private final static String PID_3 = "pid_3";
 
     @Test
     public void constructor_whenCalled_returnsNewEmptyInstance()
@@ -81,4 +85,40 @@ public class PidListInMemoryTest
         assertEquals( PID_2, instance.getNextPid() );
         assertEquals( 2, instance.getCursor() );
     }
+
+    @Test
+    public void getNextPids_listIsEmpty_returnsEmptyList()
+    {
+        PidListInMemory instance = new PidListInMemory();
+        Collection<String> result = instance.getNextPids( 42 );
+        assertTrue( result.isEmpty() );
+    }
+
+    @Test
+    public void getNextPids_listIsNonEmptyButWantedExceedsSize_returnsNonEmptyListAndAdvancesCursor()
+    {
+        PidListInMemory instance = new PidListInMemory();
+        instance.addPid( PID_1 );
+        instance.addPid( PID_2 );
+        Collection<String> result = instance.getNextPids( 42 );
+        assertEquals( 2, result.size() );
+        assertEquals( 2, instance.getCursor() );
+        assertTrue( result.contains( PID_1 ) );
+        assertTrue( result.contains( PID_2 ) );
+    }
+
+    @Test
+    public void getNextPids_listIsNonEmptyAndWantedDoesNotExceedSize_returnsNonEmptyListAndAdvancesCursor()
+    {
+        PidListInMemory instance = new PidListInMemory();
+        instance.addPid( PID_1 );
+        instance.addPid( PID_2 );
+        instance.addPid( PID_3 );
+        Collection<String> result = instance.getNextPids( 2 );
+        assertEquals( 2, result.size() );
+        assertEquals( 2, instance.getCursor() );
+        assertTrue( result.contains( PID_1 ) );
+        assertTrue( result.contains( PID_2 ) );
+    }
+
 }

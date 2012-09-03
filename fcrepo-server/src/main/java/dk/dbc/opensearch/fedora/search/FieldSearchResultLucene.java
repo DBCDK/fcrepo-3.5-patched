@@ -35,6 +35,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
@@ -126,13 +127,10 @@ class FieldSearchResultLucene implements FieldSearchResult
         log.debug( "ResultSet has {} elements, retrieving elements {}-{}",
                 new Object[] { size, localResultCounter, localResultCounter + maxResults - 1 } );
 
-        for( int objectsFetched = 0; objectsFetched < maxResults; objectsFetched++, localResultCounter++ ) {
-            String pid = searchResultList.getNextPid();
-            if( pid == null )
-            {
-                break;
-            }
+        Collection< String > pids = searchResultList.getNextPids( maxResults );
 
+        for( String pid : pids )
+        {
             log.debug( "Retrieving element {}", localResultCounter );
 
             try
@@ -150,6 +148,8 @@ class FieldSearchResultLucene implements FieldSearchResult
                 String error = String.format( "Object identified by %s has a DC datastream, but it's not inline XML. No data can be retrieved from this DigitalObject", pid );
                 log.error( error, ex );
             }
+
+            localResultCounter++;
         }
 
         log.debug( "Result set counter points to element at pos {}", localResultCounter );
