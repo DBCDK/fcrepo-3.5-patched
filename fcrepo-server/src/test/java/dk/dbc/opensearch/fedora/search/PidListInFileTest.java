@@ -270,6 +270,51 @@ public class PidListInFileTest
         assertEquals( 0, pidList.size() );
     }
 
+
+    @Test
+    public void testDisposeEmptyList() throws IOException
+    {
+        // File must not exist at test start time
+        tempFile.delete();
+        PidListInFile pidList = new PidListInFile( tempFile );
+
+        pidList.dispose();
+        assertFalse( tempFile.exists() );
+    }
+
+
+    @Test
+    public void testDisposeNonEmptyList() throws IOException
+    {
+        // File must not exist at test start time
+        tempFile.delete();
+        PidListInFile pidList = new PidListInFile( tempFile );
+        pidList.addPid( "obj:1" );
+
+        pidList.dispose();
+        assertFalse( tempFile.exists() );
+        assertEquals( 0, pidList.size() );
+    }
+
+
+    @Test
+    public void testDisposeClosedList() throws IOException
+    {
+        // File must not exist at test start time
+        tempFile.delete();
+        PidListInFile pidList = new PidListInFile( tempFile );
+        pidList.addPid( "obj:1" );
+
+        assertEquals( "obj:1", pidList.getNextPid() );
+        assertNull( pidList.getNextPid() );
+        assertFalse( tempFile.exists() );
+
+        pidList.dispose();
+        assertFalse( tempFile.exists() );
+        assertEquals( 0, pidList.size() );
+    }
+
+
     // Small performance test. Should normally be disabled
     @Test
     @Ignore
