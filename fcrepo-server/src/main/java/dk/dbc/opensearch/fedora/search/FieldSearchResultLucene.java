@@ -114,7 +114,7 @@ class FieldSearchResultLucene implements FieldSearchResult
         return this.currentResultList;
     }
 
-    protected final FieldSearchResult stepAndCacheResult() throws IOException
+    protected final FieldSearchResultLucene stepAndCacheResult() throws IOException
     {
         log.trace( "Entering stepAndCacheResult" );
         cursor = nextCursor;

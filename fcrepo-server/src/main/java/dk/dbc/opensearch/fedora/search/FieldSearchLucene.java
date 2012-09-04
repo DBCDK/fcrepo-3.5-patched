@@ -50,10 +50,6 @@ import java.util.TimeZone;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -102,7 +98,10 @@ public final class FieldSearchLucene extends Module implements FieldSearch
     private DOManager doManager;
     private static final Logger log = LoggerFactory.getLogger( FieldSearchLucene.class );
 
+    public int resultLifeTimeInSeconds;
+    private LuceneFieldIndex luceneindexer;
     private FieldSearchLuceneImpl fsl;
+    private FieldSearchResultCache cache;
 
     /**
      * Constructor for initializing the FieldSearch module. The server will
@@ -151,7 +150,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
             log.error( error );
             throw new ModuleInitializationException( error, getRole() );
         }
-        int resultLifeTimeInSeconds = Integer.parseInt( resultLifetime );
+        this.resultLifeTimeInSeconds = Integer.parseInt( resultLifetime );
         log.debug( "resultLifeTimeInSeconds = {}", resultLifetime );
 
         // luceneWriteLockTimeout
@@ -190,15 +189,19 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         Analyzer analyzer = new WhitespaceAnalyzer( Version.LUCENE_35 );
         try
         {
-            fsl = new FieldSearchLuceneImpl( luceneWriteLockTimeout, analyzer, directory, resultLifeTimeInSeconds );
+            this.luceneindexer = new LuceneFieldIndex( luceneWriteLockTimeout, analyzer, directory );
+            log.trace( "Constructed LuceneIndex instance" );
         }
         catch( IOException ex )
         {
-            log.error( "FATAL:", ex );
-            throw new ModuleInitializationException( ex.getMessage(), this.role, ex );
+            String error = "FATAL: Could not initialize lucene indexer";
+            log.error( error );
+            throw new ModuleInitializationException( error, getRole(), ex );
         }
-        log.trace( "Constructed LuceneIndex instance" );
 
+        fsl = new FieldSearchLuceneImpl( luceneindexer );
+        cache = new FieldSearchResultCache( resultLifeTimeInSeconds );
+        cache.start();
     }
 
 
@@ -318,10 +321,10 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         }
 
         log.trace( "Retrieving search result" );
-        FieldSearchResult fsr;
+        FieldSearchResultLucene fsr;
         try
         {
-            fsr = new FieldSearchResultLucene( this.fsl.luceneindexer, this.doManager, validReturnFields, fsq, maxResults, this.fsl.resultLifeTimeInSeconds );
+            fsr = new FieldSearchResultLucene( this.luceneindexer, this.doManager, validReturnFields, fsq, maxResults, resultLifeTimeInSeconds );
         }
         catch( IOException e )
         {
@@ -333,15 +336,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         if( null != currentToken ) //no more search results
         {
             log.debug( "Caching result with token '{}'", currentToken );
-            FieldSearchResult previousValue = this.fsl.cachedResult.putIfAbsent( currentToken, fsr );
-            if( null != previousValue )
-            {
-                log.debug( "Replaced FieldSearchResult with token {} in cache with FieldSearchResult with token {}", previousValue.getToken(), currentToken );
-            }
-            else
-            {
-                log.debug( "No cached results for token {} found", currentToken );
-            }
+            cache.putCachedResult( currentToken, fsr );
         }
 
         log.trace( "Returning new search result from findObjects" );
@@ -354,23 +349,17 @@ public final class FieldSearchLucene extends Module implements FieldSearch
     @Override
     public FieldSearchResult resumeFindObjects( final String token ) throws ServerException
     {
-        log.trace( "Entering resumingFindObjects" );
-        if( !this.fsl.cachedResult.containsKey( token ) )
+        log.trace( "Entering resumingFindObjects with token {}", token );
+
+        FieldSearchResultLucene cachedFsr = cache.getCachedResult( token );
+        if( null == cachedFsr )
         {
-            String error = "Session is expired or never existed.";
+            String error = String.format( "Session is for token '%s' expired or never existed.", token );
             log.error( error );
             throw new UnknownSessionTokenException( error );
         }
 
-        FieldSearchResultLucene cachedFsr = ( (FieldSearchResultLucene) this.fsl.cachedResult.get( token ) );
-        if( null == cachedFsr )
-        {
-            String error = String.format( "The token %s should refer to a cached result, but none was available", token );
-            log.error( error );
-            throw new IllegalStateException( error );
-        }
-
-        FieldSearchResult fsr;
+        FieldSearchResultLucene fsr;
         try
         {
             fsr = cachedFsr.stepAndCacheResult();
@@ -380,22 +369,14 @@ public final class FieldSearchLucene extends Module implements FieldSearch
             throw new GeneralException( "Unable to create FieldSearchResult", e );
         }
 
-        this.fsl.cachedResult.remove( token );
+        cache.removeCachedResult( token );
 
         String currentToken = fsr.getToken();
 
         if( null != currentToken ) //no more search results
         {
             log.debug( "Caching result with token '{}'", currentToken );
-            FieldSearchResult previousValue = this.fsl.cachedResult.putIfAbsent( currentToken, fsr );
-            if( null != previousValue )
-            {
-                log.debug( "Replaced FieldSearchResult with token {} in cache with FieldSearchResult with token {}", previousValue.getToken(), currentToken );
-            }
-            else
-            {
-                log.debug( "No cached results for token {} found", currentToken );
-            }
+            cache.putCachedResult( currentToken, fsr );
         }
 
         log.debug( "Retrieved and returning cached result" );
@@ -413,11 +394,11 @@ public final class FieldSearchLucene extends Module implements FieldSearch
     {
         try
         {
-            this.fsl.shutdown();
+            this.cache.shutdown();
+            this.luceneindexer.closeIndex();
         }
         catch( IOException ex )
         {
-            // todo: This same string is in FieldSearchLuceneImpl.shutdown();
             String error = String.format( "Failed to shutdown the index properly. This means that the index could still be locked and/or in an unstable state. Please do a manual check." );
             log.error( error, ex );
             throw new ModuleShutdownException( error, role, ex );

@@ -29,7 +29,7 @@ public class FieldSearchResultCacheTest
 {
     private final static String token = "token";
 
-    
+
     @Test ( expected = IllegalArgumentException.class )
     public void testIllegalLifetime()
     {
@@ -52,7 +52,7 @@ public class FieldSearchResultCacheTest
     {
         FieldSearchResultCache instance = new FieldSearchResultCache( 1 );
 
-        // Result must not in cache before test
+        // Result must not be in cache before test
         assertNull( instance.getCachedResult( token ) );
 
         instance.putCachedResult( token, fslResult );
@@ -73,7 +73,7 @@ public class FieldSearchResultCacheTest
 
         FieldSearchResultCache instance = new FieldSearchResultCache( 1 );
 
-        // Result must not in cache before test
+        // Result must not be in cache before test
         assertNull( instance.getCachedResult( token ) );
 
         instance.putCachedResult( token, fslResult );
@@ -88,13 +88,14 @@ public class FieldSearchResultCacheTest
 
         instance.start();
 
-        // Wait long enough
-        Thread.sleep( 1000 );
+        // Wait long enough for initial invalidation to run
+        Thread.sleep( 500 );
 
         // Result must no longer be in cache
-        assertNull( instance.getCachedResult( token ) );
+        FieldSearchResultLucene cachedResult = instance.getCachedResult( token );
 
         instance.shutdown();
+        assertNull( cachedResult);
     }
 
 

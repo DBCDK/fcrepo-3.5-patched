@@ -24,7 +24,6 @@ along with opensearch.  If not, see <http://www.gnu.org/licenses/>.
 
 package dk.dbc.opensearch.fedora.search;
 
-import java.io.IOException;
 import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -65,9 +64,9 @@ class FieldSearchResultCache
      */
     void start()
     {
-        log.debug( "Starting cache invalidation thread" );
+        log.debug( "Starting cache invalidation thread with interval set to {} seconds", resultLifeTimeInSeconds );
         this.cacheSurveillance.scheduleAtFixedRate( new CacheInvalidationThread(), 0L,
-                                                    this.resultLifeTimeInSeconds, TimeUnit.SECONDS );
+                                                    resultLifeTimeInSeconds, TimeUnit.SECONDS );
     }
 
     /**
@@ -140,12 +139,12 @@ class FieldSearchResultCache
         @Override
         public void run()
         {
-            log.trace( "Running cleanup task" );
+            log.debug( "Running cleanup task. {} results in cache", cachedResult.size() );
             Date now = new Date();
             for ( Map.Entry<String, FieldSearchResultLucene> result : cachedResult.entrySet() )
             {
                 Date expirationDate = result.getValue().getExpirationDate();
-                log.debug( "Cached result. Token {}, Size {}, Timestamps: Now [{}], Expiration [{}]",
+                log.trace( "Checking cached result. Token {}, Size {}, Timestamps: Now [{}], Expiration [{}]",
                         new Object[] { result.getKey(), result.getValue().getCompleteListSize(), now, expirationDate } );
                 if ( now.after( expirationDate ) )
                 {
