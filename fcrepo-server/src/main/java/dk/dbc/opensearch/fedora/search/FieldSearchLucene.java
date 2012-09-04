@@ -104,6 +104,9 @@ public final class FieldSearchLucene extends Module implements FieldSearch
 
     private FieldSearchLuceneImpl fsl;
 
+    private int pidCollectorMaxInMemory;
+    private File pidCollectorTmpDir = null;
+
     /**
      * Constructor for initializing the FieldSearch module. The server will
      * initialize one instance of this class. Most of the server specific
@@ -186,11 +189,14 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         }
         log.debug( "LuceneDirectory: {}", sDirectory );
 
+        // PidCollector
+        initializePidCollectorSettings();
+
         // luceneindexer
         Analyzer analyzer = new WhitespaceAnalyzer( Version.LUCENE_35 );
         try
         {
-            fsl = new FieldSearchLuceneImpl( luceneWriteLockTimeout, analyzer, directory, resultLifeTimeInSeconds );
+            fsl = new FieldSearchLuceneImpl( luceneWriteLockTimeout, analyzer, directory, resultLifeTimeInSeconds, pidCollectorMaxInMemory, pidCollectorTmpDir );
         }
         catch( IOException ex )
         {
@@ -198,7 +204,6 @@ public final class FieldSearchLucene extends Module implements FieldSearch
             throw new ModuleInitializationException( ex.getMessage(), this.role, ex );
         }
         log.trace( "Constructed LuceneIndex instance" );
-
     }
 
 
@@ -484,4 +489,60 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         return directory;
     }
 
+    private void initializePidCollectorSettings() throws ModuleInitializationException
+    {
+        String pidCollectorMaxInMemoryParam = getParameter( "pidCollectorMaxInMemory" );
+        if( pidCollectorMaxInMemoryParam == null || pidCollectorMaxInMemoryParam.equals( "" ) )
+        {
+            log.info( "pidCollectorMaxInMemory parameter not set, assuming a value of {}", Integer.MAX_VALUE );
+            pidCollectorMaxInMemory = Integer.MAX_VALUE;
+        }
+        else
+        {
+            try
+            {
+                pidCollectorMaxInMemory = Integer.parseInt( pidCollectorMaxInMemoryParam );
+            }
+            catch( NumberFormatException e )
+            {
+                String errMsg = String.format( "FATAL: pidCollectorMaxInMemory parameter '%s' is not a valid integer",
+                        pidCollectorMaxInMemoryParam );
+                log.error( errMsg );
+                throw new ModuleInitializationException( errMsg, getRole(), e );
+            }
+        }
+
+        log.info( "Using pidCollectorMaxInMemory: {}", pidCollectorMaxInMemory );
+
+        if( pidCollectorMaxInMemory < Integer.MAX_VALUE )
+        {
+            String pidCollectorTmpDirParam = getParameter( "pidCollectorTmpDir" );
+            if( pidCollectorTmpDirParam == null || pidCollectorTmpDirParam.equals( "" ) )
+            {
+                String errMsg = "FATAL: pidCollectorTmpDir parameter must be set";
+                log.error( errMsg );
+                throw new ModuleInitializationException( errMsg, getRole() );
+            }
+
+            pidCollectorTmpDir = new File( pidCollectorTmpDirParam );
+
+            if( !pidCollectorTmpDir.isDirectory() )
+            {
+                if( !pidCollectorTmpDir.mkdirs() )
+                {
+                    String errMsg = String.format( "FATAL: unable to create PidCollector tmp dir '%s'",
+                            pidCollectorTmpDir.getAbsolutePath() );
+                    log.error( errMsg );
+                    throw new ModuleInitializationException( errMsg, getRole() );
+                }
+            }
+
+            if( pidCollectorTmpDir.list().length > 0 )
+            {
+                log.warn( "PidCollector tmp dir '{}' is non-empty", pidCollectorTmpDir.getAbsolutePath() );
+            }
+
+            log.info( "Using pidCollectorTmpDir: {}", pidCollectorTmpDir );
+        }
+    }
 }

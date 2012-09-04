@@ -27,6 +27,7 @@ import org.apache.lucene.search.Scorer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 
 /**
@@ -38,12 +39,17 @@ public class PidCollector extends Collector
 {
     private final static Logger log = LoggerFactory.getLogger( PidCollector.class );
 
+    private IPidList pidList;
+    private long pidsCollected = 0;
     private IndexReader currentReader = null;
     private final String pidFieldName = "pid";
-    private final IPidList pidList;
+    private final int maxInMemory;
+    private final File tmpDir;
 
-    public PidCollector()
+    public PidCollector( int maxInMemory, File tmpDir )
     {
+        this.maxInMemory = maxInMemory;
+        this.tmpDir = tmpDir;
         pidList = new PidListInMemory();
     }
 
@@ -81,8 +87,16 @@ public class PidCollector extends Collector
                 }
                 else
                 {
+                    if( pidsCollected == maxInMemory )
+                    {
+                        IPidList tmpPidList = new PidListInFile( File.createTempFile( "pids", ".bin", tmpDir ), pidList );
+                        pidList.dispose();
+                        pidList = tmpPidList;
+                    }
+
                     log.debug( "Adding PID '{}' to result set", pidFieldValue );
                     pidList.addPid( pidFieldValue );
+                    pidsCollected++;
                 }
             }
         }

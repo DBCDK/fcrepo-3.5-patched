@@ -30,6 +30,7 @@ import org.fcrepo.server.storage.RepositoryReader;
 import org.fcrepo.server.storage.types.DatastreamXMLMetadata;
 
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Date;
@@ -82,6 +83,9 @@ public class FieldSearchResultLuceneTest
     final static int maxResults = 10;
     final static int resultLifeTimeinSeconds = 10;
 
+    private final static int PID_COLLECTOR_MAX_IN_MEMORY = Integer.MAX_VALUE;
+    private final static File PID_COLLECTOR_TMP_DIR = null;
+
     @Before
     public void setUp() throws Exception
     {
@@ -89,7 +93,7 @@ public class FieldSearchResultLuceneTest
         // OLD:
         // indexer = new LuceneFieldIndex( 1000L, new SimpleAnalyzer(), new RAMDirectory() );
         // NEW:
-        indexer = new LuceneFieldIndex( 1000L, new SimpleAnalyzer( Version.LUCENE_35 ), new RAMDirectory() );
+        indexer = new LuceneFieldIndex( 1000L, new SimpleAnalyzer( Version.LUCENE_35 ), new RAMDirectory(), PID_COLLECTOR_MAX_IN_MEMORY, PID_COLLECTOR_TMP_DIR );
         // DONE
     }
 

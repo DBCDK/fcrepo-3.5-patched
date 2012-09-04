@@ -66,6 +66,9 @@ public class LuceneFieldIndexTest {
     private static final long now = System.currentTimeMillis();
     private static final DateFormat dateFormatter = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSS Z" );
 
+    private final static int PID_COLLECTOR_MAX_IN_MEMORY = Integer.MAX_VALUE;
+    private final static File PID_COLLECTOR_TMP_DIR = null;
+
     private final String dateNow;
     private final Pair<FedoraFieldName, String> date;
 
@@ -87,7 +90,7 @@ public class LuceneFieldIndexTest {
         // OLD:
         // instance = new LuceneFieldIndex( 1000L, new WhitespaceAnalyzer(), fsdir );
         // NEW:
-        instance = new LuceneFieldIndex( 1000L, new WhitespaceAnalyzer( Version.LUCENE_35 ), fsdir );
+        instance = new LuceneFieldIndex( 1000L, new WhitespaceAnalyzer( Version.LUCENE_35 ), fsdir, PID_COLLECTOR_MAX_IN_MEMORY, PID_COLLECTOR_TMP_DIR );
         // DONE
     }
 

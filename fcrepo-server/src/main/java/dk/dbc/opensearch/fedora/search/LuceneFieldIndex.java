@@ -96,6 +96,9 @@ public final class LuceneFieldIndex
     private IndexReader reader = null;
     private IndexSearcher searcher = null;
 
+    private final int pidCollectorMaxInMemory;
+    private final File pidCollectorTmpDir;
+
     private final long writeLockTimeout;
     private final Directory directory;
     /** Searches on dates cannot precede Sat Jan 01 2000 00:00:00 GMT+0100 (CET). */
@@ -395,10 +398,12 @@ public final class LuceneFieldIndex
     private final AtomicLong totalSearchTimeMS = new AtomicLong();
     private volatile long lastSearchTimeMS = 0;
 
-    LuceneFieldIndex( final long indexWriterLockTimeout, final Analyzer analyzer, final Directory luceneDirectory ) throws IOException
+    LuceneFieldIndex( final long indexWriterLockTimeout, final Analyzer analyzer, final Directory luceneDirectory, int pidCollectorMaxInMemory, File pidCollectorTmpDir ) throws IOException
     {
         this.writeLockTimeout = indexWriterLockTimeout;
         this.directory = luceneDirectory;
+        this.pidCollectorMaxInMemory = pidCollectorMaxInMemory;
+        this.pidCollectorTmpDir = pidCollectorTmpDir;
         TieredMergePolicy mergePolicy = new TieredMergePolicy();
 
         openWriter( analyzer, mergePolicy );
@@ -663,7 +668,7 @@ public final class LuceneFieldIndex
                 // DONE
                 log.trace( "number of deleted documents in reader: {}", localReader.numDeletedDocs() );
                 log.trace( "number of documents in reader: {}", localReader.numDocs() );
-                final PidCollector pidCollector = new PidCollector();
+                final PidCollector pidCollector = new PidCollector( pidCollectorMaxInMemory, pidCollectorTmpDir );
                 log.debug( "Query: {}", luceneQuery.toString() );
                 localSearcher.search( luceneQuery, pidCollector );
                 results = pidCollector.getResults();
@@ -754,7 +759,7 @@ public final class LuceneFieldIndex
             int numDocs = localReader.numDocs();
             int numDelDocs = localReader.numDeletedDocs();
             log.debug( "getAll, reader has {} documents, {} deleted documents", numDocs, numDelDocs );
-            PidCollector pidCollector = new PidCollector();
+            PidCollector pidCollector = new PidCollector( pidCollectorMaxInMemory, pidCollectorTmpDir );
             pidCollector.setNextReader( localReader, 0 );
             for( int i = 0; i < numDocs+numDelDocs ; i++ )
             {

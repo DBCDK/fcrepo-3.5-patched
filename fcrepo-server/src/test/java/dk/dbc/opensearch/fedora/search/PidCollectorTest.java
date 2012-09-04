@@ -29,9 +29,12 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.Version;
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.io.File;
 import java.io.IOException;
 
 import static org.junit.Assert.assertEquals;
@@ -48,7 +51,25 @@ public class PidCollectorTest
 {
     private final static String PID_FIELD_NAME = "pid";
     private final static String PID_FIELD_VALUE_1 = "pid_1";
+    private final static String PID_FIELD_VALUE_2 = "pid_2";
+    private final static String PID_FIELD_VALUE_3 = "pid_3";
+    private final static int MAX_IN_MEMORY = 2;
+    private static File tmpDir;
     private Directory index;
+
+
+    @BeforeClass
+    public static void setUpClass()
+    {
+        tmpDir = new File( "target/pidCollector_tmp" );
+        tmpDir.mkdirs();
+    }
+
+    @AfterClass
+    public static void tearDownClass()
+    {
+        tmpDir.delete();
+    }
 
     @Before
     public void setUp() throws IOException
@@ -60,21 +81,27 @@ public class PidCollectorTest
     public void tearDown() throws IOException
     {
         index.close();
+
+        for( File f : tmpDir.listFiles() )
+        {
+            f.delete();
+        }
     }
 
     @Test
     public void constructor_whenCalled_returnsNewInstanceWithEmptyPidList() throws IOException
     {
         IndexReader reader = populateIndexAndGetIndexReader();
-        PidCollector instance = new PidCollector();
+        PidCollector instance = new PidCollector( MAX_IN_MEMORY, tmpDir );
         instance.setNextReader( reader, 0 );
         assertEquals( 0, instance.getResults().size() );
+        assertEquals( 0, tmpDir.list().length );
     }
 
     @Test
     public void acceptsDocsOutOfOrder_whenCalled_returnsTrue() throws IOException
     {
-        PidCollector instance = new PidCollector();
+        PidCollector instance = new PidCollector( MAX_IN_MEMORY, tmpDir );
         assertTrue( instance.acceptsDocsOutOfOrder() );
     }
 
@@ -82,7 +109,7 @@ public class PidCollectorTest
     public void collect_docIdArgExceedsMaxDoc_throwsIllegalArgumentException() throws IOException
     {
         IndexReader reader = populateIndexAndGetIndexReader();
-        PidCollector instance = new PidCollector();
+        PidCollector instance = new PidCollector( MAX_IN_MEMORY, tmpDir );
         instance.setNextReader( reader, 0 );
         instance.collect( 42 );
     }
@@ -91,7 +118,7 @@ public class PidCollectorTest
     public void collect_docIdArgExistsInIndexWithPidField_pidIsAddedToPidList() throws IOException
     {
         IndexReader reader = populateIndexAndGetIndexReader( newIndexDocument( PID_FIELD_NAME, PID_FIELD_VALUE_1 ) );
-        PidCollector instance = new PidCollector();
+        PidCollector instance = new PidCollector( MAX_IN_MEMORY, tmpDir );
         instance.setNextReader( reader, 0 );
 
         int maxDoc = reader.maxDoc();
@@ -103,13 +130,14 @@ public class PidCollectorTest
         IPidList pidList = instance.getResults();
         assertEquals( 1, pidList.size() );
         assertEquals( PID_FIELD_VALUE_1, pidList.getNextPid() );
+        assertEquals( 0, tmpDir.list().length );
     }
 
     @Test
     public void collect_docIdArgExistsInIndexWithEmptyPidField_nothingIsAddedToPidList() throws IOException
     {
         IndexReader reader = populateIndexAndGetIndexReader( newIndexDocument( PID_FIELD_NAME, "" ) );
-        PidCollector instance = new PidCollector();
+        PidCollector instance = new PidCollector( MAX_IN_MEMORY, tmpDir );
         instance.setNextReader( reader, 0 );
 
         int maxDoc = reader.maxDoc();
@@ -126,7 +154,7 @@ public class PidCollectorTest
     public void collect_docIdArgExistsInIndexWithoutPidField_nothingIsAddedToPidList() throws IOException
     {
         IndexReader reader = populateIndexAndGetIndexReader( newIndexDocument( "not_pid", PID_FIELD_VALUE_1 ) );
-        PidCollector instance = new PidCollector();
+        PidCollector instance = new PidCollector( MAX_IN_MEMORY, tmpDir );
         instance.setNextReader( reader, 0 );
 
         int maxDoc = reader.maxDoc();
@@ -137,6 +165,30 @@ public class PidCollectorTest
 
         IPidList pidList = instance.getResults();
         assertEquals( 0, pidList.size() );
+    }
+
+    @Test
+    public void collect_numberOfPidsCollectedExceedsMaxInMemory_switchesPidListFromInMemoryImplToInFileImpl() throws IOException
+    {
+        IndexReader reader = populateIndexAndGetIndexReader( newIndexDocument( PID_FIELD_NAME, PID_FIELD_VALUE_1 ),
+                                                             newIndexDocument( PID_FIELD_NAME, PID_FIELD_VALUE_2 ),
+                                                             newIndexDocument( PID_FIELD_NAME, PID_FIELD_VALUE_3 ) );
+
+        PidCollector instance = new PidCollector( MAX_IN_MEMORY, tmpDir );
+        instance.setNextReader( reader, 0 );
+
+        int maxDoc = reader.maxDoc();
+        for( int i = 0; i < maxDoc; i++ )
+        {
+            instance.collect( i );
+        }
+
+        IPidList pidList = instance.getResults();
+        assertEquals( 3, pidList.size() );
+        assertEquals( 1, tmpDir.list().length );
+        assertEquals( PID_FIELD_VALUE_1, pidList.getNextPid() );
+        assertEquals( PID_FIELD_VALUE_2, pidList.getNextPid() );
+        assertEquals( PID_FIELD_VALUE_3, pidList.getNextPid() );
     }
 
     private IndexReader populateIndexAndGetIndexReader( Document... docs ) throws IOException

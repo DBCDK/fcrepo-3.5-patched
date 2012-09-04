@@ -20,6 +20,7 @@
 
 package dk.dbc.opensearch.fedora.search;
 
+import java.io.File;
 import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -84,12 +85,16 @@ public final class FieldSearchLuceneImpl
     public final ConcurrentHashMap<String, FieldSearchResult> cachedResult;
     public final ScheduledExecutorService cacheSurveillance;
 
+    private final int pidCollectorMaxInMemory;
+    private final File pidCollectorTmpDir;
+
 
     public FieldSearchLuceneImpl( long luceneWriteLockTimeout, Analyzer analyzer,
-                                  Directory directory, int resultLifeTimeInSeconds )
+                                  Directory directory, int resultLifeTimeInSeconds,
+                                  int pidCollectorMaxInMemory, File pidCollectorTmpDir )
         throws IOException {
 
-        this.luceneindexer = new LuceneFieldIndex( luceneWriteLockTimeout, analyzer, directory );
+        this.luceneindexer = new LuceneFieldIndex( luceneWriteLockTimeout, analyzer, directory, pidCollectorMaxInMemory, pidCollectorTmpDir );
 
         this.resultLifeTimeInSeconds = resultLifeTimeInSeconds;
         this.cachedResult = new ConcurrentHashMap<String, FieldSearchResult>();
@@ -98,6 +103,9 @@ public final class FieldSearchLuceneImpl
         log.debug( "Starting cache invalidation thread" );
         this.cacheSurveillance.scheduleAtFixedRate( new CacheInvalidationThread(), 0L, 
                                                     (long)this.resultLifeTimeInSeconds, TimeUnit.SECONDS );
+
+        this.pidCollectorMaxInMemory = pidCollectorMaxInMemory;
+        this.pidCollectorTmpDir = pidCollectorTmpDir;
     }
 
 

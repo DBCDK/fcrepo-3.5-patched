@@ -377,6 +377,15 @@
             <comment>Maximum results that should be returned from a search 
             at a time</comment>
         </param>
+        <param name="pidCollectorMaxInMemory" value="10000">
+            <comment>Maximum number of pids collected and kept in memory
+              for a single result set by the PidCollector before the result set
+              is forced to external file storage (see #pidCollectorTmpDir)</comment>
+        </param>
+        <param name="pidCollectorTmpDir" value="data/pidCollector_tmp">
+            <comment>Directory where the PidCollector stores temporary
+            result sets that are too large to keep in memory</comment>
+        </param>
     </module>
 	<module role="org.fcrepo.server.resourceIndex.ResourceIndex" class="org.fcrepo.server.resourceIndex.ResourceIndexModule">
 		<comment>Supports the ResourceIndex.</comment>

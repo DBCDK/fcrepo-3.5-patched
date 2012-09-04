@@ -138,6 +138,10 @@ public class ModuleTest
                 returns( params.get( "luceneDirectory" ) );
                 parm.getParameter( "indexLocation" );
                 returns( params.get( "indexLocation" ) );
+                parm.getParameter( "pidCollectorMaxInMemory" );
+                returns( params.get( "pidCollectorMaxInMemory" ) );
+                parm.getParameter( "pidCollectorTmpDir" );
+                returns( params.get( "pidCollectorTmpDir" ) );
                 mod.getServer(); returns( server );
                 server.getModule( "org.fcrepo.server.storage.DOManager" );
                 returns( domareal );
@@ -149,8 +153,6 @@ public class ModuleTest
 
         fieldsearch = new FieldSearchLucene( params, server, "org.fcrepo.server.search.FieldSearch" );
         fieldsearch.postInitModule();
-
-
     }
 
     /**
@@ -1419,6 +1421,8 @@ public class ModuleTest
         params.put( "indexLocation", indexLocation );
 
 //        params.put( "luceneDirectory", "RAMDirectory" );
+        params.put( "pidCollectorMaxInMemory", "1000000" );
+        params.put( "pidCollectorTmpDir", "/tmp" );
         return params;
     }
 
