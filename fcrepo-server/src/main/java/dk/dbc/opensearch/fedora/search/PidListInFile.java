@@ -55,14 +55,12 @@ public class PidListInFile implements IPidList
 
     private final static Charset ENCODING = Charset.forName( "UTF-8" );
 
-    public PidListInFile( File pidFile ) throws IOException
+    public PidListInFile( File pidFile )
     {
         log.debug( "Creating PID list with storage in file '{}'", pidFile);
-        if ( pidFile.exists() )
+        if ( pidFile == null )
         {
-            String error = String.format( "File '%s' already exists. Will not be overwritten", pidFile );
-            log.error( error );
-            throw new IOException( error );
+            throw new NullPointerException( "pidFile parameter must not be null" );
         }
 
         this.pidFile = pidFile;

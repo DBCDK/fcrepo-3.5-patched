@@ -82,9 +82,6 @@ public class PidListInFileTest
     @Test
     public void testConstructor() throws Exception
     {
-        // File must not exist at test start time
-        tempFile.delete();
-
         PidListInFile pidList = new PidListInFile( tempFile );
     }
 
@@ -92,13 +89,6 @@ public class PidListInFileTest
     public void testConstructorNullFile() throws Exception
     {
         PidListInFile pidList = new PidListInFile( null );
-    }
-
-    @Test( expected = IOException.class )
-    public void testConstructorExistingFile() throws IOException
-    {
-        // tempFile has not been deleted. Existing file will cause an exception
-        PidListInFile pidList = new PidListInFile( tempFile );
     }
 
     @Test
@@ -111,9 +101,6 @@ public class PidListInFileTest
             memPidList.addPid( pid );
         }
 
-        // File must not exist at test start time
-        tempFile.delete();
-
         PidListInFile pidList = new PidListInFile( tempFile, memPidList );
 
         assertEquals( 5, pidList.size() );
@@ -122,8 +109,6 @@ public class PidListInFileTest
     @Test
     public void testAddPid() throws IOException
     {
-        // File must not exist at test start time
-        tempFile.delete();
         PidListInFile pidList = new PidListInFile( tempFile );
         for( String pid : pidsArray )
         {
@@ -137,8 +122,6 @@ public class PidListInFileTest
     @Test
     public void testGetNextPid() throws IOException
     {
-        // File must not exist at test start time
-        tempFile.delete();
         PidListInFile pidList = new PidListInFile( tempFile );
         for( String pid : pidsArray )
         {
@@ -160,8 +143,6 @@ public class PidListInFileTest
     @Test
     public void testGetNextPids() throws IOException
     {
-        // File must not exist at test start time
-        tempFile.delete();
         PidListInFile pidList = new PidListInFile( tempFile );
         for( String pid : pidsArray )
         {
@@ -188,8 +169,6 @@ public class PidListInFileTest
     @Test
     public void testGetNextPidsMultipleCallsExactSize() throws IOException
     {
-        // File must not exist at test start time
-        tempFile.delete();
         PidListInFile pidList = new PidListInFile( tempFile );
         for( String pid : pidsArray )
         {
@@ -216,8 +195,6 @@ public class PidListInFileTest
     @Test
     public void testGetNextPidsMultipleCallsOddSize() throws IOException
     {
-        // File must not exist at test start time
-        tempFile.delete();
         PidListInFile pidList = new PidListInFile( tempFile );
         for( String pid : pidsArray )
         {
@@ -244,8 +221,6 @@ public class PidListInFileTest
     @Test
     public void testGetCursor() throws IOException
     {
-        // File must not exist at test start time
-        tempFile.delete();
         PidListInFile pidList = new PidListInFile( tempFile );
         for( String pid : pidsArray )
         {
@@ -269,8 +244,6 @@ public class PidListInFileTest
     @Test
     public void testSize() throws IOException
     {
-        // File must not exist at test start time
-        tempFile.delete();
         PidListInFile pidList = new PidListInFile( tempFile );
 
         assertEquals( 0, pidList.size() );
@@ -280,8 +253,6 @@ public class PidListInFileTest
     @Test
     public void testDisposeEmptyList() throws IOException
     {
-        // File must not exist at test start time
-        tempFile.delete();
         PidListInFile pidList = new PidListInFile( tempFile );
 
         pidList.dispose();
@@ -292,8 +263,6 @@ public class PidListInFileTest
     @Test
     public void testDisposeNonEmptyList() throws IOException
     {
-        // File must not exist at test start time
-        tempFile.delete();
         PidListInFile pidList = new PidListInFile( tempFile );
         pidList.addPid( "obj:1" );
 
@@ -306,8 +275,6 @@ public class PidListInFileTest
     @Test
     public void testDisposeClosedList() throws IOException
     {
-        // File must not exist at test start time
-        tempFile.delete();
         PidListInFile pidList = new PidListInFile( tempFile );
         pidList.addPid( "obj:1" );
 
@@ -326,9 +293,6 @@ public class PidListInFileTest
     @Ignore
     public void testCopyLargeList() throws IOException
     {
-        // File must not exist at test start time
-        tempFile.delete();
-
         PidListInMemory memPidList = new PidListInMemory();
         int size = 1000000;
 
@@ -367,9 +331,6 @@ public class PidListInFileTest
     @Ignore
     public void testCreateLargeListIterateSingleStep() throws IOException
     {
-        // File must not exist at test start time
-        tempFile.delete();
-
         PidListInFile pidList = new PidListInFile( tempFile );
         int size = 10000000;
 
@@ -410,9 +371,6 @@ public class PidListInFileTest
     @Ignore
     public void testCreateLargeListIterateBatch() throws IOException
     {
-        // File must not exist at test start time
-        tempFile.delete();
-
         PidListInFile pidList = new PidListInFile( tempFile );
         int size = 1000000;
 
