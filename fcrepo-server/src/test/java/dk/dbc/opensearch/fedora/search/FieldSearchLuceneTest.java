@@ -27,6 +27,7 @@ import org.fcrepo.server.Parameterized;
 import org.fcrepo.server.Server;
 import org.fcrepo.server.errors.InvalidStateException;
 import org.fcrepo.server.errors.ModuleInitializationException;
+import org.fcrepo.server.errors.ModuleShutdownException;
 import org.fcrepo.server.errors.QueryParseException;
 import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.search.Condition;
@@ -117,8 +118,9 @@ public class FieldSearchLuceneTest {
     }
 
     @After
-    public void tearDown()
+    public void tearDown() throws ModuleShutdownException
     {
+       fieldsearch.shutdownModule();
        fieldsearch = null;
     }
 
@@ -211,6 +213,11 @@ public class FieldSearchLuceneTest {
         public String getToken()
         {
             return "token";
+        }
+
+        @Mock
+        void dispose()
+        {
         }
     }
 }

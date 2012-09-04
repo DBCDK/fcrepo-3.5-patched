@@ -114,7 +114,7 @@ class FieldSearchResultLucene implements FieldSearchResult
         return this.currentResultList;
     }
 
-    protected final FieldSearchResult stepAndCacheResult() throws IOException
+    protected final FieldSearchResultLucene stepAndCacheResult() throws IOException
     {
         log.trace( "Entering stepAndCacheResult" );
         cursor = nextCursor;
@@ -242,6 +242,14 @@ class FieldSearchResultLucene implements FieldSearchResult
             return new Date();
         }
         return this.expirationDate;
+    }
+
+    /**
+     * Close underlying pid list resources. E.g. when search set expires
+     */
+    void dispose()
+    {
+        searchResultList.dispose();
     }
 
 
