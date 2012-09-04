@@ -51,9 +51,13 @@ public class PidListInFile implements IPidList
 
     private int size = 0;
 
+    private int cursor = 0;
+
     private File pidFile;
 
     private final static Charset ENCODING = Charset.forName( "UTF-8" );
+
+    private OutputStream outputStream = null;
 
     public PidListInFile( File pidFile )
     {
@@ -89,19 +93,12 @@ public class PidListInFile implements IPidList
     {
         log.debug( "Copying {} PIDs from source list", pids.size());
 
-        OutputStream stream = new BufferedOutputStream ( new FileOutputStream ( pidFile ) );
+        outputStream = new BufferedOutputStream ( new FileOutputStream ( pidFile ) );
 
-        try
+        String pid;
+        while ( ( pid = pids.getNextPid()) != null )
         {
-            String pid;
-            while ( ( pid = pids.getNextPid()) != null )
-            {
-                appendPid( stream, pid );
-            }
-        }
-        finally
-        {
-            stream.close();
+            appendPid( outputStream, pid );
         }
     }
 
@@ -109,16 +106,12 @@ public class PidListInFile implements IPidList
     @Override
     public void addPid( String pid ) throws IOException
     {
-        OutputStream stream = new BufferedOutputStream ( new FileOutputStream ( pidFile, true) );
+        if ( outputStream == null )
+        {
+            outputStream = new BufferedOutputStream ( new FileOutputStream ( pidFile, true) );
+        }
 
-        try
-        {
-            appendPid( stream, pid );
-        }
-        finally
-        {
-            stream.close();
-        }
+        appendPid( outputStream, pid );
     }
 
     /**
@@ -143,13 +136,16 @@ public class PidListInFile implements IPidList
     /**
      * Read a PID from an already open file
      * @param file The file to read from
-     * @return The read PID, or null if the end of the file is reached
-     * @throws IOException
+     * @return The read PID
+     * @throws IOException if reading the next PID fails
      */
 
     private String readPid( RandomAccessFile file ) throws IOException
     {
-        String pid = null;
+        if ( outputStream != null )
+        {
+            throw new IOException( "Reading from uncommitted PidList is not allowed");
+        }
 
         // Read byte with the next length field
         int length = file.read();
@@ -157,20 +153,25 @@ public class PidListInFile implements IPidList
 
         log.debug( "Length field: {} read from '{}'", length, pidFile );
 
-        if ( length != -1 )
+        if ( length == -1 )
         {
-            log.trace( "Reading {} bytes from '{}'", length, pidFile);
-            byte[] pidData = new byte[length];
-            int read = file.read( pidData );
-            readOffset+= read;
-            if ( read != length )
-            {
-                String error = String.format( "Requested %d bytes, got %d, from file '%s'", length, read, pidFile );
-                log.error( error );
-                throw new IOException( error );
-            }
-            pid = new String( pidData, ENCODING );
+            String error = String.format( "EOF reading next pid from '%s'. Size: %d, cursor %d, Read offset %d",
+                    pidFile, size, cursor, readOffset );
+            log.error( error );
+            throw new IOException( error );
         }
+
+        log.trace( "Reading {} bytes from '{}'", length, pidFile);
+        byte[] pidData = new byte[length];
+        int read = file.read( pidData );
+        readOffset+= read;
+        if ( read != length )
+        {
+            String error = String.format( "Requested %d bytes, got %d, from file '%s'", length, read, pidFile );
+            log.error( error );
+            throw new IOException( error );
+        }
+        String pid = new String( pidData, ENCODING );
         log.debug( "Next PID is '{}'. Offset is now", pid, readOffset );
         return pid;
     }
@@ -194,7 +195,7 @@ public class PidListInFile implements IPidList
             file.seek( readOffset );
 
             pid = readPid( file );
-            if ( pid == null )
+            if ( ++cursor == size )
             {
                 // End of file
                 log.debug( "Exhausted pid list in file '{}'", pidFile);
@@ -231,22 +232,21 @@ public class PidListInFile implements IPidList
             log.trace( "Skipping {} bytes", readOffset);
             file.seek( readOffset );
 
-            String pid;
             do
             {
-                pid = readPid( file );
+                String pid = readPid( file );
                 if ( pid != null )
                 {
                     pids.add( pid ) ;
                 }
             }
-            while ( pid != null && pids.size() < wanted );
+            while ( ++cursor < size && pids.size() < wanted );
         }
         finally
         {
             file.close();
         }
-        if ( pids.size() < wanted )
+        if ( cursor >= size )
         {
             // End of file
             log.debug( "Exhausted pid list in file '{}'", pidFile);
@@ -262,8 +262,8 @@ public class PidListInFile implements IPidList
     @Override
     public long getCursor()
     {
-        log.trace( "Getting cursor {}", readOffset );
-        return readOffset;
+        log.trace( "Getting cursor {}", cursor );
+        return cursor;
     }
 
     @Override
@@ -274,9 +274,34 @@ public class PidListInFile implements IPidList
     }
 
     @Override
+    public void commit() throws IOException
+    {
+        log.debug( "Committing search result in file '{}'", pidFile );
+        if ( outputStream != null )
+        {
+            outputStream.close();
+            outputStream = null;
+        }
+        readOffset = 0;
+    }
+
+    @Override
     public void dispose()
     {
         log.debug( "Disposing search result in file '{}'", pidFile );
+        if ( outputStream != null )
+        {
+            try
+            {
+                outputStream.close();
+            }
+            catch( IOException ex )
+            {
+                // We don't want the exception to propagate upwards, so just log it.
+                log.warn( "Closing stream for file '{}' failed", pidFile, ex );
+            }
+            outputStream = null;
+        }
         pidFile.delete();
         readOffset = 0;
         size = 0;

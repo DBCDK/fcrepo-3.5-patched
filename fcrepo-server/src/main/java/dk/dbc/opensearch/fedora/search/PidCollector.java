@@ -107,8 +107,9 @@ public class PidCollector extends Collector
      *
      * @return result set PID list
      */
-    public IPidList getResults()
+    public IPidList getResults() throws IOException
     {
+        pidList.commit();
         return pidList;
     }
 

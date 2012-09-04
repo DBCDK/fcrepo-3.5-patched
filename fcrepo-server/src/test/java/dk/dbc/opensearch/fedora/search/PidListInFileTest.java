@@ -85,8 +85,11 @@ public class PidListInFileTest
         PidListInFile pidList = new PidListInFile( tempFile );
     }
 
+    /**
+     * Null as file is not allowed. Must cause an exception
+     */
     @Test ( expected = NullPointerException.class )
-    public void testConstructorNullFile() throws Exception
+    public void testConstructorThrowsOnNullFile() throws Exception
     {
         PidListInFile pidList = new PidListInFile( null );
     }
@@ -102,8 +105,18 @@ public class PidListInFileTest
         }
 
         PidListInFile pidList = new PidListInFile( tempFile, memPidList );
+        pidList.commit();
 
         assertEquals( 5, pidList.size() );
+    }
+
+    /**
+     * Null as source is not allowed. Must cause an exception
+     */
+    @Test ( expected = NullPointerException.class )
+    public void testCopyConstructorThrowsonNullSource() throws IOException
+    {
+        PidListInFile pidList = new PidListInFile( tempFile, null );
     }
 
     @Test
@@ -114,6 +127,7 @@ public class PidListInFileTest
         {
             pidList.addPid( pid );
         }
+        pidList.commit();
 
         assertEquals( 5, pidList.size() );
     }
@@ -127,6 +141,7 @@ public class PidListInFileTest
         {
             pidList.addPid( pid );
         }
+        pidList.commit();
 
         assertEquals( 5, pidList.size() );
 
@@ -148,6 +163,7 @@ public class PidListInFileTest
         {
             pidList.addPid( pid );
         }
+        pidList.commit();
 
         assertEquals( 5, pidList.size() );
 
@@ -174,6 +190,7 @@ public class PidListInFileTest
         {
             pidList.addPid( pid );
         }
+        pidList.commit();
 
         assertEquals( 5, pidList.size() );
 
@@ -181,14 +198,15 @@ public class PidListInFileTest
         // First time there must be 5 in returned list
         assertEquals( 5, nextPids.size() );
 
+        // File must be deleted when pid list is exhausted
+        assertFalse( tempFile.exists() );
+
         nextPids = pidList.getNextPids( 5 );
         // Second time there must be 0 in returned list
         assertEquals( 0, nextPids.size() );
 
         // There must be no more pids in list
         assertNull( pidList.getNextPid() );
-        // File must be deleted when pid list is exhausted
-        assertFalse( tempFile.exists() );
     }
 
 
@@ -200,6 +218,7 @@ public class PidListInFileTest
         {
             pidList.addPid( pid );
         }
+        pidList.commit();
 
         assertEquals( 5, pidList.size() );
 
@@ -211,8 +230,6 @@ public class PidListInFileTest
         // Second time there must be 2 in returned list
         assertEquals( 2, nextPids.size() );
 
-        // There must be no more pids in list
-        assertNull( pidList.getNextPid() );
         // File must be deleted when pid list is exhausted
         assertFalse( tempFile.exists() );
     }
@@ -226,17 +243,18 @@ public class PidListInFileTest
         {
             pidList.addPid( pid );
         }
+        pidList.commit();
 
         assertEquals( 5, pidList.size() );
 
         for( int i = 0; i < pidsArray.length; i++ )
         {
             // Verify position in file
-            assertEquals( i*6, pidList.getCursor() );
+            assertEquals( i, pidList.getCursor() );
 
             pidList.getNextPid();
 
-            assertEquals( (i+1)*6, pidList.getCursor() );
+            assertEquals( i+1, pidList.getCursor() );
         }
     }
 
@@ -261,10 +279,28 @@ public class PidListInFileTest
 
 
     @Test
+    public void testCommitEmptyList() throws IOException
+    {
+        PidListInFile pidList = new PidListInFile( tempFile );
+
+        pidList.commit();
+    }
+
+
+    @Test ( expected = IOException.class )
+    public void testReadFromUncommitedListThrows() throws IOException
+    {
+        PidListInFile pidList = new PidListInFile( tempFile );
+        pidList.addPid( "obj:1" );
+        pidList.getNextPid();
+    }
+
+    @Test
     public void testDisposeNonEmptyList() throws IOException
     {
         PidListInFile pidList = new PidListInFile( tempFile );
         pidList.addPid( "obj:1" );
+        pidList.commit();
 
         pidList.dispose();
         assertFalse( tempFile.exists() );
@@ -277,6 +313,7 @@ public class PidListInFileTest
     {
         PidListInFile pidList = new PidListInFile( tempFile );
         pidList.addPid( "obj:1" );
+        pidList.commit();
 
         assertEquals( "obj:1", pidList.getNextPid() );
         assertNull( pidList.getNextPid() );
@@ -315,6 +352,7 @@ public class PidListInFileTest
         start = System.currentTimeMillis();
 
         PidListInFile pidList = new PidListInFile( tempFile, memPidList );
+        pidList.commit();
 
         end = System.currentTimeMillis();
 
@@ -343,6 +381,8 @@ public class PidListInFileTest
             String pid = String.format( "obj:%08d", i );
             pidList.addPid( pid );
         }
+        pidList.commit();
+
         System.out.println( "File size is:" + tempFile.length() );
 
         long end = System.currentTimeMillis();
@@ -383,6 +423,7 @@ public class PidListInFileTest
             String pid = String.format( "obj:%08d", i );
             pidList.addPid( pid );
         }
+        pidList.commit();
 
         long end = System.currentTimeMillis();
         System.out.println( "File size is:" + tempFile.length() );

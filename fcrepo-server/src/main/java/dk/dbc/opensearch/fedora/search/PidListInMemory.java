@@ -19,6 +19,7 @@
 
 package dk.dbc.opensearch.fedora.search;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -91,6 +92,12 @@ public class PidListInMemory implements IPidList
         return pidList.size();
     }
 
+    @Override
+    public void commit() throws IOException
+    {
+        cursor = 0;
+    }
+    
     @Override
     public void dispose()
     {

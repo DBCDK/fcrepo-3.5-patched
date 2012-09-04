@@ -71,6 +71,11 @@ public interface IPidList
     int size();
 
     /**
+     * Commit the search result to the file, flushing any open resources
+     */
+    void commit() throws IOException;
+
+    /**
      * Dispose of the search result, freeing any underlying resources
      */
     void dispose();
