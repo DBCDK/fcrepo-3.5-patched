@@ -20,7 +20,6 @@ package dk.dbc.opensearch.fedora.search;
 
 import java.util.LinkedHashSet;
 
-import org.fcrepo.server.Context;
 import org.fcrepo.server.storage.types.RelationshipTuple;
 import java.text.SimpleDateFormat;
 import java.io.File;
@@ -47,7 +46,6 @@ import org.fcrepo.server.storage.types.DatastreamXMLMetadata;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -62,11 +60,9 @@ import mockit.Mocked;
 import mockit.Mockit;
 import mockit.NonStrictExpectations;
 import org.fcrepo.server.ReadOnlyContext;
-import org.fcrepo.server.utilities.DCField;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -107,7 +103,6 @@ public class ModuleTest
     @Mocked Server server;
     @Mocked Parameterized parm;
     @Mocked Module mod;
-    @Mocked DOManager doma;
     @Mocked ILowlevelStorage storage;
     @Mocked DOTranslator translator;
     DOManager domareal;
@@ -1199,11 +1194,10 @@ public class ModuleTest
         FieldSearchQuery fsq = getFieldSearchQuery( query );
         new Expectations( domareal )
         {
-            @Mocked DOReader mockReader;
             {
-                domareal.getReader( Server.USE_DEFINITIVE_STORE, ReadOnlyContext.EMPTY, "demo:1" ); result = mockReader;
-                mockReader.GetDatastream( "DC", null ); result = null;
-                mockReader.getRelationships(); result = relationships;
+                domareal.getReader( Server.USE_DEFINITIVE_STORE, ReadOnlyContext.EMPTY, "demo:1" ); result = reader;
+                reader.GetDatastream( "DC", null ); result = null;
+                reader.getRelationships(); result = relationships;
             }
         };
 
@@ -1261,11 +1255,10 @@ public class ModuleTest
 
         new Expectations( domareal )
         {
-            @Mocked DOReader mockReader;
             {
-                domareal.getReader( Server.USE_DEFINITIVE_STORE, ReadOnlyContext.EMPTY, "demo:1" ); result = mockReader;
-                mockReader.GetDatastream( "DC", null ); result = null;
-                mockReader.getRelationships(); result = relationships;
+                domareal.getReader( Server.USE_DEFINITIVE_STORE, ReadOnlyContext.EMPTY, "demo:1" ); result = reader;
+                reader.GetDatastream( "DC", null ); result = null;
+                reader.getRelationships(); result = relationships;
             }
         };
 
