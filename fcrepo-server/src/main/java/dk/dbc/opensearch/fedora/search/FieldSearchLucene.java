@@ -21,7 +21,14 @@
 package dk.dbc.opensearch.fedora.search;
 
 
-import org.fcrepo.common.rdf.RDFName;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.WhitespaceAnalyzer;
+import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.NIOFSDirectory;
+import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.store.SimpleFSDirectory;
+import org.apache.lucene.util.Version;
 import org.fcrepo.server.Module;
 import org.fcrepo.server.Server;
 import org.fcrepo.server.errors.GeneralException;
@@ -37,30 +44,15 @@ import org.fcrepo.server.storage.DOManager;
 import org.fcrepo.server.storage.DOReader;
 import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.RelationshipTuple;
-import org.fcrepo.server.utilities.DCField;
 import org.fcrepo.server.utilities.DCFields;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.TimeZone;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.WhitespaceAnalyzer;
-import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.NIOFSDirectory;
-import org.apache.lucene.store.RAMDirectory;
-import org.apache.lucene.store.SimpleFSDirectory;
-import org.apache.lucene.util.Version;
 
 
 /**

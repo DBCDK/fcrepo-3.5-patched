@@ -20,7 +20,14 @@
 
 package dk.dbc.opensearch.fedora.search;
 
-import java.io.File;
+import org.apache.lucene.index.CorruptIndexException;
+import org.fcrepo.common.rdf.RDFName;
+import org.fcrepo.server.storage.types.RelationshipTuple;
+import org.fcrepo.server.utilities.DCField;
+import org.fcrepo.server.utilities.DCFields;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -29,16 +36,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.TimeZone;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.apache.lucene.index.CorruptIndexException;
-
-import org.fcrepo.common.rdf.RDFName;
-import org.fcrepo.server.storage.types.RelationshipTuple;
-import org.fcrepo.server.utilities.DCField;
-import org.fcrepo.server.utilities.DCFields;
 
 //
 // README
@@ -219,12 +216,6 @@ public final class FieldSearchLuceneImpl
                 // Add string identifying relationship object to relObj
                 // field.
                 addPairToIndexFieldList( constructIndexableFieldPair( "relobj", object ), indexFieldsList );
-                // When purging a relationship we need to know both
-                // subject, predicate and object, we therefore add the
-                // predicate and object strings joined by a pipe (|)
-                // character to the relPredObj field.
-                String predObjMap = String.format("%s|%s", predicate, object);
-                addPairToIndexFieldList( constructIndexableFieldPair( "relpredobj", predObjMap ), indexFieldsList );
             }
         }
 

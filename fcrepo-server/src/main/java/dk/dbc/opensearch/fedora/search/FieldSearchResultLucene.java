@@ -31,6 +31,8 @@ import org.fcrepo.server.search.ObjectFields;
 import org.fcrepo.server.storage.DOReader;
 import org.fcrepo.server.storage.RepositoryReader;
 import org.fcrepo.server.storage.types.Datastream;
+import org.fcrepo.server.storage.types.RelationshipTuple;
+import org.fcrepo.server.utilities.DCField;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -305,7 +307,10 @@ class FieldSearchResultLucene implements FieldSearchResult
         }
 
         log.debug( "Storing object properties from object {}", pid );
+
         // add non-dc values from doReader for the others in m_resultFields[]
+        boolean addRelObjToResult = false;
+        boolean addRelPredObjToResult = false;
         for( String resultFieldName : this.resultFields )
         {
             if( resultFieldName.equals( "pid" ) )
@@ -332,8 +337,47 @@ class FieldSearchResultLucene implements FieldSearchResult
             {
                 fields.setMDate( objectReader.getLastModDate() );
             }
-
+            if( resultFieldName.equals( "relobj" ) )
+            {
+                addRelObjToResult = true;
+            }
+            if( resultFieldName.equals( "relpredobj" ) )
+            {
+                addRelPredObjToResult = true;
+            }
         }
+
+        if( addRelObjToResult || addRelPredObjToResult ) {
+            log.trace( "Retrieving relationships for ObjectFields" );
+
+            for( RelationshipTuple relation : objectReader.getRelationships() ) {
+                String object = relation.object;
+                String predicate = relation.predicate;
+
+                if(    "info:fedora/fedora-system:def/model#hasModel".equals( predicate )
+                    && "info:fedora/fedora-system:FedoraObject-3.0".equals( object ) ) {
+
+                    // Since all digital objects in the current fedora
+                    // repository have a hasModel relationship to the default
+                    // content model we skip this to avoid unnecessary clutter
+                    // in the lucene index.
+                    continue;
+                }
+
+                if( addRelObjToResult ) {
+                    fields.relObjs().add( new DCField( object ) );
+                }
+
+                if( addRelPredObjToResult ) {
+                    // When purging a relationship we need to know both
+                    // subject, predicate and object, we therefore add the
+                    // predicate and object strings joined by a pipe (|)
+                    // character to the relPredObj field.
+                    fields.relPredObjs().add( new DCField( String.format( "%s|%s", predicate, object ) ) );
+                }
+            }
+        }
+
         log.trace( "Returning ObjectFields from getObjectFields" );
         return fields;
     }

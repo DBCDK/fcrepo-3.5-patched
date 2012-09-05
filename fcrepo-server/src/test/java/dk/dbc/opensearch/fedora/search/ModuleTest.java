@@ -19,6 +19,8 @@ along with opensearch.  If not, see <http://www.gnu.org/licenses/>.
 package dk.dbc.opensearch.fedora.search;
 
 import java.util.LinkedHashSet;
+
+import org.fcrepo.server.Context;
 import org.fcrepo.server.storage.types.RelationshipTuple;
 import java.text.SimpleDateFormat;
 import java.io.File;
@@ -1168,6 +1170,7 @@ public class ModuleTest
      * single object relationship ingested and retrieved via a search on the
      * relationship object identifier through a FieldSearchResultLucene instance
      */
+    // ToDo: This test must be made to work
     @Ignore
     @Test
     public void testRetrievalOfObjectWithsingleRelationship() throws Exception
@@ -1176,7 +1179,7 @@ public class ModuleTest
         final String object = "work:1";
         final String predicate = "http://oss.dbc.dk/rdf/dkbib#isMemberOfWork";
 
-        Set relationships = new LinkedHashSet< RelationshipTuple >();
+        final Set relationships = new LinkedHashSet< RelationshipTuple >();
         relationships.add( new RelationshipTuple( subject, predicate, object,
             true, "") );
 
@@ -1194,6 +1197,13 @@ public class ModuleTest
             new Pair<Operator, String>( Operator.EQUALS, object ) );
 
         FieldSearchQuery fsq = getFieldSearchQuery( query );
+
+        new NonStrictExpectations()
+        {
+            {
+                reader.getRelationships(); result = relationships;
+            }
+        };
 
         FieldSearchResult fsr =
             fieldsearch.findObjects( fields, maxResults, fsq );
@@ -1214,6 +1224,7 @@ public class ModuleTest
      * of the relationship object identifiers through a FieldSearchResultLucene
      * instance
      */
+    // ToDo: This test must be made to work
     @Ignore
     @Test
     public void testRetrievalOfObjectWithMultipleRelationships()
