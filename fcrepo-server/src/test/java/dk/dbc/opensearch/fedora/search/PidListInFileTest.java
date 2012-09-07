@@ -45,7 +45,6 @@ public class PidListInFileTest
     File tempFile;
 
     String[] pidsArray = { "obj:1","obj:2","obj:3","obj:4","obj:5"};
-    private final String pidsStr = "obj:1,obj:2,obj:3,obj:4,obj:5";
 
     public PidListInFileTest()
     {
@@ -370,7 +369,7 @@ public class PidListInFileTest
     public void testCreateLargeListIterateSingleStep() throws IOException
     {
         PidListInFile pidList = new PidListInFile( tempFile );
-        int size = 10000000;
+        int size = 1000000;
 
         System.out.println( "Create file list with size: " + size );
 
