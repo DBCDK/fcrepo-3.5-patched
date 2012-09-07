@@ -62,6 +62,7 @@ import mockit.NonStrictExpectations;
 import org.fcrepo.server.ReadOnlyContext;
 
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -110,12 +111,10 @@ public class ModuleTest
     /**
      * Before each test is run, the servers initialization phase of the
      * FieldSearch module is mocked through Mockit.Expectations
-     *
      */
     @Before
     public void setUp() throws ModuleInitializationException, ServerException
     {
-        Mockit.setUpMocks();
         zTimeFormatter = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" );
         utcFormatter = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" );
         utcFormatter.setTimeZone( TimeZone.getTimeZone( "UTC" ) );
@@ -170,9 +169,14 @@ public class ModuleTest
             f.delete();
         }
         server.shutdown( null );
-        Mockit.tearDownMocks();
         System.gc();
     }
+
+    @AfterClass
+    public static void tearDownClass() {
+	Mockit.tearDownMocks();
+    }
+
 
     /**
      * Tests the happy path of the FieldSearchLucene plugin. One object ingested,

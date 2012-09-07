@@ -165,7 +165,8 @@
             <exclude>${integrationTests}</exclude>
             <exclude>${nestedClassTests}</exclude>
           </excludes>
-          <argLine>-javaagent:"${settings.localRepository}"/mockit/jmockit/0.999.4/jmockit-0.999.4.jar</argLine>
+          <argLine>-javaagent:"${settings.localRepository}"/com/googlecode/jmockit/jmockit/0.999.16/jmockit-0.999.16.jar</argLine>
+          <!--argLine>-javaagent:"${settings.localRepository}"/mockit/jmockit/0.999.4/jmockit-0.999.4.jar</argLine-->
         </configuration>
         <executions>
           <execution>
@@ -792,5 +793,13 @@
       <artifactId>owlapi</artifactId>
       <version>3.0.0-patched</version>
     </dependency>
+
+    <dependency>
+      <groupId>org.apache.lucene</groupId>
+      <artifactId>lucene-core</artifactId>
+      <version>3.5.0</version>
+    </dependency>
+
+
   </dependencies>
 </project>
