@@ -778,16 +778,9 @@
     <dependency>
       <groupId>com.googlecode.jmockit</groupId>
       <artifactId>jmockit</artifactId>
-      <version>0.999.8</version>
+      <version>0.999.16</version>
       <scope>test</scope>
     </dependency>
-    <!--dependency>
-      <groupId>mockit</groupId>
-      <artifactId>jmockit</artifactId>
-      <version>0.999.4</version>
-      <scope>test</scope>
-    </dependency-->
-
 
     <dependency>
       <groupId>junit</groupId>
