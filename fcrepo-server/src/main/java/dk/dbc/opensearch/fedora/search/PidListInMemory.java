@@ -81,12 +81,6 @@ public class PidListInMemory implements IPidList
     }
 
     @Override
-    public long getCursor()
-    {
-        return cursor;
-    }
-
-    @Override
     public int size()
     {
         return pidList.size();

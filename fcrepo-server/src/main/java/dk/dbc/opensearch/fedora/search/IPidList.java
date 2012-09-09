@@ -57,13 +57,6 @@ public interface IPidList
     Collection< String > getNextPids( int wanted ) throws IOException;
 
     /**
-     * Gets the current cursor position in the list
-     *
-     * @return cursor position
-     */
-    long getCursor();
-
-    /**
      * Gets the size of the list
      *
      * @return size

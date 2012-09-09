@@ -46,7 +46,6 @@ public class PidListInMemoryTest
     {
         PidListInMemory instance = new PidListInMemory();
         assertEquals( 0, instance.size() );
-        assertEquals( 0, instance.getCursor() );
     }
 
     @Test
@@ -81,9 +80,7 @@ public class PidListInMemoryTest
         instance.addPid( PID_1 );
         instance.addPid( PID_2 );
         assertEquals( PID_1, instance.getNextPid() );
-        assertEquals( 1, instance.getCursor() );
         assertEquals( PID_2, instance.getNextPid() );
-        assertEquals( 2, instance.getCursor() );
     }
 
     @Test
@@ -102,7 +99,6 @@ public class PidListInMemoryTest
         instance.addPid( PID_2 );
         Collection<String> result = instance.getNextPids( 42 );
         assertEquals( 2, result.size() );
-        assertEquals( 2, instance.getCursor() );
         assertTrue( result.contains( PID_1 ) );
         assertTrue( result.contains( PID_2 ) );
     }
@@ -116,7 +112,6 @@ public class PidListInMemoryTest
         instance.addPid( PID_3 );
         Collection<String> result = instance.getNextPids( 2 );
         assertEquals( 2, result.size() );
-        assertEquals( 2, instance.getCursor() );
         assertTrue( result.contains( PID_1 ) );
         assertTrue( result.contains( PID_2 ) );
     }

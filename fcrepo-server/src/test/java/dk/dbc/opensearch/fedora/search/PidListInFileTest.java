@@ -236,30 +236,6 @@ public class PidListInFileTest
 
 
     @Test
-    public void testGetCursor() throws IOException
-    {
-        PidListInFile pidList = new PidListInFile( tempFile );
-        for( String pid : pidsArray )
-        {
-            pidList.addPid( pid );
-        }
-        pidList.commit();
-
-        assertEquals( 5, pidList.size() );
-
-        for( int i = 0; i < pidsArray.length; i++ )
-        {
-            // Verify position in file
-            assertEquals( i, pidList.getCursor() );
-
-            pidList.getNextPid();
-
-            assertEquals( i+1, pidList.getCursor() );
-        }
-    }
-
-
-    @Test
     public void testSize() throws IOException
     {
         PidListInFile pidList = new PidListInFile( tempFile );

@@ -260,13 +260,6 @@ public class PidListInFile implements IPidList
     }
 
     @Override
-    public long getCursor()
-    {
-        log.trace( "Getting cursor {}", cursor );
-        return cursor;
-    }
-
-    @Override
     public int size()
     {
         log.trace( "Getting size {}", size );
