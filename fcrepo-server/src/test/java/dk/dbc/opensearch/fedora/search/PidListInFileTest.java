@@ -134,28 +134,6 @@ public class PidListInFileTest
 
 
     @Test
-    public void testGetNextPid() throws IOException
-    {
-        PidListInFile pidList = new PidListInFile( tempFile );
-        for( String pid : pidsArray )
-        {
-            pidList.addPid( pid );
-        }
-        pidList.commit();
-
-        assertEquals( 5, pidList.size() );
-
-        for( int i = 0; i < pidsArray.length; i++ )
-        {
-            assertEquals( pidsArray[i], pidList.getNextPid() );
-        }
-        // There must be no more pids in list
-        assertNull( pidList.getNextPid() );
-        // File must be deleted when pid list is exhausted
-        assertFalse( tempFile.exists() );
-    }
-
-    @Test
     public void testGetNextPids() throws IOException
     {
         PidListInFile pidList = new PidListInFile( tempFile );
@@ -176,7 +154,7 @@ public class PidListInFileTest
             assertEquals( pidsArray[i], iterator.next() );
         }
         // There must be no more pids in list
-        assertNull( pidList.getNextPid() );
+        assertTrue( pidList.getNextPids(1).isEmpty() );
         // File must be deleted when pid list is exhausted
         assertFalse( tempFile.exists() );
     }
@@ -206,7 +184,7 @@ public class PidListInFileTest
         assertEquals( 0, nextPids.size() );
 
         // There must be no more pids in list
-        assertNull( pidList.getNextPid() );
+        assertTrue( pidList.getNextPids(1).isEmpty() );
     }
 
 
@@ -268,7 +246,7 @@ public class PidListInFileTest
     {
         PidListInFile pidList = new PidListInFile( tempFile );
         pidList.addPid( "obj:1" );
-        pidList.getNextPid();
+        pidList.getNextPids(1);
     }
 
     @Test
@@ -291,8 +269,11 @@ public class PidListInFileTest
         pidList.addPid( "obj:1" );
         pidList.commit();
 
-        assertEquals( "obj:1", pidList.getNextPid() );
-        assertNull( pidList.getNextPid() );
+        String[] nextPidArray = pidList.getNextPids(1).toArray(new String[0]);
+        assertEquals(1, nextPidArray.length);
+        
+        assertEquals( "obj:1", nextPidArray[0] );
+        assertTrue( pidList.getNextPids(1).isEmpty() );
         assertFalse( tempFile.exists() );
 
         pidList.dispose();
@@ -339,48 +320,6 @@ public class PidListInFileTest
         assertEquals( size, pidList.size() );
     }
 
-
-    // Small performance test. Should normally be disabled
-    @Test
-    @Ignore
-    public void testCreateLargeListIterateSingleStep() throws IOException
-    {
-        PidListInFile pidList = new PidListInFile( tempFile );
-        int size = 10000000;
-
-        System.out.println( "Create file list with size: " + size );
-
-        long start = System.currentTimeMillis();
-
-        for( int i = 1; i <= size; i++ )
-        {
-            String pid = String.format( "obj:%08d", i );
-            pidList.addPid( pid );
-        }
-        pidList.commit();
-
-        System.out.println( "File size is:" + tempFile.length() );
-
-        long end = System.currentTimeMillis();
-
-        System.out.println( "Time: " + ( end - start ) );
-
-        assertEquals( size, pidList.size() );
-
-        System.out.println( "Iterate file list with size " + size + ", single step");
-        start = System.currentTimeMillis();
-
-        int total = 0;
-
-        while ( pidList.getNextPid() != null )
-        {
-            total ++;
-        }
-        end = System.currentTimeMillis();
-
-        System.out.println( "Time: " + ( end - start ) );
-        assertEquals( size, total );
-    }
 
     // Small performance test. Should normally be disabled
     @Test

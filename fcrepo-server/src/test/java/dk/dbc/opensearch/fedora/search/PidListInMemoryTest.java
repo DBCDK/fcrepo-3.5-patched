@@ -67,23 +67,6 @@ public class PidListInMemoryTest
     }
 
     @Test
-    public void getNextPid_listIsEmpty_returnsNull()
-    {
-        PidListInMemory instance = new PidListInMemory();
-        assertNull( instance.getNextPid() );
-    }
-
-    @Test
-    public void getNextPid_listIsNonEmpty_returnsPidAndAdvancesCursor()
-    {
-        PidListInMemory instance = new PidListInMemory();
-        instance.addPid( PID_1 );
-        instance.addPid( PID_2 );
-        assertEquals( PID_1, instance.getNextPid() );
-        assertEquals( PID_2, instance.getNextPid() );
-    }
-
-    @Test
     public void getNextPids_listIsEmpty_returnsEmptyList()
     {
         PidListInMemory instance = new PidListInMemory();

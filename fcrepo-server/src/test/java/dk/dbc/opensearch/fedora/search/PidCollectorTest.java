@@ -129,7 +129,8 @@ public class PidCollectorTest
 
         IPidList pidList = instance.getResults();
         assertEquals( 1, pidList.size() );
-        assertEquals( PID_FIELD_VALUE_1, pidList.getNextPid() );
+        String[] nextPidArray = pidList.getNextPids(1).toArray(new String[0]);
+        assertEquals( PID_FIELD_VALUE_1, nextPidArray[0] );
         assertEquals( 0, tmpDir.list().length );
     }
 
@@ -186,9 +187,10 @@ public class PidCollectorTest
         IPidList pidList = instance.getResults();
         assertEquals( 3, pidList.size() );
         assertEquals( 1, tmpDir.list().length );
-        assertEquals( PID_FIELD_VALUE_1, pidList.getNextPid() );
-        assertEquals( PID_FIELD_VALUE_2, pidList.getNextPid() );
-        assertEquals( PID_FIELD_VALUE_3, pidList.getNextPid() );
+        String[] nextPidArray = pidList.getNextPids(3).toArray(new String[0]);
+        assertEquals( PID_FIELD_VALUE_1, nextPidArray[0] );
+        assertEquals( PID_FIELD_VALUE_2, nextPidArray[1] );
+        assertEquals( PID_FIELD_VALUE_3, nextPidArray[2] );
     }
 
     private IndexReader populateIndexAndGetIndexReader( Document... docs ) throws IOException

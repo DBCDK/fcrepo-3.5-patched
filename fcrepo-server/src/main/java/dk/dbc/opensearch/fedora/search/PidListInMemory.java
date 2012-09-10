@@ -56,16 +56,6 @@ public class PidListInMemory implements IPidList
     }
 
     @Override
-    public String getNextPid()
-    {
-        if( cursor < pidList.size() )
-        {
-            return pidList.get( cursor++ );
-        }
-        return null;
-    }
-
-    @Override
     public Collection< String > getNextPids( int wanted )
     {
         int toIndex = cursor + wanted;

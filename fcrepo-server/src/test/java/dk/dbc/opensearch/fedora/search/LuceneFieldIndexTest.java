@@ -126,7 +126,8 @@ public class LuceneFieldIndexTest {
 
         assertFalse( "Search result must not be empty", searchResult.size() == 0 );
         assertEquals( "Search result must contain exactly 1 hits", 1, searchResult.size() );
-        assertEquals( pid.getSecond(), searchResult.getNextPid() );
+        String[] nextPidArray = searchResult.getNextPids(1).toArray(new String[0]);
+        assertEquals( pid.getSecond(), nextPidArray[0] );
     }
 
 
@@ -189,7 +190,8 @@ public class LuceneFieldIndexTest {
 
         IPidList searchResult = instance.search( fsq );
 
-        assertEquals( "demo:1", searchResult.getNextPid() );
+        String[] nextPidArray = searchResult.getNextPids(1).toArray(new String[0]);
+        assertEquals( "demo:1", nextPidArray[0] );
     }
 
     @Test
@@ -285,7 +287,8 @@ public class LuceneFieldIndexTest {
         IPidList searchResult = instance.search( fsq );
 
         assertEquals( 1, searchResult.size() );
-        String pidFromResult = searchResult.getNextPid();
+        String[] nextPidArray = searchResult.getNextPids(1).toArray(new String[0]);
+        String pidFromResult = nextPidArray[0];
         assertFalse( pidFromResult.contains( pid.getSecond() ) );
         assertTrue( pidFromResult.contains( pid2.getSecond() ) );
     }
@@ -304,7 +307,8 @@ public class LuceneFieldIndexTest {
         IPidList searchResult = instance.search( fsq );
 
         assertEquals( 1, searchResult.size() );
-        String pidFromResult = searchResult.getNextPid();
+        String[] nextPidArray = searchResult.getNextPids(1).toArray(new String[0]);
+        String pidFromResult = nextPidArray[0];
         assertFalse( pidFromResult.contains( pid.getSecond() ) );
         assertTrue( pidFromResult.contains( pid2.getSecond() ) );
     }

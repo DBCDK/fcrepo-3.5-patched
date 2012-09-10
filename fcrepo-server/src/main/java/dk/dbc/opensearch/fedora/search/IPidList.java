@@ -37,15 +37,6 @@ public interface IPidList
     void addPid( String pid ) throws IOException;
 
     /**
-     * Returns the next PID element in the list and advances
-     * cursor position to the following element
-     *
-     * @return PID element or null if list is exhausted
-     * @throws IOException If unable to read PID from the list
-     */
-    String getNextPid() throws IOException;
-
-    /**
      * Get multiple next PID elements in the list and advances
      * cursor position to the following element.
      * If less than the requested number of PID remain, fewer

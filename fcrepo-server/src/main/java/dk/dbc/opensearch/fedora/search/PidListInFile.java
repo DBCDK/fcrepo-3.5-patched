@@ -95,8 +95,8 @@ public class PidListInFile implements IPidList
 
         outputStream = new BufferedOutputStream ( new FileOutputStream ( pidFile ) );
 
-        String pid;
-        while ( ( pid = pids.getNextPid()) != null )
+        Collection<String> pidCollection = pids.getNextPids(pids.size());
+        for( String pid : pidCollection )
         {
             appendPid( outputStream, pid );
         }
@@ -173,43 +173,6 @@ public class PidListInFile implements IPidList
         }
         String pid = new String( pidData, ENCODING );
         log.debug( "Next PID is '{}'. Offset is now", pid, readOffset );
-        return pid;
-    }
-
-    @Override
-    public String getNextPid() throws IOException
-    {
-        if ( !pidFile.exists() )
-        {
-            log.debug( "PID list has been exhausted");
-            return null;
-        }
-
-        log.trace( "Getting next PID from offset {}", readOffset);
-
-        RandomAccessFile file = new RandomAccessFile( pidFile, "r" );
-        String pid;
-        try
-        {
-            log.trace( "Skipping {} bytes", readOffset);
-            file.seek( readOffset );
-
-            pid = readPid( file );
-            if ( ++cursor == size )
-            {
-                // End of file
-                log.debug( "Exhausted pid list in file '{}'", pidFile);
-                file.close();
-                if ( !pidFile.delete() )
-                {
-                    log.warn( "File '{}' could not be deleted", pidFile );
-                }
-            }
-        }
-        finally
-        {
-            file.close();
-        }
         return pid;
     }
 
