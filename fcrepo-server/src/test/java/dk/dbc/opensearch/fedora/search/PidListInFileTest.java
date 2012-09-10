@@ -45,7 +45,6 @@ public class PidListInFileTest
     File tempFile;
 
     String[] pidsArray = { "obj:1","obj:2","obj:3","obj:4","obj:5"};
-    private final String pidsStr = "obj:1,obj:2,obj:3,obj:4,obj:5";
 
     public PidListInFileTest()
     {
@@ -319,7 +318,6 @@ public class PidListInFileTest
 
         assertEquals( size, pidList.size() );
     }
-
 
     // Small performance test. Should normally be disabled
     @Test
