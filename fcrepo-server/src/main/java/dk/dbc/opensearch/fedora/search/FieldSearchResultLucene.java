@@ -337,11 +337,11 @@ class FieldSearchResultLucene implements FieldSearchResult
             {
                 fields.setMDate( objectReader.getLastModDate() );
             }
-            if( resultFieldName.equals( "relobj" ) )
+            if( resultFieldName.equals( "relObj" ) )
             {
                 addRelObjToResult = true;
             }
-            if( resultFieldName.equals( "relpredobj" ) )
+            if( resultFieldName.equals( "relPredObj" ) )
             {
                 addRelPredObjToResult = true;
             }

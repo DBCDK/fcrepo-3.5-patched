@@ -1188,7 +1188,7 @@ public class ModuleTest
         //Emulate the call from the Server instance --> update()
         fieldsearch.update( reader );
         //Emulate search from Server instance --> FSR
-        String[] fields = new String[]{ "pid", "relpredobj" };
+        String[] fields = new String[]{ "pid", "relPredObj" };
         Map<String, Pair<Operator, String>> query =
             new HashMap<String, Pair<Operator, String>>();
 
@@ -1248,7 +1248,7 @@ public class ModuleTest
         //Emulate the call from the Server instance --> update()
         fieldsearch.update( reader );
         //Emulate search from Server instance --> FSR
-        String[] fields = new String[]{ "pid", "relpredobj" };
+        String[] fields = new String[]{ "pid", "relPredObj" };
         Map<String, Pair<Operator, String>> query =
             new HashMap<String, Pair<Operator, String>>();
 
