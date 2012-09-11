@@ -20,34 +20,30 @@ along with opensearch.  If not, see <http://www.gnu.org/licenses/>.
 package dk.dbc.opensearch.fedora.search;
 
 
-import org.fcrepo.server.errors.InvalidOperatorException;
-import org.fcrepo.server.errors.QueryParseException;
-import org.fcrepo.server.search.FieldSearchQuery;
-import org.fcrepo.server.search.Condition;
-import java.util.Date;
-import java.text.DateFormat;
-import java.text.ParseException;
-import org.junit.AfterClass;
-import java.io.File;
-import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
 import org.apache.lucene.analysis.WhitespaceAnalyzer;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.util.Version;
+import org.fcrepo.server.errors.InvalidOperatorException;
+import org.fcrepo.server.errors.QueryParseException;
+import org.fcrepo.server.search.Condition;
+import org.fcrepo.server.search.FieldSearchQuery;
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
+import java.io.File;
+import java.io.IOException;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 
-// KULMULE
-// NEW:
-// Note: this should be moved into the other imports above
-import org.apache.lucene.util.Version;;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 /**
  *
@@ -70,6 +66,9 @@ public class LuceneFieldIndexTest {
     private static final long now = System.currentTimeMillis();
     private static final DateFormat dateFormatter = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSS Z" );
 
+    private final static int PID_COLLECTOR_MAX_IN_MEMORY = Integer.MAX_VALUE;
+    private final static File PID_COLLECTOR_TMP_DIR = null;
+
     private final String dateNow;
     private final Pair<FedoraFieldName, String> date;
 
@@ -91,7 +90,7 @@ public class LuceneFieldIndexTest {
         // OLD:
         // instance = new LuceneFieldIndex( 1000L, new WhitespaceAnalyzer(), fsdir );
         // NEW:
-        instance = new LuceneFieldIndex( 1000L, new WhitespaceAnalyzer( Version.LUCENE_35 ), fsdir );
+        instance = new LuceneFieldIndex( 1000L, new WhitespaceAnalyzer( Version.LUCENE_35 ), fsdir, PID_COLLECTOR_MAX_IN_MEMORY, PID_COLLECTOR_TMP_DIR );
         // DONE
     }
 
@@ -123,47 +122,12 @@ public class LuceneFieldIndexTest {
         //verify that the index contains the correct values
         FieldSearchQuery fsq = getFieldSearchQuery( "PID", "eq", pid.getSecond() );
 
+        IPidList searchResult = instance.search( fsq );
 
-        String[] resultFields = new String[]{
-            pid.getFirst().toString().toLowerCase(),
-            state.getFirst().toString().toLowerCase(),
-            title.getFirst().toString().toLowerCase(),
-            type.getFirst().toString().toLowerCase(),
-            label.getFirst().toString().toLowerCase(),
-            relObj.getFirst().toString().toLowerCase(),
-            relPredObj.getFirst().toString().toLowerCase(),
-            date.getFirst().toString().toLowerCase()
-        };
-
-        List<List<Pair<FedoraFieldName, String>>> searchResult = instance.search( fsq, resultFields );
-
-        assertFalse( "Search result must not be empty", searchResult.isEmpty() );
+        assertFalse( "Search result must not be empty", searchResult.size() == 0 );
         assertEquals( "Search result must contain exactly 1 hits", 1, searchResult.size() );
-
-        Set<String> expectedResult = new  HashSet<String>();
-        expectedResult.add( pid.getSecond() );
-        expectedResult.add( state.getSecond() );
-        expectedResult.add( title.getSecond() );
-        expectedResult.add( type.getSecond() );
-        expectedResult.add( label.getSecond() );
-        expectedResult.add( dateFormatter.format( new Date( now ) ) );
-        expectedResult.add( relObj.getSecond() );
-        expectedResult.add( relPredObj.getSecond() );
-
-        for( List<Pair<FedoraFieldName, String>> resultBundles : searchResult )
-        {
-            for( Pair<FedoraFieldName, String> result : resultBundles )
-            {
-                if( result.getFirst().equals( FedoraFieldName.DATE ) )
-                {
-                    assertTrue( String.format( "Search result must contain %s", result.getSecond() ), expectedResult.contains( dateFormatter.format( new Date( Long.parseLong( result.getSecond() ) ) ) ) );
-                }
-                else
-                {
-                    assertTrue( String.format( "Search result must contain %s", result.getSecond() ), expectedResult.contains( result.getSecond() ) );
-                }
-            }
-        }
+        String[] nextPidArray = searchResult.getNextPids(1).toArray(new String[0]);
+        assertEquals( pid.getSecond(), nextPidArray[0] );
     }
 
 
@@ -183,15 +147,9 @@ public class LuceneFieldIndexTest {
 
         FieldSearchQuery fsq = getFieldSearchQuery( "PID", "eq", pid.getSecond() );
 
-        String[] resultFields = new String[]{
-            pid.getFirst().toString().toLowerCase(),
-            title.getFirst().toString().toLowerCase(),
-            date.getFirst().toString().toLowerCase()
-        };
+        IPidList searchResult = instance.search( fsq );
 
-        List<List<Pair<FedoraFieldName, String>>> searchResult = instance.search( fsq, resultFields );
-
-        assertTrue( searchResult.isEmpty() );
+        assertEquals( 0, searchResult.size() );
     }
 
 
@@ -204,24 +162,18 @@ public class LuceneFieldIndexTest {
         instance.indexFields( constructIndexFields( pid ), 0 );
         FieldSearchQuery fsq = getFieldSearchQuery( "PID", "eq", pid.getSecond() );
 
-        String[] resultFields = new String[]{
-            pid.getFirst().toString().toLowerCase(),
-            title.getFirst().toString().toLowerCase(),
-            date.getFirst().toString().toLowerCase()
-        };
+        IPidList searchResult = instance.search( fsq );
 
-        List<List<Pair<FedoraFieldName, String>>> searchResult = instance.search( fsq,resultFields);
-
-        assertFalse( searchResult.isEmpty() );
+        assertFalse( searchResult.size() == 0 );
 
         String uid = "demo:1";
         instance.removeDocument( uid );
         //it is possible to remove documents that does not exist
         instance.removeDocument( uid );
 
-        searchResult = instance.search( fsq, resultFields );
+        searchResult = instance.search( fsq );
 
-        assertTrue( searchResult.isEmpty() );
+        assertEquals( 0, searchResult.size() );
     }
 
 
@@ -236,16 +188,10 @@ public class LuceneFieldIndexTest {
         //verify that the index contains the correct values
         FieldSearchQuery fsq = getFieldSearchQuery( "title", "eq", title.getSecond() );
 
-        String[] resultFields = new String[]{
-            pid.getFirst().toString().toLowerCase(),
-            title.getFirst().toString().toLowerCase(),
-            date.getFirst().toString().toLowerCase()
-        };
+        IPidList searchResult = instance.search( fsq );
 
-        List<List<Pair<FedoraFieldName, String>>> searchResult = instance.search( fsq, resultFields );
-
-        assertEquals( FedoraFieldName.PID, searchResult.get( 0 ).get( 0 ).getFirst() );
-        assertEquals( "demo:1", searchResult.get( 0 ).get( 0).getSecond() );
+        String[] nextPidArray = searchResult.getNextPids(1).toArray(new String[0]);
+        assertEquals( "demo:1", nextPidArray[0] );
     }
 
     @Test
@@ -256,9 +202,7 @@ public class LuceneFieldIndexTest {
 
         FieldSearchQuery fsq = getFieldSearchQuery( "title", "eq", title.getSecond() );
 
-        String[] resultFields = new String[]{ "pid" };
-
-        List<List<Pair<FedoraFieldName, String>>> searchResult = instance.search( fsq, resultFields );
+        IPidList searchResult = instance.search( fsq );
 
         assertEquals( 1, searchResult.size() );
     }
@@ -271,9 +215,7 @@ public class LuceneFieldIndexTest {
 
         FieldSearchQuery fsq = getFieldSearchQuery( "title", "eq", title.getSecond() );
 
-        String[] resultFields = new String[]{ "pid" };
-
-        List<List<Pair<FedoraFieldName, String>>> searchResult = instance.search( fsq, resultFields );
+        IPidList searchResult = instance.search( fsq );
 
         assertEquals( 2, searchResult.size() );
     }
@@ -281,13 +223,11 @@ public class LuceneFieldIndexTest {
     @Test
     public void testUpdatedIndex() throws Exception
     {
-        String[] resultFields = new String[]{ "pid" };
-
         instance.indexFields( constructIndexFields( pid ), 0 );
 
         FieldSearchQuery fsq = getFieldSearchQuery( "title", "eq", title.getSecond() );
 
-        List<List<Pair<FedoraFieldName, String>>> searchResult = instance.search( fsq, resultFields );
+        IPidList searchResult = instance.search( fsq );
 
         assertEquals( 1, searchResult.size() );
 
@@ -297,7 +237,7 @@ public class LuceneFieldIndexTest {
 
         fsq = getFieldSearchQuery( "title", "eq", title.getSecond() );
 
-        searchResult = instance.search( fsq, resultFields );
+        searchResult = instance.search( fsq );
 
         assertEquals( 2, searchResult.size() );
     }
@@ -311,23 +251,12 @@ public class LuceneFieldIndexTest {
         //verify that the index contains the correct values
         FieldSearchQuery fsq = getFieldSearchQuery( "RELOBJ", "eq", relObj.getSecond() );
 
+        IPidList searchResult = instance.search( fsq );
 
-        String[] resultFields = new String[]{
-            FedoraFieldName.PID.toString(),
-            FedoraFieldName.STATE.toString(),
-            FedoraFieldName.TITLE.toString(),
-            FedoraFieldName.TYPE.toString(),
-            FedoraFieldName.LABEL.toString(),
-            FedoraFieldName.DATE.toString(),
-            FedoraFieldName.RELOBJ.toString(),
-            FedoraFieldName.RELPREDOBJ.toString(),
-        };
-
-        List<List<Pair<FedoraFieldName, String>>> searchResult = instance.search( fsq, resultFields );
-
-        assertFalse( "Search result must not be empty", searchResult.isEmpty() );
+        assertFalse( "Search result must not be empty", searchResult.size() == 0 );
         assertEquals( "Search result must contain exactly 2 hits", 2, searchResult.size() );
 
+        /*
         Pair<FedoraFieldName, String> resultDate = new Pair<FedoraFieldName, String> (FedoraFieldName.DATE, String.valueOf( now ));
 
         for( List<Pair<FedoraFieldName, String>> resultBundles : searchResult )
@@ -341,6 +270,7 @@ public class LuceneFieldIndexTest {
             assertTrue( resultBundles.contains( relObj ) );
             assertTrue( resultBundles.contains( relPredObj ) );
         }
+        */
     }
 
     @Test
@@ -354,13 +284,13 @@ public class LuceneFieldIndexTest {
 
         FieldSearchQuery fsq = getFieldSearchQuery( "date", "eq", "1930" );
 
-        String[] resultFields = new String[]{ "pid" };
-
-        List<List<Pair<FedoraFieldName, String>>> searchResult = instance.search( fsq, resultFields );
+        IPidList searchResult = instance.search( fsq );
 
         assertEquals( 1, searchResult.size() );
-        assertFalse( searchResult.get( 0 ).contains( pid ) );
-        assertTrue( searchResult.get( 0 ).contains( pid2) );
+        String[] nextPidArray = searchResult.getNextPids(1).toArray(new String[0]);
+        String pidFromResult = nextPidArray[0];
+        assertFalse( pidFromResult.contains( pid.getSecond() ) );
+        assertTrue( pidFromResult.contains( pid2.getSecond() ) );
     }
 
     @Test
@@ -374,13 +304,13 @@ public class LuceneFieldIndexTest {
 
         FieldSearchQuery fsq = getFieldSearchQuery( "date", "has", "?8765?" );
 
-        String[] resultFields = new String[]{ "pid" };
-
-        List<List<Pair<FedoraFieldName, String>>> searchResult = instance.search( fsq, resultFields );
+        IPidList searchResult = instance.search( fsq );
 
         assertEquals( 1, searchResult.size() );
-        assertFalse( searchResult.get( 0 ).contains( pid ) );
-        assertTrue( searchResult.get( 0 ).contains( pid2) );
+        String[] nextPidArray = searchResult.getNextPids(1).toArray(new String[0]);
+        String pidFromResult = nextPidArray[0];
+        assertFalse( pidFromResult.contains( pid.getSecond() ) );
+        assertTrue( pidFromResult.contains( pid2.getSecond() ) );
     }
 
 
@@ -394,13 +324,12 @@ public class LuceneFieldIndexTest {
         instance.indexFields( constructCaseSensitiveIndexFields(), 0 );
 
         FieldSearchQuery fsq = getFieldSearchQuery( "pid", "eq", pid.getSecond() );
-        String[] resultFields = new String[]{ "pid" };
-        List<List<Pair<FedoraFieldName, String>>> searchResult = instance.search( fsq, resultFields );
+        IPidList searchResult = instance.search( fsq );
 
         assertEquals( 0, searchResult.size() );
 
         fsq = getFieldSearchQuery( "pid", "eq", pid2.getSecond() );
-        searchResult = instance.search( fsq, resultFields );
+        searchResult = instance.search( fsq );
 
         assertEquals( 1, searchResult.size() );
 
@@ -414,28 +343,10 @@ public class LuceneFieldIndexTest {
 
         FieldSearchQuery fsq = getFieldSearchQuery( "title", "eq", title.getSecond() );
 
-        String[] resultFields = new String[]{ "PID" };
-
-        List<List<Pair<FedoraFieldName, String>>> searchResult = instance.search( fsq, resultFields );
+        IPidList searchResult = instance.search( fsq );
 
         assertEquals( 1, searchResult.size() );
     }
-
-
-    @Test
-    public void testRequestForResultFieldsThatDoesntExistAreIgnored() throws Exception
-    {
-        instance.indexFields( constructIndexFields( pid ), 0 );
-
-        FieldSearchQuery fsq = getFieldSearchQuery( "title", "eq", title.getSecond() );
-
-        String[] resultFields = new String[]{ "IDONTEXIST" };
-
-        List<List<Pair<FedoraFieldName, String>>> searchResult = instance.search( fsq, resultFields );
-
-        assertEquals( 0, searchResult.size() );
-    }
-
 
     /**
      * Below follows helper methods

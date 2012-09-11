@@ -20,34 +20,22 @@
 
 package dk.dbc.opensearch.fedora.search;
 
+import org.apache.lucene.index.CorruptIndexException;
+import org.fcrepo.common.rdf.RDFName;
+import org.fcrepo.server.storage.types.RelationshipTuple;
+import org.fcrepo.server.utilities.DCField;
+import org.fcrepo.server.utilities.DCFields;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.WhitespaceAnalyzer;
-import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.store.Directory;
-
-import org.fcrepo.common.rdf.RDFName;
-import org.fcrepo.server.search.FieldSearchQuery;
-import org.fcrepo.server.search.FieldSearchResult;
-import org.fcrepo.server.storage.types.RelationshipTuple;
-import org.fcrepo.server.utilities.DCField;
-import org.fcrepo.server.utilities.DCFields;
 
 //
 // README
@@ -57,19 +45,19 @@ import org.fcrepo.server.utilities.DCFields;
 // I have refactored FieldSearchLucene in such a way, that it is now
 // possible (though untested) to create a LuceneIndex without starting
 // a Fedora-instance. It should be enough to implement up against the
-// FieldSearchLuceneImpl. 
-// 
+// FieldSearchLuceneImpl.
+//
 // The purpose for this is to be able to test and tweak the lucene
 // indexes without the need for the tedious ingesting through
 // fedora. Given correct formatted data (which relies on fedora-types)
 // an index can be created from an application importing this file
 // (and maybe some more FieldSearchLucene files).
 //
-// Please notice: 
+// Please notice:
 // Only methods for creating, updating and deleting indexes have been
 // refactored. The search method, findObjects, rely heavily on fedora
 // since results from the search are not taken from the indexes but
-// rather from the actual fedora documents. 
+// rather from the actual fedora documents.
 //
 // (JDA)
 //
@@ -78,26 +66,12 @@ public final class FieldSearchLuceneImpl
 {
     private static final Logger log = LoggerFactory.getLogger( FieldSearchLuceneImpl.class );
 
-    // todo: Make private
-    public final LuceneFieldIndex luceneindexer;
-    public final int resultLifeTimeInSeconds;
-    public final ConcurrentHashMap<String, FieldSearchResult> cachedResult;
-    public final ScheduledExecutorService cacheSurveillance;
+    private final LuceneFieldIndex luceneindexer;
 
+    public FieldSearchLuceneImpl( LuceneFieldIndex luceneindexer ) {
 
-    public FieldSearchLuceneImpl( long luceneWriteLockTimeout, Analyzer analyzer,
-                                  Directory directory, int resultLifeTimeInSeconds )
-        throws IOException {
+        this.luceneindexer = luceneindexer;
 
-        this.luceneindexer = new LuceneFieldIndex( luceneWriteLockTimeout, analyzer, directory );
-
-        this.resultLifeTimeInSeconds = resultLifeTimeInSeconds;
-        this.cachedResult = new ConcurrentHashMap<String, FieldSearchResult>();
-        this.cacheSurveillance = Executors.newSingleThreadScheduledExecutor();
-
-        log.debug( "Starting cache invalidation thread" );
-        this.cacheSurveillance.scheduleAtFixedRate( new CacheInvalidationThread(), 0L, 
-                                                    (long)this.resultLifeTimeInSeconds, TimeUnit.SECONDS );
     }
 
 
@@ -106,7 +80,7 @@ public final class FieldSearchLuceneImpl
         try
         {
             this.luceneindexer.removeDocument( identifier );
-        } 
+        }
         catch( IOException ex )
         {
             log.warn( "Could not delete object {}: {}", identifier, ex.getMessage() );
@@ -119,38 +93,27 @@ public final class FieldSearchLuceneImpl
     }
 
 
-    public void shutdown() throws IOException {
-        this.cacheSurveillance.shutdown();
-
-        try {
-            this.luceneindexer.closeIndex();
-        } catch( IOException ex ) {
-            log.error( "Failed to shutdown the index properly. This means that the index could still be locked and/or in an unstable state. Please do a manual check.", ex );
-            throw ex;
-        }
-    }
-
     public void update( Date fedoraCreateDate,
                         Date fedoraLastModDate,
-                        String objectPID, 
+                        String objectPID,
                         String objectState,
                         String objectLabel,
                         String ownerId,
                         DCFields dcFields,
                         Date dcmCreatedDate,
-                        Set< RelationshipTuple > relations ) 
-        throws CorruptIndexException, IOException 
+                        Set< RelationshipTuple > relations )
+        throws CorruptIndexException, IOException
     {
         long startTimeNs = System.nanoTime();
 
         // This creation of SimpleDateFormat has been moved inside this function in order to fix bug#11968.
         // At some point this code may need refactoring. At that point, someone may think that
-        // it is rediculous to create a new SimpleDateFormat object on every invocation of the 
+        // it is rediculous to create a new SimpleDateFormat object on every invocation of the
         // update-function. This "someone" should then sit down and read the documentation
         // for SimpleDateFormat in order to convince him- or herself that SimpleDateFormat
         // is not thread-safe. And since all the overridden functions in this class needs
-        // to be thread-safe it would not be a good idea to move the creation of SimpleDateFormat 
-        // outside this function. 
+        // to be thread-safe it would not be a good idea to move the creation of SimpleDateFormat
+        // outside this function.
         final SimpleDateFormat formatter = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSS Z" );
 
         List<Pair<FedoraFieldName, String>> indexFieldsList = new ArrayList<Pair<FedoraFieldName, String>>();
@@ -163,7 +126,7 @@ public final class FieldSearchLuceneImpl
         try
         {
             localCDate = formatter.parse( stringCDate );
-        } 
+        }
         catch( ParseException ex )
         {
             log.warn( "Could not parse {} as a date for localCDate: {}", stringCDate, ex.getMessage() );
@@ -173,7 +136,7 @@ public final class FieldSearchLuceneImpl
         try
         {
             localMDate = formatter.parse( stringMDate );
-        } 
+        }
         catch( ParseException ex )
         {
             log.warn( "Could not parse {} as a date for localMDate: {}", stringMDate, ex.getMessage() );
@@ -253,12 +216,6 @@ public final class FieldSearchLuceneImpl
                 // Add string identifying relationship object to relObj
                 // field.
                 addPairToIndexFieldList( constructIndexableFieldPair( "relobj", object ), indexFieldsList );
-                // When purging a relationship we need to know both
-                // subject, predicate and object, we therefore add the
-                // predicate and object strings joined by a pipe (|)
-                // character to the relPredObj field.
-                String predObjMap = String.format("%s|%s", predicate, object);
-                addPairToIndexFieldList( constructIndexableFieldPair( "relpredobj", predObjMap ), indexFieldsList );
             }
         }
 
@@ -310,7 +267,7 @@ public final class FieldSearchLuceneImpl
             {
                 FedoraFieldName.valueOf( field.toUpperCase() );
                 validatedFields[i] = field;
-            } 
+            }
             catch( IllegalArgumentException ex )
             {
                 log.warn( "Will not show results for requested field '{}': it is not indexed", field );
@@ -319,32 +276,5 @@ public final class FieldSearchLuceneImpl
 
         return validatedFields;
     }
-
-
-    /**
-     * the {@code CacheInvalidationThread} checks the {@code cacheResult} map on
-     * a specified interval and removes entries that are expired.
-     */
-    private final class CacheInvalidationThread implements Runnable
-    {
-        @Override
-        public void run()
-        {
-            log.trace( "Running cleanup task" );
-            Date now = new Date( System.currentTimeMillis() );
-            for ( Map.Entry<String, FieldSearchResult> result : cachedResult.entrySet() )
-            {
-                Date expirationDate = result.getValue().getExpirationDate();
-                log.debug( "Timestamps: Now: [{}]  Expiration: [{}]", now, expirationDate );
-                // FieldSearchResultLucene frsl = (FieldSearchResultLucene) result.getValue();
-                if ( now.after( expirationDate ) )
-                {
-                    log.debug( "Removing {}", result.getKey() );
-                    cachedResult.remove( result.getKey() );
-                }
-            }
-        }
-    }
-
 
 }

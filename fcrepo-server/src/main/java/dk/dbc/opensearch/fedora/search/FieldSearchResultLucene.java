@@ -20,6 +20,7 @@ along with opensearch.  If not, see <http://www.gnu.org/licenses/>.
 package dk.dbc.opensearch.fedora.search;
 
 
+import org.apache.lucene.queryParser.ParseException;
 import org.fcrepo.server.ReadOnlyContext;
 import org.fcrepo.server.Server;
 import org.fcrepo.server.errors.InvalidStateException;
@@ -29,16 +30,17 @@ import org.fcrepo.server.search.FieldSearchResult;
 import org.fcrepo.server.search.ObjectFields;
 import org.fcrepo.server.storage.DOReader;
 import org.fcrepo.server.storage.RepositoryReader;
-import org.fcrepo.server.storage.types.DatastreamXMLMetadata;
+import org.fcrepo.server.storage.types.Datastream;
+import org.fcrepo.server.storage.types.RelationshipTuple;
+import org.fcrepo.server.utilities.DCField;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.apache.lucene.queryParser.ParseException;
 
 
 /**
@@ -53,14 +55,14 @@ class FieldSearchResultLucene implements FieldSearchResult
     private final RepositoryReader repoReader;
     /** resultFields is kept a String[] to ensure that values can be sent to this class as they can to FieldSearchResultSQLImpl. */
     private final String[] resultFields;
-    private final List<List< Pair< FedoraFieldName, String > > > searchResultList;
+    private final IPidList searchResultList;
 
     /** Will hold the current view of results for the client to consume (through the objectFieldsList() method ). */
     private List<ObjectFields> currentResultList;
 
     /** cursors should keep track of how many results have been put into the list of objectfields per session. */
-    private int cursor;     // indicating the start of the current resultset
-    private int nextCursor; // indicating the beginning of the next resultset
+    private long cursor;     // indicating the start of the current resultset
+    private long nextCursor; // indicating the beginning of the next resultset
 
     private String token;
 
@@ -78,7 +80,7 @@ class FieldSearchResultLucene implements FieldSearchResult
                                        final String[] resultFieldsList,
                                        final FieldSearchQuery query,
                                        final int maximumResults,
-                                       final int resultTimeout ) throws InvalidStateException
+                                       final int resultTimeout ) throws InvalidStateException, IOException
     {
         this.indexSearcher = indexController;
         this.repoReader = repositoryReader;
@@ -87,7 +89,7 @@ class FieldSearchResultLucene implements FieldSearchResult
         this.nextCursor = 0;
         this.maxResults = maximumResults;
         this.timeout = resultTimeout;
-        this.searchResultList = searchIndex( query, resultFieldsList );
+        this.searchResultList = searchIndex( query );
         log.trace( "Opening and caching search result" );
         stepAndCacheResult();
     }
@@ -114,122 +116,65 @@ class FieldSearchResultLucene implements FieldSearchResult
         return this.currentResultList;
     }
 
-    protected final FieldSearchResult stepAndCacheResult()
+    protected final FieldSearchResultLucene stepAndCacheResult() throws IOException
     {
         log.trace( "Entering stepAndCacheResult" );
-        log.debug( "Starting retrival from index {}", this.cursor );
-        int localResultCounter = this.cursor;
-        this.currentResultList = new LinkedList<ObjectFields>();
+        cursor = nextCursor;
+        log.debug( "Starting retrieval from index {}", cursor );
+        long localResultCounter = cursor;
+        currentResultList = new LinkedList<ObjectFields>();
 
-        int size = this.searchResultList.size();
+        int size = searchResultList.size();
 
-        log.debug( "ResultSet has {} elements, retrieving elements {}-{} (or to {}; whichever comes first)",
-                new Object[] { size, localResultCounter, localResultCounter + maxResults, size } );
+        log.debug( "ResultSet has {} elements, retrieving elements {}-{}",
+                new Object[] { size, localResultCounter, localResultCounter + maxResults - 1 } );
 
-        int bound = size <= this.maxResults ? size : this.maxResults;
+        Collection< String > pids = searchResultList.getNextPids( maxResults );
 
-        log.debug( "Set to retrieve {} element(s) from resultset ({} left)", bound, size );
-
-        for( int i = 0; i < bound; i++ )
+        for( String pid : pids )
         {
-            log.debug( "Retriving element {}", localResultCounter + 1 );
-            List<Pair<FedoraFieldName, String>> resultList = ( (LinkedList<List<Pair<FedoraFieldName, String>>>) this.searchResultList ).pop();
+            log.debug( "Retrieving element {}", localResultCounter );
 
-            ObjectFields objectFields = null;
-
-            // Holds a comma separated string of all RELPREDOBJ values.
-            StringBuilder relPredObj = null;
-            StringBuilder relObj = null;
-
-            for( Pair<FedoraFieldName, String> resultPair : resultList )
+            try
             {
-                log.trace( "resultPair = <%{}, %{}>", resultPair.getFirst(), resultPair.getSecond() );
-
-                FedoraFieldName fieldName = resultPair.getFirst();
-
-                if( fieldName.equals( FedoraFieldName.PID ) )
-                {
-                    log.trace( "Retriving object fields from object identified by: <{}, {}>", resultPair.getFirst(), resultPair.getSecond() );
-
-                    try
-                    {
-                        objectFields = getObjectFields( resultPair.getSecond() );
-                        this.currentResultList.add( objectFields );
-                    } catch( ServerException ex )
-                    {
-                        String error = String.format( "Could not retrieve data from object reader for object pid %s: %s", resultPair.getSecond(), ex.getMessage() );
-                        log.error( error, ex );
-                    } catch( ClassCastException ex )
-                    {
-                        String error = String.format( "Object identified by %s has a DC datastream, but it's not inline XML. No data can be retrieved from this DigitalObject", resultPair.getSecond() );
-                        log.error( error, ex );
-                    }
-                }
-                else if( fieldName.equals(FedoraFieldName.RELPREDOBJ) )
-                {
-                    if ( relPredObj == null)
-                        relPredObj = new StringBuilder();
-
-                    relPredObj.append( resultPair.getSecond() );
-                    relPredObj.append( ',' );
-                }
-                else if( fieldName == FedoraFieldName.RELOBJ )
-                {
-                    if ( relObj == null)
-                        relObj = new StringBuilder();
-
-                    relObj.append( resultPair.getSecond() );
-                    relObj.append( ',' );
-                }
+                log.trace( "Retrieving object fields from object with pid: {}", pid );
+                currentResultList.add( getObjectFields( pid ) );
             }
-
-            if( objectFields != null && relPredObj != null )
+            catch( ServerException ex )
             {
-                // Add concatenated RELPREDOBJ string to ObjectFields while
-                // removing trailing comma.
-                objectFields.setRelPredObj( 
-                    relPredObj.deleteCharAt( relPredObj.length()-1 ).toString()
-                );
+                String error = String.format( "Could not retrieve data from object reader for object pid %s: %s", pid, ex.getMessage() );
+                log.error( error, ex );
             }
-            if( objectFields != null && relObj != null )
+            catch( ClassCastException ex )
             {
-                // Add concatenated RELPREDOBJ string to ObjectFields while
-                // removing trailing comma.
-                objectFields.setRelObj(
-                    relObj.deleteCharAt( relObj.length()-1 ).toString()
-                );
+                String error = String.format( "Object identified by %s has a DC datastream, but it's not inline XML. No data can be retrieved from this DigitalObject", pid );
+                log.error( error, ex );
             }
 
             localResultCounter++;
         }
 
-        size = this.searchResultList.size();
-        log.debug( "Size of resultset after retrieval: {}", size );
+        log.debug( "Result set counter points to element at pos {}", localResultCounter );
 
-        log.debug( "resultset counter points to element at pos {}", localResultCounter );
-
-	// Setting cursor
-	this.cursor = this.nextCursor;
-        if( size == 0 )
+        if( localResultCounter == size )
         {
-            log.info( "Result set exhausted, nulling token, resetting nextCursor" );
-            this.token = null;
-            // this.cursor = 0;
-            this.nextCursor = 0;
+            log.info( "Result set exhausted, null'ing token, resetting nextCursor" );
+            token = null;
+            nextCursor = 0;
         }
         else
         {
-            log.info( "Still {} entries in result set", size );
+            log.info( "Still {} entries in result set", size - localResultCounter );
             long now = System.currentTimeMillis();
-            this.token = hashCode() + "" + Long.toString( now );
-            log.debug( "Setting token as {}", this.token );
-            this.nextCursor = localResultCounter;
-            log.debug( "cursor set to {}", this.cursor );
-            log.debug( "nextCursor set to {}", this.nextCursor );
+            token = hashCode() + "" + Long.toString( now );
+            log.debug( "Setting token as {}", token );
+            nextCursor = localResultCounter;
+            log.debug( "cursor set to {}", cursor );
+            log.debug( "nextCursor set to {}", nextCursor );
             Date dt = new Date();
             dt.setTime( now + ( 1000 * this.timeout ) );
-            log.debug( "Setting expiration date to {} (1000*{} ms)", dt.toString(), this.timeout );
-            this.expirationDate = dt;
+            log.debug( "Setting expiration date to {} (1000*{} ms)", dt.toString(), timeout );
+            expirationDate = dt;
         }
         log.trace( "Returning FieldSearchResult from stepAndCacheResult" );
         return this;
@@ -254,14 +199,14 @@ class FieldSearchResultLucene implements FieldSearchResult
     @Override
     public long getCursor()
     {
-        /** 
+        /**
          * Because the fedora logic around FieldSearch is bound to database
          * metaphors, we'll need to make the result from the indicies behave like
          * a java.sql.ResultSet:
          * (http://java.sun.com/javase/6/docs/api/java/sql/ResultSet.html)
          *
          * This is a naïve implementation which simply returns the position in
-         * the result list. 
+         * the result list.
          */
         return this.cursor;
     }
@@ -301,6 +246,14 @@ class FieldSearchResultLucene implements FieldSearchResult
         return this.expirationDate;
     }
 
+    /**
+     * Close underlying pid list resources. E.g. when search set expires
+     */
+    void dispose()
+    {
+        searchResultList.dispose();
+    }
+
 
     /**
      * In order to minimize the number of checked exceptions that can rise from
@@ -330,9 +283,7 @@ class FieldSearchResultLucene implements FieldSearchResult
         log.debug( "Trying to retrieve DC datastream from pid {}", pid );
         // If there's a DC record available, use SAX to parse the most
         // recent version of it into fields.
-        DatastreamXMLMetadata dcmd = null;
-
-        dcmd = (DatastreamXMLMetadata) objectReader.GetDatastream( "DC", null );
+        Datastream dcmd = objectReader.GetDatastream( "DC", null );
 
         log.debug( "Putting {} result fields into ObjectFields object", this.resultFields.length );
 
@@ -356,7 +307,10 @@ class FieldSearchResultLucene implements FieldSearchResult
         }
 
         log.debug( "Storing object properties from object {}", pid );
+
         // add non-dc values from doReader for the others in m_resultFields[]
+        boolean addRelObjToResult = false;
+        boolean addRelPredObjToResult = false;
         for( String resultFieldName : this.resultFields )
         {
             if( resultFieldName.equals( "pid" ) )
@@ -383,8 +337,47 @@ class FieldSearchResultLucene implements FieldSearchResult
             {
                 fields.setMDate( objectReader.getLastModDate() );
             }
-
+            if( resultFieldName.equals( "relobj" ) )
+            {
+                addRelObjToResult = true;
+            }
+            if( resultFieldName.equals( "relpredobj" ) )
+            {
+                addRelPredObjToResult = true;
+            }
         }
+
+        if( addRelObjToResult || addRelPredObjToResult ) {
+            log.trace( "Retrieving relationships for ObjectFields" );
+
+            for( RelationshipTuple relation : objectReader.getRelationships() ) {
+                String object = relation.object;
+                String predicate = relation.predicate;
+
+                if(    "info:fedora/fedora-system:def/model#hasModel".equals( predicate )
+                    && "info:fedora/fedora-system:FedoraObject-3.0".equals( object ) ) {
+
+                    // Since all digital objects in the current fedora
+                    // repository have a hasModel relationship to the default
+                    // content model we skip this to avoid unnecessary clutter
+                    // in the lucene index.
+                    continue;
+                }
+
+                if( addRelObjToResult ) {
+                    fields.relObjs().add( new DCField( object ) );
+                }
+
+                if( addRelPredObjToResult ) {
+                    // When purging a relationship we need to know both
+                    // subject, predicate and object, we therefore add the
+                    // predicate and object strings joined by a pipe (|)
+                    // character to the relPredObj field.
+                    fields.relPredObjs().add( new DCField( String.format( "%s|%s", predicate, object ) ) );
+                }
+            }
+        }
+
         log.trace( "Returning ObjectFields from getObjectFields" );
         return fields;
     }
@@ -392,13 +385,13 @@ class FieldSearchResultLucene implements FieldSearchResult
     /**
      * Conducts the search.
      */
-    private List<List<Pair<FedoraFieldName, String> > > searchIndex( final FieldSearchQuery query, final String[] resultFieldsList ) throws InvalidStateException
+    private IPidList searchIndex( final FieldSearchQuery query ) throws InvalidStateException
     {
         log.trace( "Entering searchIndex" );
-        List<List<Pair<FedoraFieldName, String>>> searchResult = null;
+        IPidList searchResult;
         try
         {
-            searchResult = this.indexSearcher.search( query, resultFieldsList );
+            searchResult = this.indexSearcher.search( query );
         }
         catch( IOException ex )
         {

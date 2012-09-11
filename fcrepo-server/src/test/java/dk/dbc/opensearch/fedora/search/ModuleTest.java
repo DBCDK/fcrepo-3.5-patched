@@ -19,6 +19,7 @@ along with opensearch.  If not, see <http://www.gnu.org/licenses/>.
 package dk.dbc.opensearch.fedora.search;
 
 import java.util.LinkedHashSet;
+
 import org.fcrepo.server.storage.types.RelationshipTuple;
 import java.text.SimpleDateFormat;
 import java.io.File;
@@ -58,8 +59,10 @@ import mockit.Expectations;
 import mockit.Mocked;
 import mockit.Mockit;
 import mockit.NonStrictExpectations;
+import org.fcrepo.server.ReadOnlyContext;
 
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -91,7 +94,7 @@ public class ModuleTest
     private static final Date yesterDate = new Date( timeNow - 86400000L );
     private static final Date toDate = new Date( timeNow );
     private static final Date tomorrowDate = new Date( timeNow + 86400000L );
-    
+
     /**
      * Mock-outs of the entire Fedora Server complex. The mocks are primarily
      * and almost exclusively used in Expectations.
@@ -101,29 +104,27 @@ public class ModuleTest
     @Mocked Server server;
     @Mocked Parameterized parm;
     @Mocked Module mod;
-    @Mocked DOManager doma;
     @Mocked ILowlevelStorage storage;
     @Mocked DOTranslator translator;
+    DOManager domareal;
 
     /**
      * Before each test is run, the servers initialization phase of the
      * FieldSearch module is mocked through Mockit.Expectations
-     *
      */
     @Before
     public void setUp() throws ModuleInitializationException, ServerException
     {
-        Mockit.setUpMocks();
         zTimeFormatter = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" );
         utcFormatter = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" );
         utcFormatter.setTimeZone( TimeZone.getTimeZone( "UTC" ) );
         simpleUtcFormatter = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSS" );
         simpleUtcFormatter.setTimeZone( TimeZone.getTimeZone( "UTC" ) );
         simpleTimeFormatter = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSS" );
-        
+
         final Map<String, String> params = getParameters();
 
-        final DOManager domareal = new DefaultDOManager( params, server, "DOManager" );
+        domareal = new DefaultDOManager( params, server, "DOManager" );
         new NonStrictExpectations()
         {
             {
@@ -135,6 +136,10 @@ public class ModuleTest
                 returns( params.get( "luceneDirectory" ) );
                 parm.getParameter( "indexLocation" );
                 returns( params.get( "indexLocation" ) );
+                parm.getParameter( "pidCollectorMaxInMemory" );
+                returns( params.get( "pidCollectorMaxInMemory" ) );
+                parm.getParameter( "pidCollectorTmpDir" );
+                returns( params.get( "pidCollectorTmpDir" ) );
                 mod.getServer(); returns( server );
                 server.getModule( "org.fcrepo.server.storage.DOManager" );
                 returns( domareal );
@@ -146,8 +151,6 @@ public class ModuleTest
 
         fieldsearch = new FieldSearchLucene( params, server, "org.fcrepo.server.search.FieldSearch" );
         fieldsearch.postInitModule();
-
-
     }
 
     /**
@@ -166,9 +169,14 @@ public class ModuleTest
             f.delete();
         }
         server.shutdown( null );
-        Mockit.tearDownMocks();
         System.gc();
     }
+
+    @AfterClass
+    public static void tearDownClass() {
+	Mockit.tearDownMocks();
+    }
+
 
     /**
      * Tests the happy path of the FieldSearchLucene plugin. One object ingested,
@@ -1170,7 +1178,7 @@ public class ModuleTest
         final String object = "work:1";
         final String predicate = "http://oss.dbc.dk/rdf/dkbib#isMemberOfWork";
 
-        Set relationships = new LinkedHashSet< RelationshipTuple >();
+        final Set< RelationshipTuple > relationships = new LinkedHashSet< RelationshipTuple >();
         relationships.add( new RelationshipTuple( subject, predicate, object,
             true, "") );
 
@@ -1188,6 +1196,14 @@ public class ModuleTest
             new Pair<Operator, String>( Operator.EQUALS, object ) );
 
         FieldSearchQuery fsq = getFieldSearchQuery( query );
+        new Expectations( domareal )
+        {
+            {
+                domareal.getReader( Server.USE_DEFINITIVE_STORE, ReadOnlyContext.EMPTY, "demo:1" ); result = reader;
+                reader.GetDatastream( "DC", null ); result = null;
+                reader.getRelationships(); result = relationships;
+            }
+        };
 
         FieldSearchResult fsr =
             fieldsearch.findObjects( fields, maxResults, fsq );
@@ -1198,8 +1214,10 @@ public class ModuleTest
 
         assertEquals( 1, fsr.objectFieldsList().size() );
         assertEquals( subject, objectFieldsList.get( 0 ).getPid() );
+        assertEquals( 1,
+            objectFieldsList.get( 0 ).relPredObjs().size() );
         assertEquals( expectedRelPredObj,
-            objectFieldsList.get( 0 ).getRelPredObj() );
+            objectFieldsList.get( 0 ).relPredObjs().get( 0 ).getValue() );
     }
 
     /**
@@ -1218,7 +1236,7 @@ public class ModuleTest
         final String object2 = "anm:1";
         final String predicate2 = "http://oss.dbc.dk/rdf/dbcbibaddi#hasReview";
 
-        Set relationships = new LinkedHashSet< RelationshipTuple >();
+        final Set< RelationshipTuple > relationships = new LinkedHashSet< RelationshipTuple >();
         relationships.add( new RelationshipTuple( subject, predicate1, object1,
             true, "") );
         relationships.add( new RelationshipTuple( subject, predicate2, object2,
@@ -1239,18 +1257,28 @@ public class ModuleTest
 
         FieldSearchQuery fsq = getFieldSearchQuery( query );
 
+        new Expectations( domareal )
+        {
+            {
+                domareal.getReader( Server.USE_DEFINITIVE_STORE, ReadOnlyContext.EMPTY, "demo:1" ); result = reader;
+                reader.GetDatastream( "DC", null ); result = null;
+                reader.getRelationships(); result = relationships;
+            }
+        };
+
         FieldSearchResult fsr =
             fieldsearch.findObjects( fields, maxResults, fsq );
 
         List< ObjectFields > objectFieldsList = fsr.objectFieldsList();
 
-        String expectedRelPredObj = String.format( "%s|%s,%s|%s", predicate1,
-            object1, predicate2, object2 );
-
         assertEquals( 1, fsr.objectFieldsList().size() );
         assertEquals( subject, objectFieldsList.get( 0 ).getPid() );
-        assertEquals( expectedRelPredObj,
-            objectFieldsList.get( 0 ).getRelPredObj() );
+
+        assertEquals( String.format( "%s|%s", predicate1, object1 ),
+            objectFieldsList.get( 0 ).relPredObjs().get( 0 ).getValue() );
+
+        assertEquals( String.format( "%s|%s", predicate2, object2 ),
+            objectFieldsList.get( 0 ).relPredObjs().get( 1 ).getValue() );
     }
 
 
@@ -1316,7 +1344,7 @@ public class ModuleTest
                 reader.getOwnerId(); returns( anyString );
                 reader.GetDatastream( anyString, (Date) any ); returns( (Datastream) dsxml );
                 reader.getRelationships(); returns( new LinkedHashSet< RelationshipTuple >() );
-            
+
                 dsxml.getContentStream();returns( metadata );
         }};
     }
@@ -1407,12 +1435,14 @@ public class ModuleTest
         final Map<String, String> params = new HashMap<String, String>();
         params.put( "writeLockTimeout", "1000" );
         params.put( "resultLifetime", "10" );
-        //TODO: a separate tests should verify that invalid values cannot be 
+        //TODO: a separate tests should verify that invalid values cannot be
         // given as parameters
         params.put( "luceneDirectory", "SimpleFSDirectory" );
         params.put( "indexLocation", indexLocation );
 
 //        params.put( "luceneDirectory", "RAMDirectory" );
+        params.put( "pidCollectorMaxInMemory", "1000000" );
+        params.put( "pidCollectorTmpDir", "/tmp" );
         return params;
     }
 

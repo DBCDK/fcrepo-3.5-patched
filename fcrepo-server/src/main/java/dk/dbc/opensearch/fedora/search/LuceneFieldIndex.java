@@ -20,60 +20,48 @@
 package dk.dbc.opensearch.fedora.search;
 
 
-import org.fcrepo.server.search.Condition;
-import org.fcrepo.server.search.FieldSearchQuery;
-import org.fcrepo.server.search.Operator;
-
-import java.io.File;
-import java.io.IOException;
-import java.lang.management.ManagementFactory;
-import java.text.SimpleDateFormat;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.Set;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.TimeZone;
-import java.util.concurrent.atomic.AtomicLong;
-import javax.management.JMException;
-import javax.management.MBeanServer;
-import javax.management.ObjectName;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.Field.Index;
 import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.document.NumericField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.MergePolicy;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.queryParser.ParseException;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Scorer;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.FSDirectory;
-import org.apache.lucene.store.AlreadyClosedException;
-import org.apache.lucene.document.NumericField;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.Collector;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.NumericRangeQuery;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
-import org.apache.lucene.search.NumericRangeQuery;
+import org.apache.lucene.store.AlreadyClosedException;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.util.Version;
+import org.fcrepo.server.search.Condition;
+import org.fcrepo.server.search.FieldSearchQuery;
+import org.fcrepo.server.search.Operator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-// KULMULE
-// NEW:
-// Note: these should be moved into the other imports above
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.util.Version;;
-import org.apache.lucene.index.TieredMergePolicy;
-import org.apache.lucene.index.MergePolicy;
-import org.apache.lucene.document.Fieldable;
-
+import javax.management.JMException;
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
+import java.io.File;
+import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
+import java.util.TimeZone;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * This class ensures that the underlying lucene index can be manipulated in
@@ -95,6 +83,9 @@ public final class LuceneFieldIndex
 
     private IndexReader reader = null;
     private IndexSearcher searcher = null;
+
+    private final int pidCollectorMaxInMemory;
+    private final File pidCollectorTmpDir;
 
     private final long writeLockTimeout;
     private final Directory directory;
@@ -395,10 +386,12 @@ public final class LuceneFieldIndex
     private final AtomicLong totalSearchTimeMS = new AtomicLong();
     private volatile long lastSearchTimeMS = 0;
 
-    LuceneFieldIndex( final long indexWriterLockTimeout, final Analyzer analyzer, final Directory luceneDirectory ) throws IOException
+    LuceneFieldIndex( final long indexWriterLockTimeout, final Analyzer analyzer, final Directory luceneDirectory, int pidCollectorMaxInMemory, File pidCollectorTmpDir ) throws IOException
     {
         this.writeLockTimeout = indexWriterLockTimeout;
         this.directory = luceneDirectory;
+        this.pidCollectorMaxInMemory = pidCollectorMaxInMemory;
+        this.pidCollectorTmpDir = pidCollectorTmpDir;
         TieredMergePolicy mergePolicy = new TieredMergePolicy();
 
         openWriter( analyzer, mergePolicy );
@@ -523,10 +516,6 @@ public final class LuceneFieldIndex
                     }
 
                     break;
-                case RELPREDOBJ:
-                    doc.add( new Field( fieldName.toString(), fieldValue, Store.YES, Index.NO ) );
-                    log.trace( "Added { {}: {} } to index document", fieldName.toString(), fieldValue );
-                    break;
                 default:
                     fieldValue = fieldValue.toLowerCase();
                     doc.add( new Field( fieldName.toString(), fieldValue, Store.YES, Index.ANALYZED ) );
@@ -595,49 +584,32 @@ public final class LuceneFieldIndex
 
 
     /**
-     * This method takes a {@link List} of queries constructed of {@link Pair}s
-     * of {@link FedoraFieldName}s and {@link String}s, and a {@code String[]}
-     * denoting the {@code FedoraFieldName}s for which the client wishes results to
-     * be returned.
+     * This method takes a {@link FieldSearchQuery} consisting of {@link Pair}s
+     * of {@link FedoraFieldName}s and {@link String}s and executes the
+     * corresponding search against the lucene index
      *
      * For a Query consisting of
      * <pre>
      * List< Pair< "CREATOR", "Friedrich Nietzche" > >
      * </pre>
      *
-     * and a resultFields array consisting of
-     *
-     * <pre>
-     * [ "PID", "TITLE" ]
-     * </pre>
-     *
-     * the search will retrieve all titles and pids matching that query::
-     * <pre>
-     * List< List< Pair< "PID", "demo:1" >,
-     *             Pair< "TITLE", "Also Sprach Zarathustra" > >,
-     *       List< Pair< "PID", "demo:2" >,
-     *             Pair< "TITLE", "Jenseits von Gut und Böse" > > >
-     * </pre><br/>
+     * the search will retrieve all pids matching that query
      *
      * @param fsq a FieldSearchQuery object containing the query
-     * @param resultFieldsList a List containing the ObjectFields that are to be returned as a resultFieldName of the search
-     * @return a List of Lists of Pairs containing the requested resultFieldName fields and their values grouped together
+     * @return all PIDs in result set as IPidList object
      */
-    List<List<Pair<FedoraFieldName, String>>> search( final FieldSearchQuery fsq, final String[] resultFieldsList ) throws IOException, ParseException
+    IPidList search( final FieldSearchQuery fsq ) throws IOException, ParseException
     {
         long time = System.currentTimeMillis();
 
-        log.trace( "Entering search with result fields: {}", Arrays.toString( resultFieldsList ) );
-
         Query luceneQuery = constructQuery( fsq );
 
-        List<List<Pair<FedoraFieldName, String>>> results = new LinkedList<List<Pair<FedoraFieldName, String>>>();
+        IPidList results = null;
 
         if( luceneQuery instanceof AllFieldsQuery )
         {
             log.info( "AllFieldsQuery detected, returning all documents from index" );
-            List<List<Pair<FedoraFieldName, String>>> allDocs = getAll( resultFieldsList );
-            results.addAll( allDocs );
+            results = getAll();
         }
         else
         {
@@ -646,22 +618,13 @@ public final class LuceneFieldIndex
             IndexSearcher localSearcher;
             try
             {
-                // KULMULE
-                // OLD:
-                // reader = this.writer.getReader();
-                // NEW:
-                // note: the boolean should prefferbly be false.
-                //       See: http://lucene.apache.org/core/old_versioned_docs/versions/3_5_0/api/core/org/apache/lucene/index/IndexReader.html#open%28org.apache.lucene.index.IndexWriter,%20boolean%29
-                //reader = IndexReader.open( this.writer, true );
-                //newSearchersCreated.incrementAndGet();
-
                 synchronized (this)
                 {
                     IndexReader newReader = IndexReader.openIfChanged( reader, this.writer, false );
                     if ( newReader != null )
                     {
                         log.debug( "Reader has changed. Creating new reader and searcher.");
-                        // Release reference to old reader. reader will automatically close when reference couunt reaches 0
+                        // Release reference to old reader. reader will automatically close when reference count reaches 0
                         reader.decRef();
                         reader = newReader;
                         searcher = new IndexSearcher( reader );
@@ -680,16 +643,16 @@ public final class LuceneFieldIndex
                 // DONE
                 log.trace( "number of deleted documents in reader: {}", localReader.numDeletedDocs() );
                 log.trace( "number of documents in reader: {}", localReader.numDocs() );
-                final FieldCollector fCollector = new FieldCollector( localSearcher, resultFieldsList );//, resultsList );
+                final PidCollector pidCollector = new PidCollector( pidCollectorMaxInMemory, pidCollectorTmpDir );
                 log.debug( "Query: {}", luceneQuery.toString() );
-                localSearcher.search( luceneQuery, fCollector );
-                results.addAll( fCollector.getResults() );
+                localSearcher.search( luceneQuery, pidCollector );
+                results = pidCollector.getResults();
             }
             finally
             {
                 if( null != localReader )
                 {
-                    // Release reference. reader will automatically close when noone holds a reference to them
+                    // Release reference. reader will automatically close when no-one holds a reference to them
                     localReader.decRef();
                 }
             }
@@ -700,20 +663,25 @@ public final class LuceneFieldIndex
         totalSearchTimeMS.addAndGet( time );
         searchesPerformed.incrementAndGet();
 
+        log.trace( "Size of result set: {}, time {} ms", results.size(), time );
+
+        /*
+        For this to be enabled, we need a method to (re)set cursor position on a
+        pid list!!!
 
         if( log.isTraceEnabled() )
         {
             log.trace( "Size of result set: {}, time {} ms", results.size(), time );
             int i = 1;
-            for( List<Pair<FedoraFieldName, String>> resultList : results )
+            String pid = results.getNextPid();
+            while( pid != null )
             {
-                log.trace( "result no i{}", i++ );
-                for( Pair<FedoraFieldName, String> resultPair : resultList )
-                {
-                    log.trace( "resultPair: <{}, {}>", resultPair.getFirst(), resultPair.getSecond() );
-                }
+                log.trace( "result no {} has PID {}", i++, pid );
+                pid = results.getNextPid();
             }
         }
+        */
+
         return results;
     }
 
@@ -721,22 +689,12 @@ public final class LuceneFieldIndex
      * For queries that are beforehand known to retrieve all (active) documents
      * from the index, this method can bypass the performance penalty of an
      * actual search, and simply return all documents from an IndexReader.
-     * @param resultFieldsList List of the fields that are wanted in the result
-     * @return The requested field value for all objects in the repository
+     * @return all PIDs in index as IPidList object
      * @throws IOException if IndexWriter or IndexReader throws an exception
      */
-    List<List<Pair<FedoraFieldName, String>>> getAll( final String[] resultFieldsList ) throws IOException
+    IPidList getAll() throws IOException
     {
-        List<List<Pair<FedoraFieldName, String>>> results = new LinkedList<List<Pair<FedoraFieldName, String>>>();
-
-        // KULMULE
-        // OLD:
-        // IndexReader reader = this.writer.getReader();
-        // NEW:
-        // note: the boolean should prefferbly be false.
-        //       See: http://lucene.apache.org/core/old_versioned_docs/versions/3_5_0/api/core/org/apache/lucene/index/IndexReader.html#open%28org.apache.lucene.index.IndexWriter,%20boolean%29
-        //IndexReader reader = IndexReader.open( this.writer, true );
-        // DONE
+        IPidList results = null;
 
         IndexReader localReader;
 
@@ -762,67 +720,27 @@ public final class LuceneFieldIndex
             localReader.incRef();
         }
 
-        Set<String> dubleteliminator = new HashSet<String>();
-
         try
         {
             int numDocs = localReader.numDocs();
             int numDelDocs = localReader.numDeletedDocs();
             log.debug( "getAll, reader has {} documents, {} deleted documents", numDocs, numDelDocs );
+            PidCollector pidCollector = new PidCollector( pidCollectorMaxInMemory, pidCollectorTmpDir );
+            pidCollector.setNextReader( localReader, 0 );
             for( int i = 0; i < numDocs+numDelDocs ; i++ )
             {
-                if (localReader.isDeleted( i))
+                if( localReader.isDeleted( i ) )
                 {
                     // Skip deleted documents
                     log.trace( "Skipping deleted document {}", i );
                     continue;
-                    /** todo: With this fix, dubleteliminator is probably not needed anymor. Dublettes may have been found
-                     * because both deleted and non-deleted documents were processed before */
                 }
-                Document doc = localReader.document( i );
+
                 log.trace( "Getting doc id {}", i );
-
-                List<Pair<FedoraFieldName, String>> resultPerPid = new LinkedList<Pair<FedoraFieldName, String>>();
-                String pidForResult = null;
-
-                for( String fieldName : resultFieldsList )
-                {
-                    // KULMULE
-                    // OLD:
-                    // Field resultField = doc.getField( fieldName.toLowerCase() );
-                    // NEW:
-                    // note: Is this used at all???
-                    Fieldable resultField = doc.getFieldable( fieldName.toLowerCase() );
-                    // DONE
-                    FedoraFieldName fedoraFieldName = FedoraFieldName.valueOf( fieldName.toUpperCase() );
-                    if( null == resultField )
-                    {
-                        // Ignore this. Many search results will not have all fields present. See also bug 12361
-                        //log.warn( "Field named '{}' could not be retrieved from the index Document", fieldName.toString() );
-                        continue;
-                    }
-
-                    String[] values = doc.getValues( fieldName.toString().toLowerCase() );
-
-                    if( fedoraFieldName == FedoraFieldName.PID && values.length > 0 )
-                    {
-                        pidForResult = values[0];
-                    }
-
-                    for ( String value : values )
-                    {
-                        resultPerPid.add( new Pair<FedoraFieldName, String>( fedoraFieldName, value ) );
-                    }
-                }
-
-                if( !dubleteliminator.contains( pidForResult ) )
-                {
-                    dubleteliminator.add( pidForResult );
-                    log.trace( "Putting results for pid {}: {}", pidForResult, resultPerPid );
-                    results.add( resultPerPid );
-                    pidForResult = null;
-                }
+                pidCollector.collect( i );
             }
+
+            results = pidCollector.getResults();
         }
         finally
         {
@@ -841,24 +759,6 @@ public final class LuceneFieldIndex
      */
     void closeIndex() throws IOException
     {
-        // this operation will use 2X the size of the index, so a check if this is at all possible is made here
-        // KULMULE
-        // OLD:
-        // if( canPerformOptimize() )
-        // {
-        //     this.writer.optimize();
-        // }
-        // NEW:
-        // note: There is no substitute for this method.
-        //       See: http://lucene.apache.org/core/old_versioned_docs/versions/3_5_0/api/core/org/apache/lucene/index/IndexWriter.html#optimize%28%29
-        //       See: https://issues.apache.org/jira/browse/LUCENE-3454
-        // if( canPerformOptimize() )
-        // {
-        //     this.writer.forceMerge( 1 );
-        // }
-
-        // DONE
-
         if( null != this.searcher )
         {
             this.searcher.close();
@@ -872,17 +772,6 @@ public final class LuceneFieldIndex
         {
             try
             {
-                // KULMULE
-                // OLD:
-                // if( IndexWriter.isLocked( this.writer.getDirectory() ) )
-                // {
-                //     IndexWriter.unlock( this.writer.getDirectory() );
-                // }
-                // NEW:
-                // Note: Apparently IndexWriter.unlock does not behave
-                // as it did in lucene 2.9.1. I shall have to look
-                // furter into this
-                // DONE
                 this.writer.close();
             } catch( AlreadyClosedException ex )
             {
@@ -1312,134 +1201,6 @@ public final class LuceneFieldIndex
         public String toString( final String field )
         {
             return String.format( "AllFieldsQuery<%s>", this.term );
-        }
-    }
-
-
-    /**
-     * This inner class implements the {@link org.apache.lucene.search.Collector}
-     * abstract class for providing the entire collection of search results,
-     * unsorted.
-     *
-     * For the RELPREDOBJ all field values will be included in the result. For
-     * all other fields only a single value is chosen, even in the case of
-     * multivalue fields.
-     */
-    private static class FieldCollector extends Collector
-    {
-
-        private final IndexSearcher indexsearcher;
-        private final String[] resultFields; //fields that should be returned
-        private List<List<Pair<FedoraFieldName, String>>> resultsList; //list of fields holding the results
-        private int docBase;
-
-        FieldCollector( final IndexSearcher searcher, final String[] resultFieldsList )//, final List<Pair<FedoraFieldName, String>> resultsList )
-        {
-            this.indexsearcher = searcher;
-            this.resultFields = resultFieldsList;
-            this.resultsList = new LinkedList<List<Pair<FedoraFieldName, String>>>();
-            log.trace( "Constructed a FieldCollector instance" );
-        }
-
-
-        @Override
-        public void setScorer( final Scorer scorer ) throws IOException
-        {
-            //we don't use this explicitely, but this method is called from the
-            //lucene framework and therefore we'll not throw an
-            //UnsupportedOperationException either.
-        }
-
-
-        @Override
-        public void collect( final int docId ) throws IOException
-        {
-            List<Pair<FedoraFieldName, String>> resultPerDoc = new LinkedList<Pair<FedoraFieldName, String>>();
-            int basedDocId = this.docBase + docId;
-            log.trace( "Collecting docId: {}", basedDocId );
-            Document doc = this.indexsearcher.doc( basedDocId );
-            if( null == doc )
-            {
-                log.warn( "Failed to retrieve Document for id {}", basedDocId );
-            }else
-            {
-                for( String resultFieldName : this.resultFields )
-                {
-                    resultFieldName = resultFieldName.toLowerCase();
-
-                    log.trace( "Trying to retrieve '{}' from the index Document", resultFieldName );
-                    // KULMULE
-                    // OLD:
-                    // Field resultField = doc.getField( resultFieldName );
-                    // NEW:
-                    Fieldable resultField = doc.getFieldable( resultFieldName );
-                    // DONE
-                    if( null == resultField )
-                    {
-                        log.warn( "Field named '{}' could not be retrieved from the index Document", resultFieldName );
-                        break;
-                    }
-                    String fieldName = resultField.name().toUpperCase();
-                    FedoraFieldName objFld = FedoraFieldName.valueOf( fieldName );
-
-                    String[] values;
-
-                    if ( objFld == FedoraFieldName.RELPREDOBJ || objFld == FedoraFieldName.RELOBJ)
-                    {
-                        // We need all RELPREDOBJ values to included in the
-                        // search result.
-                        //
-                        // Would it break anything if getValues() were to be
-                        // called unconditionally for all fields???
-
-                        values = doc.getValues( resultFieldName );
-                    }
-                    else
-                    {
-                        values = new String[1];
-                        values[0] = doc.get( resultFieldName );
-                    }
-
-                    for ( String value : values )
-                    {
-                        log.trace( "Found value {} in field {}", value, fieldName );
-
-                        if( value.isEmpty() )
-                        {
-                            log.info( "Empty value for field {}: will not be in resultset", fieldName );
-                        }
-                        else
-                        {
-                            log.debug( "Adding result pair <{},{}>", objFld, value );
-                            resultPerDoc.add( new Pair< FedoraFieldName, String>( objFld, value ) );
-                        }
-                    }
-                }
-                if( !resultPerDoc.isEmpty() )
-                {
-                    log.trace( "results from doc id {}: {}. Adding to resultsList", basedDocId, resultPerDoc.size() );
-                    this.resultsList.add( resultPerDoc );
-                }
-            }
-        }
-
-        public List<List<Pair<FedoraFieldName, String>>> getResults()
-        {
-            return this.resultsList;
-        }
-
-
-        @Override
-        public void setNextReader( final IndexReader reader, final int nextDocBase ) throws IOException
-        {
-            this.docBase = nextDocBase;
-        }
-
-
-        @Override
-        public boolean acceptsDocsOutOfOrder()
-        {
-            return true;
         }
     }
 }

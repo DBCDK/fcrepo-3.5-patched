@@ -21,9 +21,17 @@
 package dk.dbc.opensearch.fedora.search;
 
 
-import org.fcrepo.common.rdf.RDFName;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.WhitespaceAnalyzer;
+import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.NIOFSDirectory;
+import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.store.SimpleFSDirectory;
+import org.apache.lucene.util.Version;
 import org.fcrepo.server.Module;
 import org.fcrepo.server.Server;
+import org.fcrepo.server.errors.GeneralException;
 import org.fcrepo.server.errors.InvalidStateException;
 import org.fcrepo.server.errors.ModuleInitializationException;
 import org.fcrepo.server.errors.ModuleShutdownException;
@@ -34,36 +42,17 @@ import org.fcrepo.server.search.FieldSearchQuery;
 import org.fcrepo.server.search.FieldSearchResult;
 import org.fcrepo.server.storage.DOManager;
 import org.fcrepo.server.storage.DOReader;
-import org.fcrepo.server.storage.types.DatastreamXMLMetadata;
+import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.RelationshipTuple;
-import org.fcrepo.server.utilities.DCField;
 import org.fcrepo.server.utilities.DCFields;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.TimeZone;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.WhitespaceAnalyzer;
-import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.NIOFSDirectory;
-import org.apache.lucene.store.RAMDirectory;
-import org.apache.lucene.store.SimpleFSDirectory;
-import org.apache.lucene.util.Version;
 
 
 /**
@@ -101,7 +90,13 @@ public final class FieldSearchLucene extends Module implements FieldSearch
     private DOManager doManager;
     private static final Logger log = LoggerFactory.getLogger( FieldSearchLucene.class );
 
+    public int resultLifeTimeInSeconds;
+    private LuceneFieldIndex luceneindexer;
     private FieldSearchLuceneImpl fsl;
+    private FieldSearchResultCache cache;
+
+    private int pidCollectorMaxInMemory;
+    private File pidCollectorTmpDir = null;
 
     /**
      * Constructor for initializing the FieldSearch module. The server will
@@ -132,7 +127,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         String version = this.getClass().getPackage().getImplementationVersion();
         log.info( "Running FieldSearchLucene version {}", version );
 
-        // doManager        
+        // doManager
         doManager = (DOManager) getServer().getModule( "org.fcrepo.server.storage.DOManager" );
         if( null == doManager )
         {
@@ -150,7 +145,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
             log.error( error );
             throw new ModuleInitializationException( error, getRole() );
         }
-        int resultLifeTimeInSeconds = Integer.parseInt( resultLifetime );
+        this.resultLifeTimeInSeconds = Integer.parseInt( resultLifetime );
         log.debug( "resultLifeTimeInSeconds = {}", resultLifetime );
 
         // luceneWriteLockTimeout
@@ -176,7 +171,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         try
         {
             directory = initializeDirectoryString( sDirectory );
-        } 
+        }
         catch( IOException ex )
         {
             String error = String.format( "FATAL: Could not initialize lucene directory '%s': %s", sDirectory, ex.getMessage() );
@@ -185,19 +180,26 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         }
         log.debug( "LuceneDirectory: {}", sDirectory );
 
+        // PidCollector
+        initializePidCollectorSettings();
+
         // luceneindexer
         Analyzer analyzer = new WhitespaceAnalyzer( Version.LUCENE_35 );
         try
         {
-            fsl = new FieldSearchLuceneImpl( luceneWriteLockTimeout, analyzer, directory, resultLifeTimeInSeconds );
-        } 
+            this.luceneindexer = new LuceneFieldIndex( luceneWriteLockTimeout, analyzer, directory, pidCollectorMaxInMemory, pidCollectorTmpDir );
+            log.trace( "Constructed LuceneIndex instance" );
+        }
         catch( IOException ex )
         {
-            log.error( "FATAL:", ex );
-            throw new ModuleInitializationException( ex.getMessage(), this.role, ex );
+            String error = "FATAL: Could not initialize lucene indexer";
+            log.error( error );
+            throw new ModuleInitializationException( error, getRole(), ex );
         }
-        log.trace( "Constructed LuceneIndex instance" );
 
+        fsl = new FieldSearchLuceneImpl( luceneindexer );
+        cache = new FieldSearchResultCache( resultLifeTimeInSeconds );
+        cache.start();
     }
 
 
@@ -217,19 +219,8 @@ public final class FieldSearchLucene extends Module implements FieldSearch
 
         DCFields dcFields = null;
         Date dcmCreatedDate = null;
-        DatastreamXMLMetadata dcmd = null;
-        try
-        {
-            dcmd = (DatastreamXMLMetadata) reader.GetDatastream( "DC", null );
-            log.debug( "Retrieved Dublin Core metadata from digital object" );
-        } 
-        catch( ClassCastException cce )
-        {
-            String pid = objectPID;
-            String error = String.format( "Object %s has a DC datastream, but it's not inline XML.", pid );
-            log.error( error, cce );
-            log.warn( "This means that the object with pid {} will have no dc values indexed", pid );
-        }
+        Datastream dcmd = reader.GetDatastream( "DC", null );
+        log.debug( "Retrieved Dublin Core metadata from digital object" );
         if( null != dcmd )
         {
             dcFields = new DCFields( dcmd.getContentStream() );
@@ -259,7 +250,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
                              dcFields,
                              dcmCreatedDate,
                              relations );
-        } 
+        }
         catch( CorruptIndexException ex )
         {
             // because of insufficient information on this exception type, the
@@ -269,7 +260,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
             String error = String.format( "FATAL: Could not write fields to index: %s", ex.getMessage() );
             log.error( error, ex );
             throw new InvalidStateException( error );
-        } 
+        }
         catch( IOException ex )
         {
             // because of insufficient information on this exception type, the
@@ -306,7 +297,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
     /**
      * Find {@link FedoraFieldName object resultFields} filtered by {@code resultFields}, limited
      * by {@code maxResults} and specified by the {@code FieldSearchQuery} object.
-     * 
+     *
      * @param returnFields the resultFields for which values should be returned
      * @param maxResults maximum number of hits for each of the resultFields in {@code resultFields}
      * @param fsq the query, wrapped in a {@code FieldSearchQuery} object
@@ -328,22 +319,22 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         }
 
         log.trace( "Retrieving search result" );
-        FieldSearchResult fsr = new FieldSearchResultLucene( this.fsl.luceneindexer, this.doManager, validReturnFields, fsq, maxResults, this.fsl.resultLifeTimeInSeconds );
+        FieldSearchResultLucene fsr;
+        try
+        {
+            fsr = new FieldSearchResultLucene( this.luceneindexer, this.doManager, validReturnFields, fsq, maxResults, resultLifeTimeInSeconds );
+        }
+        catch( IOException e )
+        {
+            throw new GeneralException( "Unable to create FieldSearchResult", e );
+        }
 
         String currentToken = fsr.getToken();
 
         if( null != currentToken ) //no more search results
         {
             log.debug( "Caching result with token '{}'", currentToken );
-            FieldSearchResult previousValue = this.fsl.cachedResult.putIfAbsent( currentToken, fsr );
-            if( null != previousValue )
-            {
-                log.debug( "Replaced FieldSearchResult with token {} in cache with FieldSearchResult with token {}", previousValue.getToken(), currentToken );
-            }
-            else
-            {
-                log.debug( "No cached results for token {} found", currentToken );
-            }
+            cache.putCachedResult( currentToken, fsr );
         }
 
         log.trace( "Returning new search result from findObjects" );
@@ -356,40 +347,34 @@ public final class FieldSearchLucene extends Module implements FieldSearch
     @Override
     public FieldSearchResult resumeFindObjects( final String token ) throws ServerException
     {
-        log.trace( "Entering resumingFindObjects" );
-        if( !this.fsl.cachedResult.containsKey( token ) )
+        log.trace( "Entering resumingFindObjects with token {}", token );
+
+        FieldSearchResultLucene cachedFsr = cache.getCachedResult( token );
+        if( null == cachedFsr )
         {
-            String error = "Session is expired or never existed.";
+            String error = String.format( "Session is for token '%s' expired or never existed.", token );
             log.error( error );
             throw new UnknownSessionTokenException( error );
         }
 
-        FieldSearchResultLucene cachedFsr = ( (FieldSearchResultLucene) this.fsl.cachedResult.get( token ) );
-        if( null == cachedFsr )
+        FieldSearchResultLucene fsr;
+        try
         {
-            String error = String.format( "The token %s should refer to a cached result, but none was available", token );
-            log.error( error );
-            throw new IllegalStateException( error );
+            fsr = cachedFsr.stepAndCacheResult();
+        }
+        catch( IOException e )
+        {
+            throw new GeneralException( "Unable to create FieldSearchResult", e );
         }
 
-        FieldSearchResult fsr = cachedFsr.stepAndCacheResult();
-
-        this.fsl.cachedResult.remove( token );
+        cache.removeCachedResult( token );
 
         String currentToken = fsr.getToken();
 
         if( null != currentToken ) //no more search results
         {
             log.debug( "Caching result with token '{}'", currentToken );
-            FieldSearchResult previousValue = this.fsl.cachedResult.putIfAbsent( currentToken, fsr );
-            if( null != previousValue )
-            {
-                log.debug( "Replaced FieldSearchResult with token {} in cache with FieldSearchResult with token {}", previousValue.getToken(), currentToken );
-            }
-            else
-            {
-                log.debug( "No cached results for token {} found", currentToken );
-            }
+            cache.putCachedResult( currentToken, fsr );
         }
 
         log.debug( "Retrieved and returning cached result" );
@@ -407,11 +392,11 @@ public final class FieldSearchLucene extends Module implements FieldSearch
     {
         try
         {
-            this.fsl.shutdown();
-        } 
+            this.cache.shutdown();
+            this.luceneindexer.closeIndex();
+        }
         catch( IOException ex )
         {
-            // todo: This same string is in FieldSearchLuceneImpl.shutdown();
             String error = String.format( "Failed to shutdown the index properly. This means that the index could still be locked and/or in an unstable state. Please do a manual check." );
             log.error( error, ex );
             throw new ModuleShutdownException( error, role, ex );
@@ -461,7 +446,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
                     throw new ModuleInitializationException( String.format( "parameter %s is not a valid value", directoryName ), getRole() );
                 }
                 log.debug( "Returning a {} instance, at {}", directoryName, location.getAbsolutePath() );
-            } 
+            }
             catch( IOException ex )
             {
                 String error = String.format( "FATAL: Could not initialize instance of %s", directoryName );
@@ -478,4 +463,60 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         return directory;
     }
 
+    private void initializePidCollectorSettings() throws ModuleInitializationException
+    {
+        String pidCollectorMaxInMemoryParam = getParameter( "pidCollectorMaxInMemory" );
+        if( pidCollectorMaxInMemoryParam == null || pidCollectorMaxInMemoryParam.equals( "" ) )
+        {
+            log.info( "pidCollectorMaxInMemory parameter not set, assuming a value of {}", Integer.MAX_VALUE );
+            pidCollectorMaxInMemory = Integer.MAX_VALUE;
+        }
+        else
+        {
+            try
+            {
+                pidCollectorMaxInMemory = Integer.parseInt( pidCollectorMaxInMemoryParam );
+            }
+            catch( NumberFormatException e )
+            {
+                String errMsg = String.format( "FATAL: pidCollectorMaxInMemory parameter '%s' is not a valid integer",
+                        pidCollectorMaxInMemoryParam );
+                log.error( errMsg );
+                throw new ModuleInitializationException( errMsg, getRole(), e );
+            }
+        }
+
+        log.info( "Using pidCollectorMaxInMemory: {}", pidCollectorMaxInMemory );
+
+        if( pidCollectorMaxInMemory < Integer.MAX_VALUE )
+        {
+            String pidCollectorTmpDirParam = getParameter( "pidCollectorTmpDir" );
+            if( pidCollectorTmpDirParam == null || pidCollectorTmpDirParam.equals( "" ) )
+            {
+                String errMsg = "FATAL: pidCollectorTmpDir parameter must be set";
+                log.error( errMsg );
+                throw new ModuleInitializationException( errMsg, getRole() );
+            }
+
+            pidCollectorTmpDir = new File( pidCollectorTmpDirParam );
+
+            if( !pidCollectorTmpDir.isDirectory() )
+            {
+                if( !pidCollectorTmpDir.mkdirs() )
+                {
+                    String errMsg = String.format( "FATAL: unable to create PidCollector tmp dir '%s'",
+                            pidCollectorTmpDir.getAbsolutePath() );
+                    log.error( errMsg );
+                    throw new ModuleInitializationException( errMsg, getRole() );
+                }
+            }
+
+            if( pidCollectorTmpDir.list().length > 0 )
+            {
+                log.warn( "PidCollector tmp dir '{}' is non-empty", pidCollectorTmpDir.getAbsolutePath() );
+            }
+
+            log.info( "Using pidCollectorTmpDir: {}", pidCollectorTmpDir );
+        }
+    }
 }

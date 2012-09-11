@@ -407,8 +407,8 @@ public class FieldSearchServlet
                         appendXML("cDate", f.getCDate(), formatter, xmlBuf);
                         appendXML("mDate", f.getMDate(), formatter, xmlBuf);
                         appendXML("dcmDate", f.getDCMDate(), formatter, xmlBuf);
-                        appendXML("relObj", f.getRelObj(), xmlBuf);
-                        appendXML("relPredObj", f.getRelPredObj(), xmlBuf);
+                        appendXML("relObj", f.relObjs(), xmlBuf);
+                        appendXML("relPredObj", f.relPredObjs(), xmlBuf);
                         appendXML("title", f.titles(), xmlBuf);
                         appendXML("creator", f.creators(), xmlBuf);
                         appendXML("subject", f.subjects(), xmlBuf);
@@ -457,9 +457,9 @@ public class FieldSearchServlet
                                             .format(f.getDCMDate()));
                                 }
                             } else if (l.equalsIgnoreCase("relObj")) {
-                                html.append(f.getRelObj());
+                                html.append(f.relObjs());
                             } else if (l.equalsIgnoreCase("relPredObj")) {
-                                html.append(f.getRelPredObj());
+                                html.append(f.relPredObjs());
                             } else if (l.equalsIgnoreCase("title")) {
                                 html.append(getList(f.titles()));
                             } else if (l.equalsIgnoreCase("creator")) {
