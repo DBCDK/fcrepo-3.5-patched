@@ -127,7 +127,6 @@ public final class LuceneFieldIndex
         // They are information about the writers buffered documents, not search cache information
         //int getNumRamDocs();
         //long getRamSizeInBytes();
-        long getUniqueTermCount() throws IOException;
 
         void forceMerge() throws IOException, IllegalArgumentException;
     }
@@ -167,16 +166,6 @@ public final class LuceneFieldIndex
         {
             return writer.ramSizeInBytes();
         }
-
-        public long getUniqueTermCount() throws IOException
-        {
-            long count = 0;
-            for ( IndexReader sub : reader.getSequentialSubReaders() )
-            {
-                count += sub.getUniqueTermCount();
-            }
-            return count;
-        }
     }
 
     public static interface LuceneFieldIndexMonitorMBean
@@ -189,6 +178,8 @@ public final class LuceneFieldIndex
 
         long getLastSearchTimeMS();
         long getAverageSearchTimeMS();
+        long getLastIndexTimeMS();
+        long getAverageIndexTimeMS();
 
         void resetCounters();
     }
@@ -237,6 +228,20 @@ public final class LuceneFieldIndex
             long count = searchesPerformed.get();
 
             return (count == 0 ) ? 0 : totalSearchTimeMS.get() / count;
+        }
+
+        @Override
+        public long getLastIndexTimeMS()
+        {
+            return lastIndexTimeMS;
+        }
+
+        @Override
+        public long getAverageIndexTimeMS()
+        {
+            long count = documentsIndexed.get();
+
+            return (count == 0 ) ? 0 : totalIndexTimeMS.get() / count;
         }
 
         @Override
@@ -385,6 +390,8 @@ public final class LuceneFieldIndex
     private final AtomicLong searchesPerformed = new AtomicLong();
     private final AtomicLong totalSearchTimeMS = new AtomicLong();
     private volatile long lastSearchTimeMS = 0;
+    private final AtomicLong totalIndexTimeMS = new AtomicLong();
+    private volatile long lastIndexTimeMS = 0;
 
     LuceneFieldIndex( final long indexWriterLockTimeout, final Analyzer analyzer, final Directory luceneDirectory, int pidCollectorMaxInMemory, File pidCollectorTmpDir ) throws IOException
     {
@@ -545,15 +552,16 @@ public final class LuceneFieldIndex
             this.writer.commit();
             log.trace( "Done Committing." );
 
+            long indexTimeNs = System.nanoTime() - startTimeNs ;
+            long indexTimeMs = (indexTimeNs + extractTimeNs ) / 1000000;
+            lastIndexTimeMS = indexTimeMs;
+            totalIndexTimeMS.addAndGet( indexTimeMs  );
+
             if ( count % 1000 == 0)
             {
-                long indexTimeNs = System.nanoTime() - startTimeNs ;
-
-
                 // Log as microseconds
                 log.info( String.format( "HANDLE Timing: indexFields(). Extracing data: %d µs, Indexing document: %d µs, Total %d µs.",
                         extractTimeNs / 1000, indexTimeNs / 1000, ( extractTimeNs + indexTimeNs ) / 1000 ) );
-
             }
         }
     }
