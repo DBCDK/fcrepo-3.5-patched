@@ -457,9 +457,9 @@ public class FieldSearchServlet
                                             .format(f.getDCMDate()));
                                 }
                             } else if (l.equalsIgnoreCase("relObj")) {
-                                html.append(f.relObjs());
+                                html.append(getList(f.relObjs()));
                             } else if (l.equalsIgnoreCase("relPredObj")) {
-                                html.append(f.relPredObjs());
+                                html.append(getList(f.relPredObjs()));
                             } else if (l.equalsIgnoreCase("title")) {
                                 html.append(getList(f.titles()));
                             } else if (l.equalsIgnoreCase("creator")) {
