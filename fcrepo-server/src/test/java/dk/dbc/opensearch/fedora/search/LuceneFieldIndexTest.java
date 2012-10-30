@@ -21,6 +21,9 @@ package dk.dbc.opensearch.fedora.search;
 
 
 import org.apache.lucene.analysis.WhitespaceAnalyzer;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.Version;
 import org.fcrepo.server.errors.InvalidOperatorException;
@@ -86,12 +89,14 @@ public class LuceneFieldIndexTest {
     public void setup() throws Exception
     {
         fsdir = FSDirectory.open( new File( indexLocation ) );
-        // KULMULE
-        // OLD:
-        // instance = new LuceneFieldIndex( 1000L, new WhitespaceAnalyzer(), fsdir );
-        // NEW:
-        instance = new LuceneFieldIndex( 1000L, new WhitespaceAnalyzer( Version.LUCENE_35 ), fsdir, PID_COLLECTOR_MAX_IN_MEMORY, PID_COLLECTOR_TMP_DIR );
-        // DONE
+        TieredMergePolicy tieredMergePolicy = new TieredMergePolicy();
+        IndexWriterConfig conf = new IndexWriterConfig( Version.LUCENE_35, new WhitespaceAnalyzer( Version.LUCENE_35 ) ).
+                setWriteLockTimeout( 1000L ).
+                setMergePolicy( tieredMergePolicy );
+        IndexWriter writer = new IndexWriter( fsdir, conf );
+
+        instance = new LuceneFieldIndex( writer, tieredMergePolicy,
+                PID_COLLECTOR_MAX_IN_MEMORY, PID_COLLECTOR_TMP_DIR, null );
     }
 
     @After
@@ -103,7 +108,6 @@ public class LuceneFieldIndexTest {
         {
             f.delete();
         }
-
     }
 
     @AfterClass

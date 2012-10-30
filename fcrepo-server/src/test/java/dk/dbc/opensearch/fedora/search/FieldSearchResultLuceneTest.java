@@ -42,17 +42,16 @@ import mockit.Mocked;
 import mockit.NonStrictExpectations;
 
 import org.apache.lucene.analysis.SimpleAnalyzer;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.util.Version;
 
 import org.junit.Before;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
-
-// KULMULE
-// NEW:
-// Note: this should be moved into the other imports above
-import org.apache.lucene.util.Version;;
 
 /**
  *
@@ -89,12 +88,14 @@ public class FieldSearchResultLuceneTest
     @Before
     public void setUp() throws Exception
     {
-        // KULMULE
-        // OLD:
-        // indexer = new LuceneFieldIndex( 1000L, new SimpleAnalyzer(), new RAMDirectory() );
-        // NEW:
-        indexer = new LuceneFieldIndex( 1000L, new SimpleAnalyzer( Version.LUCENE_35 ), new RAMDirectory(), PID_COLLECTOR_MAX_IN_MEMORY, PID_COLLECTOR_TMP_DIR );
-        // DONE
+        TieredMergePolicy tieredMergePolicy = new TieredMergePolicy();
+        IndexWriterConfig conf = new IndexWriterConfig( Version.LUCENE_35, new SimpleAnalyzer( Version.LUCENE_35 ) ).
+                setWriteLockTimeout( 1000L ).
+                setMergePolicy( tieredMergePolicy );
+        IndexWriter writer = new IndexWriter( new RAMDirectory(), conf );
+
+        indexer = new LuceneFieldIndex( writer, tieredMergePolicy,
+                PID_COLLECTOR_MAX_IN_MEMORY, PID_COLLECTOR_TMP_DIR, null );
     }
 
 
@@ -208,7 +209,7 @@ public class FieldSearchResultLuceneTest
         long cursor = result.getCursor();
 	int length = result.objectFieldsList().size();
 
-        assertEquals( 0, cursor ); 
+        assertEquals( 0, cursor );
 	assertEquals( maxResults, length );
     }
 

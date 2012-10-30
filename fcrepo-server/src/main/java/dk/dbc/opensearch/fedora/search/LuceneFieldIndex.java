@@ -20,7 +20,6 @@
 package dk.dbc.opensearch.fedora.search;
 
 
-import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.Field.Index;
@@ -28,8 +27,6 @@ import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.document.NumericField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.MergePolicy;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.queryParser.ParseException;
@@ -42,9 +39,6 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
 import org.apache.lucene.store.AlreadyClosedException;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.FSDirectory;
-import org.apache.lucene.util.Version;
 import org.fcrepo.server.search.Condition;
 import org.fcrepo.server.search.FieldSearchQuery;
 import org.fcrepo.server.search.Operator;
@@ -79,7 +73,7 @@ public final class LuceneFieldIndex
      * 2. Using an IndexWriterPool for handling multiple requesting threads, and at favourable times merging the indices.
      */
     private static final Logger log = LoggerFactory.getLogger( LuceneFieldIndex.class );
-    private IndexWriter writer;
+    private final IndexWriter writer;
 
     private IndexReader reader = null;
     private IndexSearcher searcher = null;
@@ -87,8 +81,6 @@ public final class LuceneFieldIndex
     private final int pidCollectorMaxInMemory;
     private final File pidCollectorTmpDir;
 
-    private final long writeLockTimeout;
-    private final Directory directory;
     /** Searches on dates cannot precede Sat Jan 01 2000 00:00:00 GMT+0100 (CET). */
     private static final long earliest_date_searchable = 946681200L;
     /** Searches on dates cannot succeed Wed Jan 01 2050 00:00:00 GMT+0100 (CET). */
@@ -116,7 +108,7 @@ public final class LuceneFieldIndex
      */
     private final static char FIELDSTART = '^';
     private final static char FIELDEND = '$';
-
+    private final WriteAheadLog wal;
 
     public static interface IndexMonitorMBean
     {
@@ -135,16 +127,10 @@ public final class LuceneFieldIndex
     {
         public void forceMerge() throws IOException, IllegalArgumentException
         {
-            if( LuceneFieldIndex.this.canPerformOptimize() )
-            {
-                log.info( "Performing forced merge of segments" );
-                LuceneFieldIndex.this.writer.forceMerge( 1 );
-                log.info( "Forced merge of segments completed" );
-            }
-            else
-            {
-                throw new IllegalArgumentException( "Not enough space to perform optimization" );
-            }
+            log.info( "Performing forced merge of segments" );
+            LuceneFieldIndex.this.writer.forceMerge( 1 );
+            LuceneFieldIndex.this.writer.commit();
+            log.info( "Forced merge of segments completed" );
         }
 
         public int getNumDocs() throws IOException
@@ -393,15 +379,14 @@ public final class LuceneFieldIndex
     private final AtomicLong totalIndexTimeMS = new AtomicLong();
     private volatile long lastIndexTimeMS = 0;
 
-    LuceneFieldIndex( final long indexWriterLockTimeout, final Analyzer analyzer, final Directory luceneDirectory, int pidCollectorMaxInMemory, File pidCollectorTmpDir ) throws IOException
+    LuceneFieldIndex( IndexWriter writer, TieredMergePolicy mergePolicy,
+            int pidCollectorMaxInMemory, File pidCollectorTmpDir,
+            WriteAheadLog wal) throws IOException
     {
-        this.writeLockTimeout = indexWriterLockTimeout;
-        this.directory = luceneDirectory;
+        this.writer = writer;
+        this.wal = wal;
         this.pidCollectorMaxInMemory = pidCollectorMaxInMemory;
         this.pidCollectorTmpDir = pidCollectorTmpDir;
-        TieredMergePolicy mergePolicy = new TieredMergePolicy();
-
-        openWriter( analyzer, mergePolicy );
 
         // Register the JMX monitoring bean
         try
@@ -416,46 +401,15 @@ public final class LuceneFieldIndex
         {
             log.error( "Unable to register monitor. JMX Monitoring will be unavailable", ex);
         }
-    }
-
-    void openWriter( final Analyzer analyzer, final MergePolicy mergePolicy ) throws IllegalStateException, IOException
-    {
-        log.debug( "openWriter called" );
-
-        if( null == this.directory || null == analyzer )
-        {
-            String error = "Cannot open an IndexWriter without a Directory or an Analyzer";
-            throw new IllegalStateException( error );
-        }
-        if( null != this.writer )
-        {
-            try
-            {
-                closeIndex();
-            } catch( IOException ex )
-            {
-                String error = String.format( "Index cannot be closed. Unable to open a new IndexWriter, %s", ex.getMessage() );
-                log.error( error, ex );
-                throw new IllegalStateException( error, ex );
-            }
-        }
-        // KULMULE
-        // OLD:
-        // this.writer = new IndexWriter( this.directory, analyzer, IndexWriter.MaxFieldLength.LIMITED );
-        // this.writer.setWriteLockTimeout( this.writeLockTimeout );
-        // NEW:
-        // note: I have not dedicated time to substitute IndexWriter.MaxFieldLength.LIMITED,
-        //       even though it is specified how here:
-        //       http://lucene.apache.org/core/old_versioned_docs/versions/3_5_0/api/core/index.html
-        IndexWriterConfig conf = new IndexWriterConfig( Version.LUCENE_35, analyzer ).setWriteLockTimeout( this.writeLockTimeout ).
-                setMergePolicy( mergePolicy );
-        this.writer = new IndexWriter( this.directory, conf );
-        // DONE
-        this.reader = IndexReader.open( this.writer, false );
+        this.reader = IndexReader.open( this.writer, true );
         this.searcher = new IndexSearcher( reader );
         newSearchersCreated.incrementAndGet();
-    }
 
+        if ( this.wal != null )
+        {
+            wal.initialize();
+        }
+    }
 
     void indexFields( final List<Pair<FedoraFieldName, String>> fieldList, long extractTimeNs ) throws IOException
     {
@@ -544,13 +498,24 @@ public final class LuceneFieldIndex
                 throw new IllegalStateException( "IndexWriter could not be retrieved." );
             }
             log.trace( "Adding document {}", doc );
-            // this.writer.addDocument( doc );
-	    Term term = new Term( "pid", pid );
-	    this.writer.updateDocument( term, doc );
-            log.trace( "Committing {} docs", this.writer.numRamDocs() );
-            log.trace( "Documents in index: {} docs", this.writer.numDocs() );
-            this.writer.commit();
-            log.trace( "Done Committing." );
+
+            if ( this.wal == null )
+            {
+                Term term = new Term( "pid", pid );
+                this.writer.updateDocument( term, doc );
+                // numRamDocs and numDocs are synchronized, so avoid calling them if possible
+                if ( log.isTraceEnabled() )
+                {
+                    log.trace( "Committing {} docs", this.writer.numRamDocs() );
+                    log.trace( "Documents in index: {} docs", this.writer.numDocs() );
+                }
+                this.writer.commit();
+                log.trace( "Done Committing." );
+            }
+            else
+            {
+                wal.updateDocument( pid, doc );
+            }
 
             long indexTimeNs = System.nanoTime() - startTimeNs ;
             long indexTimeMs = (indexTimeNs + extractTimeNs ) / 1000000;
@@ -572,8 +537,6 @@ public final class LuceneFieldIndex
         documentsDeleted.incrementAndGet();
 
         log.trace( "Entering removeDocument" );
-        //Term term = new Term( "pid", FIELDSTART + uid + FIELDEND );
-        Term term = new Term( "pid", uid );
 
         if( null == this.writer )
         {
@@ -581,13 +544,30 @@ public final class LuceneFieldIndex
         }
 
         log.debug( "Removing document referenced by {}", uid );
-        log.trace( "Documents in index before delete: {}", this.writer.numDocs() );
-        log.trace( "Deleting doc with term {}", term );
-        this.writer.deleteDocuments( term );
-        log.trace( "Documents in index after delete: {}", this.writer.numDocs() );
-        log.trace( "Commiting {} docs", this.writer.numRamDocs() );
 
-        this.writer.commit();
+        // numDocs is synchronized, so avoid calling it if possible
+        if ( log.isTraceEnabled() )
+        {
+            log.trace( "Documents in index before delete: {}", this.writer.numDocs() );
+        }
+        if ( this.wal == null )
+        {
+            Term term = new Term( "pid", uid );
+            log.trace( "Deleting doc with term {}", term );
+            this.writer.deleteDocuments( term );
+            log.trace( "Commiting {} docs", this.writer.numRamDocs() );
+            this.writer.commit();
+        }
+        else
+        {
+            wal.deleteDocument( uid );
+        }
+        // numDocs is synchronized, so avoid calling it if possible
+        if ( log.isTraceEnabled() )
+        {
+            log.trace( "Documents in index after delete: {}", this.writer.numDocs() );
+        }
+
     }
 
 
@@ -628,11 +608,11 @@ public final class LuceneFieldIndex
             {
                 synchronized (this)
                 {
-                    IndexReader newReader = IndexReader.openIfChanged( reader, this.writer, false );
+                    IndexReader newReader = IndexReader.openIfChanged( reader, this.writer, true );
                     if ( newReader != null )
                     {
                         log.debug( "Reader has changed. Creating new reader and searcher.");
-                        // Release reference to old reader. reader will automatically close when reference count reaches 0
+                        // Release reference to old reader. reader will automatically shutdown when reference count reaches 0
                         reader.decRef();
                         reader = newReader;
                         searcher = new IndexSearcher( reader );
@@ -649,8 +629,12 @@ public final class LuceneFieldIndex
                     localSearcher = searcher;
                 }
                 // DONE
-                log.trace( "number of deleted documents in reader: {}", localReader.numDeletedDocs() );
-                log.trace( "number of documents in reader: {}", localReader.numDocs() );
+                // numDeletedDocs and numDocs are synchronized, so avoid calling them if possible
+                if ( log.isTraceEnabled() )
+                {
+                    log.trace( "number of deleted documents in reader: {}", localReader.numDeletedDocs() );
+                    log.trace( "number of documents in reader: {}", localReader.numDocs() );
+                }
                 final PidCollector pidCollector = new PidCollector( pidCollectorMaxInMemory, pidCollectorTmpDir );
                 log.debug( "Query: {}", luceneQuery.toString() );
                 localSearcher.search( luceneQuery, pidCollector );
@@ -660,7 +644,7 @@ public final class LuceneFieldIndex
             {
                 if( null != localReader )
                 {
-                    // Release reference. reader will automatically close when no-one holds a reference to them
+                    // Release reference. reader will automatically shutdown when no-one holds a reference to them
                     localReader.decRef();
                 }
             }
@@ -708,11 +692,11 @@ public final class LuceneFieldIndex
 
         synchronized (this)
         {
-            IndexReader newReader = IndexReader.openIfChanged( reader, this.writer, false );
+            IndexReader newReader = IndexReader.openIfChanged( reader, this.writer, true );
             if ( newReader != null )
             {
                 log.debug( "Reader has changed. Creating new reader and searcher.");
-                // Release reference to old reader. reader will automatically close when reference couunt reaches 0
+                // Release reference to old reader. reader will automatically shutdown when reference couunt reaches 0
                 reader.decRef();
                 reader = newReader;
                 searcher = new IndexSearcher( reader );
@@ -759,7 +743,7 @@ public final class LuceneFieldIndex
     }
 
     /**
-     * Tries to close all operations on the index and unlock the directory if
+     * Tries to shutdown all operations on the index and unlock the directory if
      * it is still locked. This method is non-reentrant and should only be used
      * on server shutdown.
      *
@@ -775,6 +759,10 @@ public final class LuceneFieldIndex
         {
             this.reader.close();
         }
+        if ( wal != null )
+        {
+            wal.shutdown();
+        }
 
         if( null != this.writer )
         {
@@ -787,45 +775,6 @@ public final class LuceneFieldIndex
             }
         }
     }
-
-    // KULMULE
-    // It seems like all use of this method has been removed through
-    // deprecation of optimize(). See above.
-    // If this method is enabled again, please notice that it contains
-    // a deprecated method (getFile)
-    // OLD:
-    /**
-     * Only FSDirectory and subclasses can return true within the
-     * bounds of this method.
-     */
-    private boolean canPerformOptimize()
-    {
-        if( !(this.directory instanceof FSDirectory) )
-        {
-            return false;
-        }
-
-        File f = null;
-        long avail = 0L;
-        long needed = 0L;
-        f = ((FSDirectory) this.directory).getFile();
-        long dirSize = 0L;
-        for( File a : f.listFiles() )
-        {
-            dirSize += a.length();
-        }
-        avail = f.getUsableSpace();
-        needed = dirSize * 2;
-        if( needed > avail )
-        {
-            log.info( "Need {} bytes for optimization, only have {}", needed, avail );
-            return false;
-        }
-        log.debug( "Need {} bytes for optimization, have {}", needed, avail );
-        return true;
-    }
-    // NEW:
-    // DONE
 
     private Query constructQuery( final FieldSearchQuery fsq ) throws ParseException
     {

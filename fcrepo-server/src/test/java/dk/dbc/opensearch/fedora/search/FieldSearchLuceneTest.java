@@ -46,6 +46,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import mockit.Delegate;
 import mockit.Expectations;
 import mockit.Mock;
 import mockit.MockClass;
@@ -81,7 +82,6 @@ public class FieldSearchLuceneTest {
     @Before
     public void setUp() throws ModuleInitializationException, ServerException {
 
-
         final Map<String, String> params = new HashMap<String,String>();
         params.put( "writeLockTimeout", "1000");
         params.put( "resultLifetime", "10" );
@@ -92,10 +92,14 @@ public class FieldSearchLuceneTest {
 
         new NonStrictExpectations( )
         {{
-                parm.getParameter( "writeLockTimeout" ); returns( "1000" );
-                parm.getParameter( "luceneDirectory" ); returns( "RAMDirectory" );
-                parm.getParameter( "defaultAnalyzer"); returns( "SimpleAnalyzer" );
-                parm.getParameter( "resultLifetime" ); returns( "10" );
+                parm.getParameter( anyString ); returns( new Delegate()
+                    {
+                        public String getParameter( String key)
+                        {
+                            return params.get( key );
+                        }
+                    }
+                ) ;
                 mod.getServer(); returns( server );
                 server.getModule( "org.fcrepo.server.storage.DOManager" ); returns( domanager );
         }};

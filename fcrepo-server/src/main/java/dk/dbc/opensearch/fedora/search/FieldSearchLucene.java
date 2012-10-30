@@ -53,6 +53,9 @@ import java.io.IOException;
 import java.util.Date;
 import java.util.Map;
 import java.util.Set;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.TieredMergePolicy;
 
 
 /**
@@ -97,6 +100,10 @@ public final class FieldSearchLucene extends Module implements FieldSearch
 
     private int pidCollectorMaxInMemory;
     private File pidCollectorTmpDir = null;
+
+    private File writeAheadLogDir = null;
+    private int writeAheadLogCommitSize;
+    private boolean writeAheadLogKeepFileOpen = true;
 
     /**
      * Constructor for initializing the FieldSearch module. The server will
@@ -183,11 +190,21 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         // PidCollector
         initializePidCollectorSettings();
 
+        // Write Ahead Log
+        initializeWriteAheadLogSettings();
+
         // luceneindexer
         Analyzer analyzer = new WhitespaceAnalyzer( Version.LUCENE_35 );
+
+        TieredMergePolicy mergePolicy = new TieredMergePolicy();
         try
         {
-            this.luceneindexer = new LuceneFieldIndex( luceneWriteLockTimeout, analyzer, directory, pidCollectorMaxInMemory, pidCollectorTmpDir );
+            IndexWriter writer = createIndexWriter( luceneWriteLockTimeout, analyzer, directory, new TieredMergePolicy() );
+
+            WriteAheadLog wal = ( writeAheadLogDir == null) ? null : new WriteAheadLog( writer, writeAheadLogDir, writeAheadLogCommitSize, writeAheadLogKeepFileOpen);
+
+            this.luceneindexer = new LuceneFieldIndex( writer, mergePolicy,
+                    pidCollectorMaxInMemory, pidCollectorTmpDir, wal);
             log.trace( "Constructed LuceneIndex instance" );
         }
         catch( IOException ex )
@@ -392,8 +409,14 @@ public final class FieldSearchLucene extends Module implements FieldSearch
     {
         try
         {
-            this.cache.shutdown();
-            this.luceneindexer.closeIndex();
+            if ( this.cache != null)
+            {
+                this.cache.shutdown();
+            }
+            if ( this.luceneindexer != null )
+            {
+                this.luceneindexer.closeIndex();
+            }
         }
         catch( IOException ex )
         {
@@ -518,5 +541,91 @@ public final class FieldSearchLucene extends Module implements FieldSearch
 
             log.info( "Using pidCollectorTmpDir: {}", pidCollectorTmpDir );
         }
+    }
+
+    private void initializeWriteAheadLogSettings() throws ModuleInitializationException
+    {
+        String writeAheadLogDirParam = getParameter( "writeAheadLogDir" );
+        if( writeAheadLogDirParam != null && !writeAheadLogDirParam.equals( "" ) )
+        {
+            writeAheadLogDir = new File( writeAheadLogDirParam );
+            log.info( "Using writeAheadLogDir: {}", writeAheadLogDir );
+        }
+
+        if (writeAheadLogDir != null )
+        {
+            if( !writeAheadLogDir.isDirectory() )
+            {
+                if( !writeAheadLogDir.mkdirs() )
+                {
+                    String errMsg = String.format( "FATAL: unable to create Write Ahead Log dir '%s'",
+                            writeAheadLogDir.getAbsolutePath() );
+                    log.error( errMsg );
+                    throw new ModuleInitializationException( errMsg, getRole() );
+                }
+            }
+
+            if( writeAheadLogDir.list().length > 0 )
+            {
+                log.warn( "Write Ahead Log dir '{}' is non-empty", writeAheadLogDir.getAbsolutePath() );
+            }
+
+            String writeAheadLogCommitSizeParam = getParameter( "writeAheadLogCommitSize" );
+            if( writeAheadLogCommitSizeParam == null || writeAheadLogCommitSizeParam.equals( "" ) )
+            {
+                String errMsg = "FATAL: writeAheadLogCommitSize parameter must be set";
+                log.error( errMsg );
+                throw new ModuleInitializationException( errMsg, getRole() );
+            }
+            else
+            {
+                try
+                {
+                    writeAheadLogCommitSize = Integer.parseInt( writeAheadLogCommitSizeParam );
+                }
+                catch( NumberFormatException e )
+                {
+                    String errMsg = String.format( "FATAL: writeAheadLogCommitSize parameter '%s' is not a valid integer",
+                            writeAheadLogCommitSizeParam );
+                    log.error( errMsg );
+                    throw new ModuleInitializationException( errMsg, getRole(), e );
+                }
+            }
+
+            log.info( "Using writeAheadLogCommitSize: {}", writeAheadLogCommitSize );
+
+            String writeAheadLogKeepFileOpenParam = getParameter( "writeAheadLogKeepFileOpen" );
+            if( writeAheadLogKeepFileOpenParam == null || writeAheadLogKeepFileOpenParam.equals( "" ) )
+            {
+                String errMsg = "FATAL: writeAheadLogKeepFileOpen parameter must be set";
+                log.error( errMsg );
+                throw new ModuleInitializationException( errMsg, getRole() );
+            }
+            else
+            {
+                writeAheadLogKeepFileOpen = Boolean.parseBoolean( writeAheadLogKeepFileOpenParam );
+            }
+
+            log.info( "Using writeAheadLogKeepFileOpen: {}", writeAheadLogKeepFileOpen );
+        }
+
+    }
+
+
+    private IndexWriter createIndexWriter( long luceneWriteLockTimeout, Analyzer analyzer, Directory directory, TieredMergePolicy mergePolicy) throws IOException
+    {
+        log.debug( "openWriter called" );
+
+        if( null == directory || null == analyzer )
+        {
+            String error = "Cannot open an IndexWriter without a Directory or an Analyzer";
+            throw new IllegalStateException( error );
+        }
+
+        IndexWriterConfig conf = new IndexWriterConfig( Version.LUCENE_35, analyzer ).setWriteLockTimeout( luceneWriteLockTimeout ).
+                setMergePolicy( mergePolicy );
+        IndexWriter writer = new IndexWriter( directory, conf );
+
+        return writer;
     }
 }

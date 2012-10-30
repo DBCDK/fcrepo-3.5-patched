@@ -386,6 +386,19 @@
             <comment>Directory where the PidCollector stores temporary
             result sets that are too large to keep in memory</comment>
         </param>
+        <param name="writeAheadLogDir" value="data/writeAheadLog">
+            <comment>directory where field write ahead log stores uncomitted data.
+             The specification of the path must be given in absolute terms.
+            If a relative path is specified, the location of the index will be
+            relative to the $HOME of the $USER running the server.</comment>
+        </param>
+        <param name="writeAheadLogCommitSize" value="1000">
+            <comment>How many documents to accept in write ahead log before comitting index.</comment>
+        </param>
+        <param name="writeAheadLogKeepFileOpen" value="true">
+            <comment>Keep write ahead log file open or close and reopen for every write.</comment>
+        </param>
+
     </module>
 	<module role="org.fcrepo.server.resourceIndex.ResourceIndex" class="org.fcrepo.server.resourceIndex.ResourceIndexModule">
 		<comment>Supports the ResourceIndex.</comment>
