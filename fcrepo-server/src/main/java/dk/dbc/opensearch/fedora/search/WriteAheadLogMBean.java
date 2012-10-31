@@ -36,4 +36,20 @@ public interface WriteAheadLogMBean {
     int getUncomittedDocuments();
 
     int getUpdatedDocuments();
+
+    long getTotalCommitToLuceneTimeµS();
+
+    long getTotalUpdateInLuceneTimeµS();
+
+    long getTotalUpdateTimeµS();
+
+    long getTotalWriteToFileTimeµS();
+
+    long getAverageCommitToLuceneTimeµS();
+
+    long getAverageUpdateInLuceneTimeµS();
+
+    long getAverageUpdateTimeµS();
+
+    long getAverageWriteToFileTimeµS();
 }

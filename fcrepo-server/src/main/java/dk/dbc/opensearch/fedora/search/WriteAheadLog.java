@@ -4,13 +4,14 @@ package dk.dbc.opensearch.fedora.search;
 import java.io.File;
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectOutputStream;
-import java.io.ObjectOutput;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.RandomAccessFile;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.management.JMException;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -41,11 +42,19 @@ public class WriteAheadLog implements WriteAheadLogMBean
 
     private File currentFile;
 
-    private volatile int updatedDocuments = 0;
+    private AtomicInteger updatedDocuments = new AtomicInteger();
 
-    private volatile int uncomittedDocuments = 0;
+    private AtomicInteger uncomittedDocuments = new AtomicInteger();
 
-    private volatile int commits = 0;
+    private AtomicInteger commits = new AtomicInteger();
+
+    private final AtomicLong totalUpdateTimeµS = new AtomicLong();
+
+    private final AtomicLong totalWriteToFileTimeµS = new AtomicLong();
+
+    private final AtomicLong totalUpdateInLuceneTimeµS = new AtomicLong();
+
+    private final AtomicLong totalCommitToLuceneTimeµS = new AtomicLong();
 
     RandomAccessFile fileAccess = null;
 
@@ -183,27 +192,18 @@ public class WriteAheadLog implements WriteAheadLogMBean
 
     private void updateOrDeleteDocument( String pid, Document doc ) throws IOException
     {
+        long updateStart = System.nanoTime();
+
         File commitFile = null;
         synchronized ( this )
         {
-            Term pidTerm = getPidTerm( pid );
-            if ( doc == null )
-            {
-                log.debug( "Deleting document with PID {}", pid );
-                this.writer.deleteDocuments( pidTerm);
-            }
-            else
-            {
-                log.debug( "Updating document with PID {}", pid );
-                this.writer.updateDocument( pidTerm, doc );
-            }
-
             writeDocumentToFile( pid, doc );
-            updatedDocuments++;
-            uncomittedDocuments++;
 
-            if ( updatedDocuments % commitSize == 0)
+            uncomittedDocuments.incrementAndGet();
+
+            if ( updatedDocuments.incrementAndGet() % commitSize == 0)
             {
+                // Time to commit. Close existing log file, rename and create a new log file
                 if ( fileAccess != null )
                 {
                     fileAccess.close();
@@ -212,25 +212,59 @@ public class WriteAheadLog implements WriteAheadLogMBean
                 commitFile = new File( storageDirectory, LOG_NAME + LOG_COMITTING_POSTFIX );
                 currentFile.renameTo( commitFile );
                 currentFile = createNewFile();
-                log.info( "Comitting {} documents.", uncomittedDocuments );
-                // commit
-                writer.commit();
-                commits++;
-                uncomittedDocuments = 0;
             }
         }
+
+        updateInWriter( pid, doc );
+
         if ( commitFile != null )
         {
+            commitWriter();
             // Erase old file
             commitFile.delete();
         }
+        long updateEnd = System.nanoTime();
+
+        totalUpdateTimeµS.addAndGet( (updateEnd - updateStart)/1000 );
+    }
+
+
+    private void commitWriter() throws IOException
+    {
+        long commitStart = System.nanoTime();
+        log.info( "Comitting {} documents.", uncomittedDocuments );
+        commits.incrementAndGet();
+        uncomittedDocuments.set( 0 );
+        // commit
+        writer.commit();
+        long commitEnd = System.nanoTime();
+        totalCommitToLuceneTimeµS.addAndGet( (commitEnd - commitStart)/1000 );
+    }
+
+
+    private void updateInWriter( String pid, Document doc ) throws IOException
+    {
+        long updateStart = System.nanoTime();
+        Term pidTerm = getPidTerm( pid );
+        if ( doc == null )
+        {
+            log.debug( "Deleting document with PID {}", pid );
+            this.writer.deleteDocuments( pidTerm);
+        }
+        else
+        {
+            log.debug( "Updating document with PID {}", pid );
+            this.writer.updateDocument( pidTerm, doc );
+        }
+        long updateEnd = System.nanoTime();
+        totalUpdateInLuceneTimeµS.addAndGet( (updateEnd - updateStart)/1000 );
     }
 
     public synchronized void shutdown() throws IOException
     {
         log.info( "Shutting down Write Ahead Log");
-        writer.commit();
-        commits ++;
+
+        commitWriter();
 
         log.info( "Added {} documents. Comitted {} times", updatedDocuments, commits );
         if ( currentFile != null )
@@ -238,8 +272,8 @@ public class WriteAheadLog implements WriteAheadLogMBean
             if ( fileAccess != null )
             {
                 fileAccess.close();
+                fileAccess = null;
             }
-            fileAccess = null;
             currentFile.delete();
             currentFile = null;
         }
@@ -271,6 +305,7 @@ public class WriteAheadLog implements WriteAheadLogMBean
 
     private void writeDocumentToFile( String pid, Document document ) throws IOException
     {
+        long writeStart = System.nanoTime();
         try
         {
             writeDocumentData( getFileAccess(), pid, document);
@@ -279,6 +314,8 @@ public class WriteAheadLog implements WriteAheadLogMBean
         {
             releaseFileAccess();
         }
+        long writeEnd = System.nanoTime();
+        totalWriteToFileTimeµS.addAndGet( (writeEnd - writeStart)/1000 );
     }
 
     @Override
@@ -287,31 +324,80 @@ public class WriteAheadLog implements WriteAheadLogMBean
         return commitSize;
     }
 
-
     @Override
     public int getCommits()
     {
-        return commits;
+        return commits.get();
     }
-
 
     @Override
     public int getUncomittedDocuments()
     {
-        return uncomittedDocuments;
+        return uncomittedDocuments.get();
     }
-
 
     @Override
     public int getUpdatedDocuments()
     {
-        return updatedDocuments;
+        return updatedDocuments.get();
+    }
+
+    @Override
+    public long getTotalCommitToLuceneTimeµS()
+    {
+        return totalCommitToLuceneTimeµS.get();
+    }
+
+    @Override
+    public long getTotalUpdateInLuceneTimeµS()
+    {
+        return totalUpdateInLuceneTimeµS.get();
+    }
+
+    @Override
+    public long getTotalUpdateTimeµS()
+    {
+        return totalUpdateTimeµS.get();
+    }
+
+    @Override
+    public long getTotalWriteToFileTimeµS()
+    {
+        return totalWriteToFileTimeµS.get();
+    }
+
+    @Override
+    public long getAverageCommitToLuceneTimeµS()
+    {
+        int commits = getCommits();
+        return commits == 0 ? 0 : totalCommitToLuceneTimeµS.get() / commits;
+    }
+
+    @Override
+    public long getAverageUpdateInLuceneTimeµS()
+    {
+        int updatedDocs = getUpdatedDocuments();
+        return updatedDocs == 0 ? 0 : totalUpdateInLuceneTimeµS.get() / updatedDocs;
+    }
+
+    @Override
+    public long getAverageUpdateTimeµS()
+    {
+        int updatedDocs = getUpdatedDocuments();
+        return updatedDocs == 0 ? 0 : totalUpdateTimeµS.get() / updatedDocs;
+    }
+
+    @Override
+    public long getAverageWriteToFileTimeµS()
+    {
+        int updatedDocs = getUpdatedDocuments();
+        return updatedDocs == 0 ? 0 : totalWriteToFileTimeµS.get() / updatedDocs;
     }
 
     static void writeDocumentData( RandomAccessFile raf, String pid, Document docOrNull ) throws IOException
     {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        ObjectOutput out = new ObjectOutputStream( bos );
+        ObjectOutputStream out = new ObjectOutputStream( bos );
         out.writeObject( pid );
         out.writeObject( docOrNull );
         byte[] recordBytes= bos.toByteArray();
@@ -319,6 +405,7 @@ public class WriteAheadLog implements WriteAheadLogMBean
         ByteBuffer rbb = ByteBuffer.wrap(recordBytes);
 
         raf.getChannel().write( rbb );
+        out.reset();
     }
 
     static DocumentData readDocumentData( RandomAccessFile raf ) throws IOException
@@ -335,7 +422,6 @@ public class WriteAheadLog implements WriteAheadLogMBean
         {
             throw new IOException( ex );
         }
-        // Do not shutdown stream or underlying file will be closed
     }
 
 
