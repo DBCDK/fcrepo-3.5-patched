@@ -31,11 +31,11 @@ public interface WriteAheadLogMBean {
 
     int getCommitSize();
 
-    int getCommits();
+    int getNumberOfCommits();
 
-    int getUncomittedDocuments();
+    int getNumberOfUncomittedDocuments();
 
-    int getUpdatedDocuments();
+    int getNumberOfUpdatedDocuments();
 
     long getTotalCommitToLuceneTimeµS();
 

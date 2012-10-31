@@ -42,11 +42,11 @@ public class WriteAheadLog implements WriteAheadLogMBean
 
     private File currentFile;
 
-    private AtomicInteger updatedDocuments = new AtomicInteger();
+    private AtomicInteger numberOfUpdatedDocuments = new AtomicInteger();
 
-    private AtomicInteger uncomittedDocuments = new AtomicInteger();
+    private AtomicInteger numberOfUncomittedDocuments = new AtomicInteger();
 
-    private AtomicInteger commits = new AtomicInteger();
+    private AtomicInteger numberOfCommits = new AtomicInteger();
 
     private final AtomicLong totalUpdateTimeµS = new AtomicLong();
 
@@ -190,18 +190,20 @@ public class WriteAheadLog implements WriteAheadLogMBean
         updateOrDeleteDocument( pid, doc );
     }
 
-    private void updateOrDeleteDocument( String pid, Document doc ) throws IOException
+    private void updateOrDeleteDocument( String pid, Document docOrNull ) throws IOException
     {
         long updateStart = System.nanoTime();
 
         File commitFile = null;
+        numberOfUncomittedDocuments.incrementAndGet();
+        int updates = numberOfUpdatedDocuments.incrementAndGet();
+        byte[] recordBytes = createDocumentData( pid, docOrNull );
+
         synchronized ( this )
         {
-            writeDocumentToFile( pid, doc );
+            writeDocumentToFile( recordBytes );
 
-            uncomittedDocuments.incrementAndGet();
-
-            if ( updatedDocuments.incrementAndGet() % commitSize == 0)
+            if ( updates % commitSize == 0)
             {
                 // Time to commit. Close existing log file, rename and create a new log file
                 if ( fileAccess != null )
@@ -215,7 +217,7 @@ public class WriteAheadLog implements WriteAheadLogMBean
             }
         }
 
-        updateInWriter( pid, doc );
+        updateInWriter( pid, docOrNull );
 
         if ( commitFile != null )
         {
@@ -232,9 +234,9 @@ public class WriteAheadLog implements WriteAheadLogMBean
     private void commitWriter() throws IOException
     {
         long commitStart = System.nanoTime();
-        log.info( "Comitting {} documents.", uncomittedDocuments );
-        commits.incrementAndGet();
-        uncomittedDocuments.set( 0 );
+        log.info( "Comitting {} documents.", numberOfUncomittedDocuments );
+        numberOfCommits.incrementAndGet();
+        numberOfUncomittedDocuments.set( 0 );
         // commit
         writer.commit();
         long commitEnd = System.nanoTime();
@@ -266,7 +268,7 @@ public class WriteAheadLog implements WriteAheadLogMBean
 
         commitWriter();
 
-        log.info( "Added {} documents. Comitted {} times", updatedDocuments, commits );
+        log.info( "Added {} documents. Comitted {} times", numberOfUpdatedDocuments, numberOfCommits );
         if ( currentFile != null )
         {
             if ( fileAccess != null )
@@ -303,12 +305,12 @@ public class WriteAheadLog implements WriteAheadLogMBean
         }
     }
 
-    private void writeDocumentToFile( String pid, Document document ) throws IOException
+    private void writeDocumentToFile( byte[] recordBytes ) throws IOException
     {
         long writeStart = System.nanoTime();
         try
         {
-            writeDocumentData( getFileAccess(), pid, document);
+            writeDocumentData( getFileAccess(), recordBytes );
         }
         finally
         {
@@ -325,21 +327,21 @@ public class WriteAheadLog implements WriteAheadLogMBean
     }
 
     @Override
-    public int getCommits()
+    public int getNumberOfCommits()
     {
-        return commits.get();
+        return numberOfCommits.get();
     }
 
     @Override
-    public int getUncomittedDocuments()
+    public int getNumberOfUncomittedDocuments()
     {
-        return uncomittedDocuments.get();
+        return numberOfUncomittedDocuments.get();
     }
 
     @Override
-    public int getUpdatedDocuments()
+    public int getNumberOfUpdatedDocuments()
     {
-        return updatedDocuments.get();
+        return numberOfUpdatedDocuments.get();
     }
 
     @Override
@@ -369,43 +371,54 @@ public class WriteAheadLog implements WriteAheadLogMBean
     @Override
     public long getAverageCommitToLuceneTimeµS()
     {
-        int commits = getCommits();
+        int commits = getNumberOfCommits();
         return commits == 0 ? 0 : totalCommitToLuceneTimeµS.get() / commits;
     }
 
     @Override
     public long getAverageUpdateInLuceneTimeµS()
     {
-        int updatedDocs = getUpdatedDocuments();
+        int updatedDocs = getNumberOfUpdatedDocuments();
         return updatedDocs == 0 ? 0 : totalUpdateInLuceneTimeµS.get() / updatedDocs;
     }
 
     @Override
     public long getAverageUpdateTimeµS()
     {
-        int updatedDocs = getUpdatedDocuments();
+        int updatedDocs = getNumberOfUpdatedDocuments();
         return updatedDocs == 0 ? 0 : totalUpdateTimeµS.get() / updatedDocs;
     }
 
     @Override
     public long getAverageWriteToFileTimeµS()
     {
-        int updatedDocs = getUpdatedDocuments();
+        int updatedDocs = getNumberOfUpdatedDocuments();
         return updatedDocs == 0 ? 0 : totalWriteToFileTimeµS.get() / updatedDocs;
     }
 
-    static void writeDocumentData( RandomAccessFile raf, String pid, Document docOrNull ) throws IOException
+    private static byte[] createDocumentData( String pid, Document docOrNull ) throws IOException
     {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         ObjectOutputStream out = new ObjectOutputStream( bos );
         out.writeObject( pid );
         out.writeObject( docOrNull );
         byte[] recordBytes= bos.toByteArray();
+        out.reset();
+        return recordBytes;
+    }
 
+    static void writeDocumentData( RandomAccessFile raf, String pid, Document docOrNull ) throws IOException
+    {
+        byte[] recordBytes = createDocumentData( pid, docOrNull );
+
+        writeDocumentData( raf, recordBytes );
+    }
+
+    static void writeDocumentData( RandomAccessFile raf, byte[] recordBytes ) throws IOException
+    {
         ByteBuffer rbb = ByteBuffer.wrap(recordBytes);
 
         raf.getChannel().write( rbb );
-        out.reset();
     }
 
     static DocumentData readDocumentData( RandomAccessFile raf ) throws IOException
