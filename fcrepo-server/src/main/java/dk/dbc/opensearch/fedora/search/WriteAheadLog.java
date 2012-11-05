@@ -48,13 +48,13 @@ public class WriteAheadLog implements WriteAheadLogMBean
 
     private AtomicInteger numberOfCommits = new AtomicInteger();
 
-    private final AtomicLong totalUpdateTimeµS = new AtomicLong();
+    private final AtomicLong totalUpdateTimeMicroS = new AtomicLong();
 
-    private final AtomicLong totalWriteToFileTimeµS = new AtomicLong();
+    private final AtomicLong totalWriteToFileTimeMicroS = new AtomicLong();
 
-    private final AtomicLong totalUpdateInLuceneTimeµS = new AtomicLong();
+    private final AtomicLong totalUpdateInLuceneTimeMicroS = new AtomicLong();
 
-    private final AtomicLong totalCommitToLuceneTimeµS = new AtomicLong();
+    private final AtomicLong totalCommitToLuceneTimeMicroS = new AtomicLong();
 
     RandomAccessFile fileAccess = null;
 
@@ -220,7 +220,7 @@ public class WriteAheadLog implements WriteAheadLogMBean
         }
         long updateEnd = System.nanoTime();
 
-        totalUpdateTimeµS.addAndGet( (updateEnd - updateStart)/1000 );
+        totalUpdateTimeMicroS.addAndGet( (updateEnd - updateStart)/1000 );
     }
 
 
@@ -233,7 +233,7 @@ public class WriteAheadLog implements WriteAheadLogMBean
         // commit
         writer.commit();
         long commitEnd = System.nanoTime();
-        totalCommitToLuceneTimeµS.addAndGet( (commitEnd - commitStart)/1000 );
+        totalCommitToLuceneTimeMicroS.addAndGet( (commitEnd - commitStart)/1000 );
     }
 
 
@@ -252,7 +252,7 @@ public class WriteAheadLog implements WriteAheadLogMBean
             this.writer.updateDocument( pidTerm, doc );
         }
         long updateEnd = System.nanoTime();
-        totalUpdateInLuceneTimeµS.addAndGet( (updateEnd - updateStart)/1000 );
+        totalUpdateInLuceneTimeMicroS.addAndGet( (updateEnd - updateStart)/1000 );
     }
 
     public synchronized void shutdown() throws IOException
@@ -310,7 +310,7 @@ public class WriteAheadLog implements WriteAheadLogMBean
             releaseFileAccess();
         }
         long writeEnd = System.nanoTime();
-        totalWriteToFileTimeµS.addAndGet( (writeEnd - writeStart)/1000 );
+        totalWriteToFileTimeMicroS.addAndGet( (writeEnd - writeStart)/1000 );
     }
 
     @Override
@@ -338,55 +338,55 @@ public class WriteAheadLog implements WriteAheadLogMBean
     }
 
     @Override
-    public long getTotalCommitToLuceneTimeµS()
+    public long getTotalCommitToLuceneTimeMicroS()
     {
-        return totalCommitToLuceneTimeµS.get();
+        return totalCommitToLuceneTimeMicroS.get();
     }
 
     @Override
-    public long getTotalUpdateInLuceneTimeµS()
+    public long getTotalUpdateInLuceneTimeMicroS()
     {
-        return totalUpdateInLuceneTimeµS.get();
+        return totalUpdateInLuceneTimeMicroS.get();
     }
 
     @Override
-    public long getTotalUpdateTimeµS()
+    public long getTotalUpdateTimeMicroS()
     {
-        return totalUpdateTimeµS.get();
+        return totalUpdateTimeMicroS.get();
     }
 
     @Override
-    public long getTotalWriteToFileTimeµS()
+    public long getTotalWriteToFileTimeMicroS()
     {
-        return totalWriteToFileTimeµS.get();
+        return totalWriteToFileTimeMicroS.get();
     }
 
     @Override
-    public long getAverageCommitToLuceneTimeµS()
+    public long getAverageCommitToLuceneTimeMicroS()
     {
         int commits = getNumberOfCommits();
-        return commits == 0 ? 0 : totalCommitToLuceneTimeµS.get() / commits;
+        return commits == 0 ? 0 : totalCommitToLuceneTimeMicroS.get() / commits;
     }
 
     @Override
-    public long getAverageUpdateInLuceneTimeµS()
+    public long getAverageUpdateInLuceneTimeMicroS()
     {
         int updatedDocs = getNumberOfUpdatedDocuments();
-        return updatedDocs == 0 ? 0 : totalUpdateInLuceneTimeµS.get() / updatedDocs;
+        return updatedDocs == 0 ? 0 : totalUpdateInLuceneTimeMicroS.get() / updatedDocs;
     }
 
     @Override
-    public long getAverageUpdateTimeµS()
+    public long getAverageUpdateTimeMicroS()
     {
         int updatedDocs = getNumberOfUpdatedDocuments();
-        return updatedDocs == 0 ? 0 : totalUpdateTimeµS.get() / updatedDocs;
+        return updatedDocs == 0 ? 0 : totalUpdateTimeMicroS.get() / updatedDocs;
     }
 
     @Override
-    public long getAverageWriteToFileTimeµS()
+    public long getAverageWriteToFileTimeMicroS()
     {
         int updatedDocs = getNumberOfUpdatedDocuments();
-        return updatedDocs == 0 ? 0 : totalWriteToFileTimeµS.get() / updatedDocs;
+        return updatedDocs == 0 ? 0 : totalWriteToFileTimeMicroS.get() / updatedDocs;
     }
 
     private static byte[] createDocumentData( String pid, Document docOrNull ) throws IOException
@@ -430,7 +430,7 @@ public class WriteAheadLog implements WriteAheadLogMBean
         }
     }
 
-    
+
     static Term getPidTerm( String pid )
     {
         Term pidTerm = new Term( PID_FIELD_NAME, pid );
