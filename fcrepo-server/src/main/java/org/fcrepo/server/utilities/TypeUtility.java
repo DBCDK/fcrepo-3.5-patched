@@ -153,6 +153,9 @@ public abstract class TypeUtility {
             if (sf.relPredObjs().size() != 0) {
                 gf.setRelPredObj(toStringArray(sf.relPredObjs()));
             }
+            if (sf.relSysPredObjs().size() != 0) {
+                gf.setRelSysPredObj(toStringArray(sf.relSysPredObjs()));
+            }
             // Dublin core fields
             if (sf.titles().size() != 0) {
                 gf.setTitle(toStringArray(sf.titles()));

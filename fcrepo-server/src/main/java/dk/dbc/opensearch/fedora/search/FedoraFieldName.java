@@ -48,7 +48,8 @@ enum FedoraFieldName
     RIGHTS( "rights_eq", false ),
     DCMDATE( "dcm_date_eq", true ),
     RELOBJ( "relobj_eq", false ),
-    RELPREDOBJ( "relpredobj_eq", false );
+    RELPREDOBJ( "relpredobj_eq", false ),
+    RELSYSPREDOBJ( "relsyspredobj_eq", false );
 
     private final String eq;
     private final boolean isDateField;

@@ -60,6 +60,8 @@ import mockit.Mocked;
 import mockit.Mockit;
 import mockit.NonStrictExpectations;
 import org.fcrepo.server.ReadOnlyContext;
+import org.fcrepo.server.storage.types.DatastreamManagedContent;
+import org.fcrepo.server.storage.types.MIMETypedStream;
 
 import org.junit.After;
 import org.junit.AfterClass;
@@ -1281,6 +1283,109 @@ public class ModuleTest
             objectFieldsList.get( 0 ).relPredObjs().get( 1 ).getValue() );
     }
 
+
+    /**
+     * Tests the happy path of the FieldSearchLucene plugin. One object with
+     * multiple object relationships ingested and retrieved via a search on one
+     * of the relationship object identifiers through a FieldSearchResultLucene
+     * instance
+     */
+    @Test
+    public void testRetrievalOfObjectWithSystemicRelationships()
+        throws Exception
+    {
+        final String subject = "demo:1";
+
+        String relsSysContent =
+            "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">" +
+            "<rdf:Description rdf:about=\"info:fedora/demo:1\">" +
+            "<isMemberOfUnit xmlns=\"info:fedora/\">unit:1</isMemberOfUnit>" +
+            "</rdf:Description>" +
+            "</rdf:RDF>";
+
+        final DatastreamManagedContent relsSys = new DatastreamManagedContent();
+        relsSys.putContentStream( new MIMETypedStream( "", new ByteArrayInputStream( relsSysContent.getBytes() ), null ) );
+
+        ingestObject( subject );
+
+        //Emulate the call from the Server instance --> update()
+        fieldsearch.update( reader );
+        //Emulate search from Server instance --> FSR
+        String[] fields = new String[]{ "pid", "relSysPredObj" };
+
+
+        Map<String, Pair<Operator, String>> query = new HashMap<String, Pair<Operator, String>>();
+        query.put( "pid", new Pair<Operator, String>( Operator.EQUALS, subject ) );
+
+        FieldSearchQuery fsq = getFieldSearchQuery( query );
+
+        new Expectations( domareal )
+        {
+            {
+                domareal.getReader( Server.USE_DEFINITIVE_STORE, ReadOnlyContext.EMPTY, "demo:1" ); result = reader;
+                reader.GetDatastream( "DC", null ); result = null;
+                reader.GetDatastream( "RELS-SYS", null ); result = relsSys;
+            }
+        };
+
+        FieldSearchResult fsr =
+            fieldsearch.findObjects( fields, maxResults, fsq );
+
+        List< ObjectFields > objectFieldsList = fsr.objectFieldsList();
+
+        assertEquals( 1, fsr.objectFieldsList().size() );
+        assertEquals( subject, objectFieldsList.get( 0 ).getPid() );
+
+        assertEquals( "info:fedora/isMemberOfUnit|unit:1",
+            objectFieldsList.get( 0 ).relSysPredObjs().get( 0 ).getValue() );
+    }
+
+
+    /**
+     * Tests the happy path of the FieldSearchLucene plugin. One object with
+     * no RELS-SYS datastream is ingested and sys relations are included in search result
+     * of the relationship object identifiers through a FieldSearchResultLucene
+     * instance
+     */
+    @Test
+    public void testRetrievalOfObjectWithNoSystemicRelationshipsStream()
+        throws Exception
+    {
+        final String subject = "demo:1";
+
+        ingestObject( subject );
+
+        //Emulate the call from the Server instance --> update()
+        fieldsearch.update( reader );
+        //Emulate search from Server instance --> FSR
+        String[] fields = new String[]{ "pid", "relSysPredObj" };
+
+
+        Map<String, Pair<Operator, String>> query = new HashMap<String, Pair<Operator, String>>();
+        query.put( "pid", new Pair<Operator, String>( Operator.EQUALS, subject ) );
+
+        FieldSearchQuery fsq = getFieldSearchQuery( query );
+
+        new Expectations( domareal )
+        {
+            {
+                domareal.getReader( Server.USE_DEFINITIVE_STORE, ReadOnlyContext.EMPTY, "demo:1" ); result = reader;
+                reader.GetDatastream( "DC", null ); result = null;
+                reader.GetDatastream( "RELS-SYS", null ); result = null;
+            }
+        };
+
+        FieldSearchResult fsr =
+            fieldsearch.findObjects( fields, maxResults, fsq );
+
+        List< ObjectFields > objectFieldsList = fsr.objectFieldsList();
+
+        assertEquals( 1, fsr.objectFieldsList().size() );
+        assertEquals( subject, objectFieldsList.get( 0 ).getPid() );
+
+        assertEquals( 0,
+            objectFieldsList.get( 0 ).relSysPredObjs().size() );
+    }
 
 
     ////////////////////////////////////////////////////////////////////////////

@@ -41,6 +41,8 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
+import org.fcrepo.server.storage.RDFRelationshipReader;
 
 
 /**
@@ -311,6 +313,7 @@ class FieldSearchResultLucene implements FieldSearchResult
         // add non-dc values from doReader for the others in m_resultFields[]
         boolean addRelObjToResult = false;
         boolean addRelPredObjToResult = false;
+        boolean addRelSysPredObjToResult = false;
         for( String resultFieldName : this.resultFields )
         {
             if( resultFieldName.equals( "pid" ) )
@@ -345,6 +348,10 @@ class FieldSearchResultLucene implements FieldSearchResult
             {
                 addRelPredObjToResult = true;
             }
+            if( resultFieldName.equals( "relSysPredObj" ) )
+            {
+                addRelSysPredObjToResult = true;
+            }
         }
 
         if( addRelObjToResult || addRelPredObjToResult ) {
@@ -375,6 +382,22 @@ class FieldSearchResultLucene implements FieldSearchResult
                     // character to the relPredObj field.
                     fields.relPredObjs().add( new DCField( String.format( "%s|%s", predicate, object ) ) );
                 }
+            }
+        }
+
+        if ( addRelSysPredObjToResult )
+        {
+            // RDFRelationshipReader.readRelationships checks if GetDatastream returnes null and returns empty relation
+            // set, so check for datastream is not necessary
+            Set<RelationshipTuple> relationships = RDFRelationshipReader.readRelationships( objectReader.GetDatastream( "RELS-SYS", null ) );
+            for( RelationshipTuple relation : relationships ) {
+
+                String object = relation.object;
+                String predicate = relation.predicate;
+
+                // add the predicate and object strings joined by a pipe (|)
+                // character to the relSysPredObj field.
+                fields.relSysPredObjs().add( new DCField( String.format( "%s|%s", predicate, object ) ) );
             }
         }
 

@@ -435,6 +435,8 @@ public class DefaultSerializer {
                         html.append(join(f.relObjs()));
                     } else if ( l.equalsIgnoreCase("relPredObj")) {
                         html.append(join(f.relPredObjs()));
+                    } else if ( l.equalsIgnoreCase("relSysPredObj")) {
+                        html.append(join(f.relSysPredObjs()));
                     } else if (l.equalsIgnoreCase("title")) {
                         html.append(join(f.titles()));
                     } else if (l.equalsIgnoreCase("creator")) {
@@ -555,6 +557,7 @@ public class DefaultSerializer {
                 appendXML("dcmDate", f.getDCMDate(), xmlBuf);
                 appendXML("relObj", f.relObjs(), xmlBuf);
                 appendXML("relPredObj", f.relPredObjs(), xmlBuf);
+                appendXML("relSysPredObj", f.relSysPredObjs(), xmlBuf);
                 appendXML("title", f.titles(), xmlBuf);
                 appendXML("creator", f.creators(), xmlBuf);
                 appendXML("subject", f.subjects(), xmlBuf);

@@ -50,6 +50,8 @@ public class ObjectFields
 
     private List<DCField> m_relPredObj = new ArrayList<DCField>();
 
+    private List<DCField> m_relSysPredObj = new ArrayList<DCField>();
+
     private StringBuffer m_currentContent;
 
     private final boolean[] m_want = new boolean[26];
@@ -101,6 +103,8 @@ public class ObjectFields
     public final static int RELOBJ = 24;
 
     public final static int RELPREDOBJ = 25;
+
+    public final static int RELSYSPREDOBJ = 25;
 
     public ObjectFields() {
     }
@@ -156,6 +160,8 @@ public class ObjectFields
                 m_want[RELOBJ] = true;
             } else if (s.equalsIgnoreCase("relPredObj")) {
                 m_want[RELPREDOBJ] = true;
+            } else if (s.equalsIgnoreCase("relSysPredObj")) {
+                m_want[RELSYSPREDOBJ] = true;
             } else {
                 throw new UnrecognizedFieldException("Unrecognized field: '"
                         + s + "'");
@@ -225,6 +231,8 @@ public class ObjectFields
             relObjs().add(new DCField(m_currentContent.toString()));
         } else if (m_want[RELPREDOBJ] && localName.equals("relPredObj")) {
             relPredObjs().add(new DCField(m_currentContent.toString()));
+        } else if (m_want[RELSYSPREDOBJ] && localName.equals("relSysPredObj")) {
+            relSysPredObjs().add(new DCField(m_currentContent.toString()));
         } else if (m_want[TITLE] && localName.equals("title")) {
             titles().add(new DCField(m_currentContent.toString()));
         } else if (m_want[CREATOR] && localName.equals("creator")) {
@@ -320,6 +328,10 @@ public class ObjectFields
 
     public List<DCField> relPredObjs() {
         return m_relPredObj;
+    }
+
+    public List<DCField> relSysPredObjs() {
+        return m_relSysPredObj;
     }
 
 }

@@ -722,8 +722,8 @@
             <element name="mDate" nillable="true" type="string" minOccurs="0"/>
             <element name="dcmDate" nillable="true" type="string" minOccurs="0"/>
             <element name="relObj" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
-            <!--element name="relPredObj" nillable="true" type="fedora-types:RelPredObj" minOccurs="0" maxOccurs="unbounded"/-->
             <element name="relPredObj" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
+            <element name="relSysPredObj" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
             <element name="title" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
             <element name="creator" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
             <element name="subject" nillable="true" type="string" minOccurs="0" maxOccurs="unbounded"/>
