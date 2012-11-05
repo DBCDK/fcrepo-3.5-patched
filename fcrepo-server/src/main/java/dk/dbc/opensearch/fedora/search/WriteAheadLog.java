@@ -131,13 +131,6 @@ public class WriteAheadLog implements WriteAheadLogMBean
     }
 
 
-    static Term getPidTerm( String pid )
-    {
-        Term pidTerm = new Term( PID_FIELD_NAME, pid );
-        return pidTerm;
-    }
-
-
     static int recoverUncomittedFile( File walFile, IndexWriter writer ) throws IOException
     {
         log.warn( "Recovering file {}", walFile );
@@ -435,6 +428,13 @@ public class WriteAheadLog implements WriteAheadLogMBean
         {
             throw new IOException( ex );
         }
+    }
+
+    
+    static Term getPidTerm( String pid )
+    {
+        Term pidTerm = new Term( PID_FIELD_NAME, pid );
+        return pidTerm;
     }
 
 
