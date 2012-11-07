@@ -1285,10 +1285,7 @@ public class ModuleTest
 
 
     /**
-     * Tests the happy path of the FieldSearchLucene plugin. One object with
-     * multiple object relationships ingested and retrieved via a search on one
-     * of the relationship object identifiers through a FieldSearchResultLucene
-     * instance
+     * Tests retrieval of systemic relations in a search result
      */
     @Test
     public void testRetrievalOfObjectWithSystemicRelationships()

@@ -54,7 +54,7 @@ public class ObjectFields
 
     private StringBuffer m_currentContent;
 
-    private final boolean[] m_want = new boolean[26];
+    private final boolean[] m_want = new boolean[27];
 
     public final static int PID = 0;
 
@@ -104,7 +104,7 @@ public class ObjectFields
 
     public final static int RELPREDOBJ = 25;
 
-    public final static int RELSYSPREDOBJ = 25;
+    public final static int RELSYSPREDOBJ = 26;
 
     public ObjectFields() {
     }

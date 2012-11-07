@@ -355,7 +355,7 @@ class FieldSearchResultLucene implements FieldSearchResult
         }
 
         if( addRelObjToResult || addRelPredObjToResult ) {
-            log.trace( "Retrieving relationships for ObjectFields" );
+            log.trace( "Retrieving relationships for search result" );
 
             for( RelationshipTuple relation : objectReader.getRelationships() ) {
                 String object = relation.object;
@@ -387,6 +387,7 @@ class FieldSearchResultLucene implements FieldSearchResult
 
         if ( addRelSysPredObjToResult )
         {
+            log.trace( "Retrieving systemic relationships for search result" );
             // RDFRelationshipReader.readRelationships checks if GetDatastream returnes null and returns empty relation
             // set, so check for datastream is not necessary
             Set<RelationshipTuple> relationships = RDFRelationshipReader.readRelationships( objectReader.GetDatastream( "RELS-SYS", null ) );
@@ -395,8 +396,6 @@ class FieldSearchResultLucene implements FieldSearchResult
                 String object = relation.object;
                 String predicate = relation.predicate;
 
-                // add the predicate and object strings joined by a pipe (|)
-                // character to the relSysPredObj field.
                 fields.relSysPredObjs().add( new DCField( String.format( "%s|%s", predicate, object ) ) );
             }
         }
