@@ -10,8 +10,6 @@ import java.io.RandomAccessFile;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import javax.management.JMException;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -22,7 +20,7 @@ import org.apache.lucene.index.Term;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class WriteAheadLog implements WriteAheadLogMBean
+public class WriteAheadLog extends WriteAheadLogStats
 {
     private final static String LOG_OPEN_POSTFIX = ".log";
     private final static String LOG_COMITTING_POSTFIX = ".committing";
@@ -36,46 +34,26 @@ public class WriteAheadLog implements WriteAheadLogMBean
 
     private final File storageDirectory;
 
-    private final int commitSize;
-
     private final boolean keepFileOpen;
 
+    private boolean isOpen = false;
+
     private File currentFile;
-
-    private AtomicInteger numberOfUpdatedDocuments = new AtomicInteger();
-
-    private AtomicInteger numberOfUncomittedDocuments = new AtomicInteger();
-
-    private AtomicInteger numberOfCommits = new AtomicInteger();
-
-    private final AtomicLong totalUpdateTimeMicroS = new AtomicLong();
-
-    private final AtomicLong totalWriteToFileTimeMicroS = new AtomicLong();
-
-    private final AtomicLong totalUpdateInLuceneTimeMicroS = new AtomicLong();
-
-    private final AtomicLong totalCommitToLuceneTimeMicroS = new AtomicLong();
 
     RandomAccessFile fileAccess = null;
 
     public WriteAheadLog( IndexWriter writer, File storageDirectory, int commitSize, boolean keepFileOpen ) throws IOException
     {
+        super( commitSize );
         log.info( "Creating Write Ahead Log in directory {}, with commit size: {} and keepFileOpen: {}",
                 new Object[] { storageDirectory.getAbsolutePath(), commitSize, keepFileOpen} );
 
         checkParameterForNullLogAndThrow( "writer", writer );
         checkParameterForNullLogAndThrow( "storageDirectory", storageDirectory );
 
-        if ( commitSize < 1 )
-        {
-            String error = String.format( "Parameter commitSize must be positive: %d", commitSize );
-            log.error( error );
-            throw new IllegalArgumentException( error );
-        }
 
         this.writer = writer;
         this.storageDirectory = storageDirectory;
-        this.commitSize = commitSize;
         this.keepFileOpen = keepFileOpen;
 
         // Register the JMX monitoring bean
@@ -110,6 +88,7 @@ public class WriteAheadLog implements WriteAheadLogMBean
             recoverUncomittedFiles();
         }
         currentFile = createNewFile();
+        isOpen = true;
     }
 
 
@@ -175,12 +154,25 @@ public class WriteAheadLog implements WriteAheadLogMBean
 
     public void deleteDocument( String pid) throws IOException
     {
-        updateOrDeleteDocument( pid, null );
+        tryUpdateOrDeleteDocument( pid, null );
     }
 
     public void updateDocument( String pid, Document doc ) throws IOException
     {
-        updateOrDeleteDocument( pid, doc );
+        tryUpdateOrDeleteDocument( pid, doc );
+    }
+
+    private void tryUpdateOrDeleteDocument( String pid, Document docOrNull ) throws IOException
+    {
+        try
+        {
+            updateOrDeleteDocument( pid, docOrNull );
+        }
+        catch ( IOException ex )
+        {
+            fileAccess = null;
+            throw ex;
+        }
     }
 
     private void updateOrDeleteDocument( String pid, Document docOrNull ) throws IOException
@@ -194,6 +186,11 @@ public class WriteAheadLog implements WriteAheadLogMBean
 
         synchronized ( this )
         {
+            if ( !isOpen )
+            {
+                throw new IOException( "Write Ahead Log is not open");
+            }
+
             writeDocumentToFile( recordBytes );
 
             if ( updates % commitSize == 0)
@@ -201,8 +198,14 @@ public class WriteAheadLog implements WriteAheadLogMBean
                 // Time to commit. Close existing log file, rename and create a new log file
                 if ( fileAccess != null )
                 {
-                    fileAccess.close();
-                    fileAccess = null;
+                    try
+                    {
+                        fileAccess.close();
+                    }
+                    finally
+                    {
+                        fileAccess = null;
+                    }
                 }
                 commitFile = new File( storageDirectory, LOG_NAME + LOG_COMITTING_POSTFIX );
                 currentFile.renameTo( commitFile );
@@ -258,6 +261,7 @@ public class WriteAheadLog implements WriteAheadLogMBean
     public synchronized void shutdown() throws IOException
     {
         log.info( "Shutting down Write Ahead Log");
+        isOpen = false;
 
         commitWriter();
 
@@ -274,7 +278,7 @@ public class WriteAheadLog implements WriteAheadLogMBean
         }
     }
 
-    private File createNewFile() throws IOException
+    private File createNewFile()
     {
         return new File( storageDirectory, LOG_NAME + LOG_OPEN_POSTFIX );
     }
@@ -311,82 +315,6 @@ public class WriteAheadLog implements WriteAheadLogMBean
         }
         long writeEnd = System.nanoTime();
         totalWriteToFileTimeMicroS.addAndGet( (writeEnd - writeStart)/1000 );
-    }
-
-    @Override
-    public int getCommitSize()
-    {
-        return commitSize;
-    }
-
-    @Override
-    public int getNumberOfCommits()
-    {
-        return numberOfCommits.get();
-    }
-
-    @Override
-    public int getNumberOfUncomittedDocuments()
-    {
-        return numberOfUncomittedDocuments.get();
-    }
-
-    @Override
-    public int getNumberOfUpdatedDocuments()
-    {
-        return numberOfUpdatedDocuments.get();
-    }
-
-    @Override
-    public long getTotalCommitToLuceneTimeMicroS()
-    {
-        return totalCommitToLuceneTimeMicroS.get();
-    }
-
-    @Override
-    public long getTotalUpdateInLuceneTimeMicroS()
-    {
-        return totalUpdateInLuceneTimeMicroS.get();
-    }
-
-    @Override
-    public long getTotalUpdateTimeMicroS()
-    {
-        return totalUpdateTimeMicroS.get();
-    }
-
-    @Override
-    public long getTotalWriteToFileTimeMicroS()
-    {
-        return totalWriteToFileTimeMicroS.get();
-    }
-
-    @Override
-    public long getAverageCommitToLuceneTimeMicroS()
-    {
-        int commits = getNumberOfCommits();
-        return commits == 0 ? 0 : totalCommitToLuceneTimeMicroS.get() / commits;
-    }
-
-    @Override
-    public long getAverageUpdateInLuceneTimeMicroS()
-    {
-        int updatedDocs = getNumberOfUpdatedDocuments();
-        return updatedDocs == 0 ? 0 : totalUpdateInLuceneTimeMicroS.get() / updatedDocs;
-    }
-
-    @Override
-    public long getAverageUpdateTimeMicroS()
-    {
-        int updatedDocs = getNumberOfUpdatedDocuments();
-        return updatedDocs == 0 ? 0 : totalUpdateTimeMicroS.get() / updatedDocs;
-    }
-
-    @Override
-    public long getAverageWriteToFileTimeMicroS()
-    {
-        int updatedDocs = getNumberOfUpdatedDocuments();
-        return updatedDocs == 0 ? 0 : totalWriteToFileTimeMicroS.get() / updatedDocs;
     }
 
     private static byte[] createDocumentData( String pid, Document docOrNull ) throws IOException

@@ -17,17 +17,9 @@ You should have received a copy of the GNU General Public License
 along with opensearch.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
-
 package dk.dbc.opensearch.fedora.search;
 
-/**
- *
- */
-public interface WriteAheadLogMBean {
+public interface WriteAheadLogStatsMBean {
 
     int getCommitSize();
 

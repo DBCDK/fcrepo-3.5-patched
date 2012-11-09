@@ -113,6 +113,11 @@ public class WriteAheadLogTest
     @Ignore
     public void testSearchInUncomittedWriterReturnsMultipleDocumentsIfNotAskedToApplyDeletes() throws Exception
     {
+        // This is a piece of test code that shows that duplicate search results
+        // can be returned if the reader is not configured to flush updates.
+        // It is not part of normal test.
+        boolean applyAllDeletes = false;
+
         String pid = "obj:1";
         Document doc = makeLuceneDocument( pid );
         Term pidTerm = new Term( "pid", pid );
@@ -120,7 +125,7 @@ public class WriteAheadLogTest
         writer.commit();
         writer.updateDocument( pidTerm, doc );
 
-        IndexReader reader = IndexReader.open( writer, false );
+        IndexReader reader = IndexReader.open( writer, applyAllDeletes );
         IndexSearcher searcher = new IndexSearcher( reader );
 
         TopDocs result = searcher.search( new TermQuery( pidTerm ), 100 );
@@ -176,6 +181,32 @@ public class WriteAheadLogTest
         DocumentData docData1 = WriteAheadLog.readDocumentData( fileAccess );
         assertEquals( pid, docData1.pid );
         assertEquals( doc.toString(), docData1.docOrNull.toString() );
+    }
+
+
+    @Test ( expected = IOException.class )
+    public void testUpdateDocumentOnUnitializedWriteAheadLogThrowsException() throws Exception
+    {
+        WriteAheadLog wal = new WriteAheadLog( writer, folder.getRoot(), 1000, true );
+
+        String pid = "obj:1";
+        Document doc = makeLuceneDocument( pid );
+
+        wal.updateDocument( pid, doc );
+    }
+
+
+    @Test ( expected = IOException.class )
+    public void testUpdateDocumentOnClosedWriteAheadLogThrowsException() throws Exception
+    {
+        WriteAheadLog wal = new WriteAheadLog( writer, folder.getRoot(), 1000, true );
+        wal.initialize();
+        wal.shutdown();
+
+        String pid = "obj:1";
+        Document doc = makeLuceneDocument( pid );
+
+        wal.updateDocument( pid, doc );
     }
 
 
@@ -240,6 +271,7 @@ public class WriteAheadLogTest
 
         assertEquals( 1, writer.numDocs() );
     }
+
 
     @Test
     public void testRecoverUncomittedLogFile() throws Exception
