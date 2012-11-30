@@ -1,5 +1,5 @@
 /* The contents of this file are subject to the license and copyright terms
- * detailed in the license directory at the root of the source tree (also 
+ * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
 package org.fcrepo.server.search;
@@ -44,7 +44,7 @@ public class Condition {
 
     /**
      * Gets a List of Conditions from a string like: a=x b~'that\'s' c>='z'
-     * 
+     *
      * @param query
      *        The query string.
      * @return The Conditions.
@@ -182,17 +182,37 @@ public class Condition {
                         inProp = true;
                     }
                 } else if (c == '=') {
-                    throw new QueryParseException("Found <operator> at position "
-                            + i + ", but expected <value>");
+                    if (valueStartsWithQuote) {
+                        // was inside string..ok
+                        val.append(c);
+                    } else {
+                        throw new QueryParseException("Found <operator> at position "
+                                + i + ", but expected <value>");
+                    }
                 } else if (c == '~') {
-                    throw new QueryParseException("Found <operator> at position "
-                            + i + ", but expected <value>");
+                    if (valueStartsWithQuote) {
+                        // was inside string..ok
+                        val.append(c);
+                    } else {
+                        throw new QueryParseException("Found <operator> at position "
+                                + i + ", but expected <value>");
+                    }
                 } else if (c == '>') {
-                    throw new QueryParseException("Found <operator> at position "
-                            + i + ", but expected <value>");
+                    if (valueStartsWithQuote) {
+                        // was inside string..ok
+                        val.append(c);
+                    } else {
+                        throw new QueryParseException("Found <operator> at position "
+                                + i + ", but expected <value>");
+                    }
                 } else if (c == '<') {
-                    throw new QueryParseException("Found <operator> at position "
-                            + i + ", but expected <value>");
+                    if (valueStartsWithQuote) {
+                        // was inside string..ok
+                        val.append(c);
+                    } else {
+                        throw new QueryParseException("Found <operator> at position "
+                                + i + ", but expected <value>");
+                    }
                 } else {
                     val.append(c);
                 }
