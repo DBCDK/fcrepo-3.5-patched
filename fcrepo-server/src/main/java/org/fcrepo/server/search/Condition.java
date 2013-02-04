@@ -26,9 +26,6 @@ public class Condition {
             throws QueryParseException {
         m_property = property;
         m_operator = operator;
-        if (value.indexOf("'") != -1) {
-            throw new QueryParseException("Query cannot contain the ' character.");
-        }
         m_value = value;
     }
 
@@ -36,9 +33,6 @@ public class Condition {
             throws InvalidOperatorException, QueryParseException {
         m_property = property;
         m_operator = Operator.fromAbbreviation(operator);
-        if (value.indexOf("'") != -1) {
-            throw new QueryParseException("Query cannot contain the ' character.");
-        }
         m_value = value;
     }
 

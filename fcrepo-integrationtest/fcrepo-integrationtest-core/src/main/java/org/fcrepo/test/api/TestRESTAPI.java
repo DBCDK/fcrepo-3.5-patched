@@ -687,6 +687,44 @@ public class TestRESTAPI
         assertEquals(SC_OK, get(getAuthAccess(), false).getStatusCode());
     }
 
+    public void testFindObjectsForTermWithApostrophe() throws Exception {
+        String term = URLEncoder.encode("haven't", "UTF-8");
+        url =
+                String
+                        .format("/objects?pid=true&terms=%s&query=&resultFormat=xml",
+                                term);
+        if (this.getAuthAccess()) {
+            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
+        }
+        // FIXME: findObjects should have a schema?  remove "false" to enable validation
+        HttpResponse resp=get(getAuthAccess(), false);
+        String xmlResult=new String(resp.getResponseBody());
+        assertEquals(SC_OK, resp.getStatusCode());
+        assertTrue(xmlResult.indexOf("<pid>demo:SmileyBeerGlass</pid>") > 0);
+        assertTrue(xmlResult.indexOf("<pid>demo:SmileyPens</pid>") > 0);
+        assertTrue(xmlResult.indexOf("<pid>demo:SmileyPens_M</pid>") > 0);
+        assertTrue(xmlResult.indexOf("<pid>demo:SmileyBeerGlass_M</pid>") > 0);
+    }
+
+    public void testFindObjectsForQueryWithApostrophe() throws Exception {
+        String query = URLEncoder.encode("description~haven\\'t", "UTF-8");
+        url =
+                String
+                        .format("/objects?pid=true&terms=&query=%s&resultFormat=xml",
+                                query);
+        if (this.getAuthAccess()) {
+            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
+        }
+        // FIXME: findObjects should have a schema?  remove "false" to enable validation
+        HttpResponse resp=get(getAuthAccess(), false);
+        String xmlResult=new String(resp.getResponseBody());
+        assertEquals(SC_OK, resp.getStatusCode());
+        assertTrue(xmlResult.indexOf("<pid>demo:SmileyBeerGlass</pid>") > 0);
+        assertTrue(xmlResult.indexOf("<pid>demo:SmileyPens</pid>") > 0);
+        assertTrue(xmlResult.indexOf("<pid>demo:SmileyPens_M</pid>") > 0);
+        assertTrue(xmlResult.indexOf("<pid>demo:SmileyBeerGlass_M</pid>") > 0);
+    }
+
     /**
      * Disabled until FCREPO-798 is public public void testFindObjectsQuery()
      * throws Exception { String templateUrl = "/search?$value$";

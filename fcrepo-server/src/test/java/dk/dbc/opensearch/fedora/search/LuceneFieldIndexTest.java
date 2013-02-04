@@ -352,6 +352,46 @@ public class LuceneFieldIndexTest {
         assertEquals( 1, searchResult.size() );
     }
 
+    @Test
+    public void testSearchForValueWithSingleQuoteConsition() throws Exception
+    {
+        List< Pair< FedoraFieldName, String >> fieldList = new ArrayList< Pair< FedoraFieldName, String >>();
+
+        fieldList.add( pid );
+
+        fieldList.add( new Pair<FedoraFieldName, String >( FedoraFieldName.TITLE, "Hello'World" ) );
+
+        instance.indexFields( fieldList, 0 );
+
+        FieldSearchQuery fsq = getFieldSearchQuery( "title='Hello\\'World'" );
+
+        IPidList searchResult = instance.search( fsq );
+
+        assertEquals( 1, searchResult.size() );
+
+        assertEquals( pid.getSecond(), searchResult.getNextPids( 1 ).iterator().next() );
+    }
+
+    @Test
+    public void testSearchForValueWithSingleQuoteTerm() throws Exception
+    {
+        List< Pair< FedoraFieldName, String >> fieldList = new ArrayList< Pair< FedoraFieldName, String >>();
+
+        fieldList.add( pid );
+
+        fieldList.add( new Pair<FedoraFieldName, String >( FedoraFieldName.TITLE, "Hello'World" ) );
+
+        instance.indexFields( fieldList, 0 );
+
+        FieldSearchQuery fsq = getFieldSearchTerm( "Hello'World" );
+
+        IPidList searchResult = instance.search( fsq );
+
+        assertEquals( 1, searchResult.size() );
+
+        assertEquals( pid.getSecond(), searchResult.getNextPids( 1 ).iterator().next() );
+    }
+
     /**
      * Below follows helper methods
      */
@@ -393,6 +433,20 @@ public class LuceneFieldIndexTest {
         conditions.add( cond );
 
         FieldSearchQuery query = new FieldSearchQuery( conditions );
+
+        return query;
+    }
+    private FieldSearchQuery getFieldSearchQuery( String queryStr ) throws InvalidOperatorException, QueryParseException
+    {
+        List<Condition> conditions = Condition.getConditions( queryStr );
+
+        FieldSearchQuery query = new FieldSearchQuery( conditions );
+
+        return query;
+    }
+    private FieldSearchQuery getFieldSearchTerm( String terms ) throws InvalidOperatorException, QueryParseException
+    {
+        FieldSearchQuery query = new FieldSearchQuery( terms );
 
         return query;
     }

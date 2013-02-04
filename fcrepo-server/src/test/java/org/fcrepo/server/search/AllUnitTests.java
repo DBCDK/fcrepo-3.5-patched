@@ -18,6 +18,7 @@ public class AllUnitTests {
         junit.framework.TestSuite suite =
                 new junit.framework.TestSuite(AllUnitTests.class.getName());
         suite.addTest(TestFieldSearchSQLImpl.suite());
+        suite.addTest(ConditionTest.suite());
 
         return suite;
     }

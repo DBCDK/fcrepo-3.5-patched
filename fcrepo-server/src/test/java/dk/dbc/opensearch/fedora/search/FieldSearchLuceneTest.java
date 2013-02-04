@@ -192,14 +192,6 @@ public class FieldSearchLuceneTest {
     }
 
 
-    @Test( expected=QueryParseException.class )
-    public void testConditionsMayNotContainApostrophes() throws Exception
-    {
-        List<Condition> conds = new ArrayList<Condition>();
-        conds.add( new Condition( "title", "eq", "de'mo"));
-    }
-
-
     @MockClass( realClass=FieldSearchResultLucene.class)
     public static class MockFieldSearchResult {
 
