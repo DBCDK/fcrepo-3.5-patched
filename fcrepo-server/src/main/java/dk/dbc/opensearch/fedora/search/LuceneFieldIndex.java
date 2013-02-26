@@ -110,6 +110,10 @@ public final class LuceneFieldIndex
     private final static char FIELDEND = '$';
     private final WriteAheadLog wal;
 
+    private ObjectName indexMonitorObjectName;
+    private ObjectName fieldIndexObjectName;
+    private ObjectName mergePolicyObjectName;
+
     public static interface IndexMonitorMBean
     {
         int getNumDocs() throws IOException;
@@ -392,10 +396,13 @@ public final class LuceneFieldIndex
         try
         {
             MBeanServer server = ManagementFactory.getPlatformMBeanServer();
+            indexMonitorObjectName = new ObjectName( "FieldSearchLucene:name=Index" );
+            fieldIndexObjectName = new ObjectName( "FieldSearchLucene:name=LuceneFieldIndex" );
+            mergePolicyObjectName = new ObjectName( "FieldSearchLucene:name=TieredMergePolicy" );
 
-            server.registerMBean( new IndexMonitor(), new ObjectName( "FieldSearchLucene:name=Index" ) );
-            server.registerMBean( new LuceneFieldIndexMonitor(), new ObjectName( "FieldSearchLucene:name=LuceneFieldIndex" ) );
-            server.registerMBean( new TieredMergePolicyMonitor( mergePolicy ), new ObjectName( "FieldSearchLucene:name=TieredMergePolicy" ) );
+            server.registerMBean( new IndexMonitor(), indexMonitorObjectName);
+            server.registerMBean( new LuceneFieldIndexMonitor(), fieldIndexObjectName);
+            server.registerMBean( new TieredMergePolicyMonitor( mergePolicy ), mergePolicyObjectName);
         }
         catch( JMException ex )
         {
@@ -773,6 +780,19 @@ public final class LuceneFieldIndex
             {
                 log.info( "While trying to close the IndexWriter, an AlreadyClosedException was thrown: {}", ex.getMessage() );
             }
+        }
+
+        try
+        {
+            MBeanServer server = ManagementFactory.getPlatformMBeanServer();
+            server.unregisterMBean( indexMonitorObjectName );
+            server.unregisterMBean( fieldIndexObjectName );
+            server.unregisterMBean( mergePolicyObjectName );
+        }
+        catch ( JMException ex )
+        {
+            log.warn( "Exception while unregistering jmx beans", ex );
+
         }
     }
 

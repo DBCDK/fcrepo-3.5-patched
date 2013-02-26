@@ -10,7 +10,9 @@ import java.io.RandomAccessFile;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
+import javax.management.InstanceNotFoundException;
 import javax.management.JMException;
+import javax.management.MBeanRegistrationException;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
@@ -41,6 +43,7 @@ public class WriteAheadLog extends WriteAheadLogStats
     private File currentFile;
 
     RandomAccessFile fileAccess = null;
+    private ObjectName jmxObjectName;
 
     public WriteAheadLog( IndexWriter writer, File storageDirectory, int commitSize, boolean keepFileOpen ) throws IOException
     {
@@ -59,9 +62,9 @@ public class WriteAheadLog extends WriteAheadLogStats
         // Register the JMX monitoring bean
         try
         {
+            jmxObjectName = new ObjectName( "FieldSearchLucene:name=WriteAheadLog" );
             MBeanServer server = ManagementFactory.getPlatformMBeanServer();
-
-            server.registerMBean( this, new ObjectName( "FieldSearchLucene:name=WriteAheadLog" ) );
+            server.registerMBean( this, jmxObjectName);
         }
         catch( JMException ex )
         {
@@ -275,6 +278,18 @@ public class WriteAheadLog extends WriteAheadLogStats
             }
             currentFile.delete();
             currentFile = null;
+        }
+        if ( jmxObjectName != null )
+        {
+            MBeanServer server = ManagementFactory.getPlatformMBeanServer();
+            try
+            {
+                server.unregisterMBean( jmxObjectName );
+            }
+            catch( JMException ex )
+            {
+                log.warn( "Failed to deregister jmx bean", ex);
+            }
         }
     }
 
