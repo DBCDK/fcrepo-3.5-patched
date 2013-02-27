@@ -237,6 +237,12 @@
             required if GSearchDOManager is used, and the service requires
             authentication.</comment>
         </param>
+        <param name="readerCacheSize" value="20">
+            <comment>Number of documents to keep in the reader cache</comment>
+        </param>
+        <param name="readerCacheSeconds" value="5">
+            <comment>Number of seconds to keep documents in the cache</comment>
+        </param>
 	</module>
 	<module role="org.fcrepo.server.management.Management" class="org.fcrepo.server.management.ManagementModule">
 		<comment>The management subsystem. This implements the methods necessary
