@@ -160,7 +160,7 @@ class FieldSearchResultLucene implements FieldSearchResult
 
         if( localResultCounter == size )
         {
-            log.info( "Result set exhausted, null'ing token, resetting nextCursor" );
+            log.debug( "Result set exhausted, null'ing token, resetting nextCursor" );
             token = null;
             nextCursor = 0;
         }

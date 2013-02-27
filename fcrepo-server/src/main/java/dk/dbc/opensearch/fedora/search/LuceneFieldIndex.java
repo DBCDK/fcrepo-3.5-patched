@@ -433,9 +433,9 @@ public final class LuceneFieldIndex
 
             FedoraFieldName fieldName = field.getFirst();
 
-            if( "".equals( fieldValue ) || null == fieldValue )
+            if( fieldValue == null || fieldValue.isEmpty() )
             {
-                log.warn( "value for field {} is empty; will not be added to index", fieldName );
+                log.debug( "value for field {} is empty; will not be added to index", fieldName );
             }
             else
             {
@@ -471,7 +471,7 @@ public final class LuceneFieldIndex
                         timestamp = parsedDate.getTime();
                     } catch( java.text.ParseException ex )
                     {
-                        log.warn( "'{}' is unparsable as a date, and will not be indexed: {}", fieldValue, ex.getMessage() );
+                        log.debug( "'{}' is unparsable as a date, and will not be indexed: {}", fieldValue, ex.getMessage() );
                         break;
                     }
 
@@ -889,7 +889,7 @@ public final class LuceneFieldIndex
 
         if( field.equals( FedoraFieldName.PID ) )
         {
-            log.info( "Constructing Term or wildCardQuery searching for {} in {}", value, idxField );
+            log.debug( "Constructing Term or wildCardQuery searching for {} in {}", value, idxField );
             if( value.contains( "*:" ) )
             {
                 log.trace( "value '{}' matches .contains( \"*:\" )", value );
@@ -922,7 +922,7 @@ public final class LuceneFieldIndex
 	// Search on op.EQUALS can contain * and ? but they should not be interpreted as wildcards:
         else if( ( value.contains( "*" ) || value.contains( "?" ) ) && op.equals( Operator.EQUALS ) )
 	{
-            log.info( "Constructing TermQuery( new Term( {}, {}) )", idxField, value );
+            log.debug( "Constructing TermQuery( new Term( {}, {}) )", idxField, value );
 	    return new TermQuery( new Term( idxField, value ) );
 	}
         // 2) a) and c)

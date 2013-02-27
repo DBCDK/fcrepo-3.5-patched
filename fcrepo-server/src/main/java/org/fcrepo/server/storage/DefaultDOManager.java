@@ -159,7 +159,7 @@ public class DefaultDOManager
         private int counter;
         private long owner;
 
-        LockAdmin() 
+        LockAdmin()
         {
             this.lock = new ReentrantLock();
             this.counter = 0;
@@ -190,7 +190,7 @@ public class DefaultDOManager
 
         /**
          * decreases the counter part of the pair with 1
-         * @throws IllegalStateException if the counter is attempted to 
+         * @throws IllegalStateException if the counter is attempted to
          * be decreased below zero
          */
         void decreaseCounter() throws IllegalStateException
@@ -208,7 +208,7 @@ public class DefaultDOManager
         /**
          * increases the counter part of the pair with 1
          */
-        void increaseCounter() 
+        void increaseCounter()
         {
             counter++;
         }
@@ -231,7 +231,7 @@ public class DefaultDOManager
 
         /**
          *  A string representation of the elements in the following format:
-         *  a string representation of the lock, the value of the counter and the 
+         *  a string representation of the lock, the value of the counter and the
          *  value of the threadId of the thread currently holding the lock
          *  @return a String representation of the object
          */
@@ -242,9 +242,9 @@ public class DefaultDOManager
         }
 
         /**
-         *  Returns a unique hashcode for the specific combination 
+         *  Returns a unique hashcode for the specific combination
          *  of elements in this Pair.
-         *  Notice, if you use the same two objects in the same order in 
+         *  Notice, if you use the same two objects in the same order in
          *  two different Pairs,
          *  then the two Pairs will return the same hashcode.
          */
@@ -311,8 +311,8 @@ public class DefaultDOManager
                     logger.error( msg );
                     throw new IllegalStateException( msg );
                 }
-                
-                logger.info( String.format( "DOLock.unlock, thread: '%s' released lock on pid: '%s'", Thread.currentThread().getId(), pid ) );
+
+                logger.debug( String.format( "DOLock.unlock, thread: '%s' released lock on pid: '%s'", Thread.currentThread().getId(), pid ) );
                 lockAdm.getLock().unlock();
                 lockAdm.decreaseCounter();
 
@@ -779,9 +779,9 @@ public class DefaultDOManager
     }
 
     private void getWriteLock(String pid) throws ObjectLockedException {
-        
+
         stringLock.lock( pid );
-        
+
         // synchronized (m_lockedPIDs) {
         //     if (m_lockedPIDs.contains(pid)) {
         //         throw new ObjectLockedException(pid + " is currently being "
