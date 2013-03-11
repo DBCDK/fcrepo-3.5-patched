@@ -89,7 +89,7 @@ public class FieldSearchResultLuceneTest
     public void setUp() throws Exception
     {
         TieredMergePolicy tieredMergePolicy = new TieredMergePolicy();
-        IndexWriterConfig conf = new IndexWriterConfig( Version.LUCENE_35, new SimpleAnalyzer( Version.LUCENE_35 ) ).
+        IndexWriterConfig conf = new IndexWriterConfig( Version.LUCENE_41, new SimpleAnalyzer( Version.LUCENE_41 ) ).
                 setWriteLockTimeout( 1000L ).
                 setMergePolicy( tieredMergePolicy );
         IndexWriter writer = new IndexWriter( new RAMDirectory(), conf );

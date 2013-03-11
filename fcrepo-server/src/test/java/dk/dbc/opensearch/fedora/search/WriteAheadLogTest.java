@@ -91,7 +91,7 @@ public class WriteAheadLogTest
     public void setUp() throws IOException
     {
         TieredMergePolicy tieredMergePolicy = new TieredMergePolicy();
-        IndexWriterConfig conf = new IndexWriterConfig( Version.LUCENE_35, new SimpleAnalyzer( Version.LUCENE_35 ) ).
+        IndexWriterConfig conf = new IndexWriterConfig( Version.LUCENE_41, new SimpleAnalyzer( Version.LUCENE_41 ) ).
                 setWriteLockTimeout( 1000L ).
                 setMergePolicy( tieredMergePolicy );
 

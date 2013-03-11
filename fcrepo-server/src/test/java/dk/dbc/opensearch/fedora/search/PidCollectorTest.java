@@ -197,7 +197,7 @@ public class PidCollectorTest
 
     private AtomicReader populateIndexAndGetIndexReader( Document... docs ) throws IOException
     {
-        IndexWriterConfig config = new IndexWriterConfig( Version.LUCENE_35, new SimpleAnalyzer( Version.LUCENE_35 ) );
+        IndexWriterConfig config = new IndexWriterConfig( Version.LUCENE_41, new SimpleAnalyzer( Version.LUCENE_41 ) );
         IndexWriter indexWriter = new IndexWriter( index, config );
         for( Document doc : docs )
         {

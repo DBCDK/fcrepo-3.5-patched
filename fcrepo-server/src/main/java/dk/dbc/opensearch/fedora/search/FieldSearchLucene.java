@@ -194,7 +194,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         initializeWriteAheadLogSettings();
 
         // luceneindexer
-        Analyzer analyzer = new WhitespaceAnalyzer( Version.LUCENE_35 );
+        Analyzer analyzer = new WhitespaceAnalyzer( Version.LUCENE_41 );
 
         TieredMergePolicy mergePolicy = new TieredMergePolicy();
         try
@@ -622,7 +622,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
             throw new IllegalStateException( error );
         }
 
-        IndexWriterConfig conf = new IndexWriterConfig( Version.LUCENE_35, analyzer ).setWriteLockTimeout( luceneWriteLockTimeout ).
+        IndexWriterConfig conf = new IndexWriterConfig( Version.LUCENE_41, analyzer ).setWriteLockTimeout( luceneWriteLockTimeout ).
                 setMergePolicy( mergePolicy );
         IndexWriter writer = new IndexWriter( directory, conf );
 

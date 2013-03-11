@@ -89,7 +89,7 @@ public class LuceneFieldIndexTest {
     {
         fsdir = FSDirectory.open( new File( indexLocation ) );
         TieredMergePolicy tieredMergePolicy = new TieredMergePolicy();
-        IndexWriterConfig conf = new IndexWriterConfig( Version.LUCENE_35, new WhitespaceAnalyzer( Version.LUCENE_35 ) ).
+        IndexWriterConfig conf = new IndexWriterConfig( Version.LUCENE_41, new WhitespaceAnalyzer( Version.LUCENE_41 ) ).
                 setWriteLockTimeout( 1000L ).
                 setMergePolicy( tieredMergePolicy );
         IndexWriter writer = new IndexWriter( fsdir, conf );
