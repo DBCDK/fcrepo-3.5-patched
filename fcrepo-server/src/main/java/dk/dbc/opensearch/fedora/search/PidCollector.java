@@ -20,7 +20,7 @@
 package dk.dbc.opensearch.fedora.search;
 
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Fieldable;
+import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.Scorer;
@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import org.apache.lucene.index.AtomicReaderContext;
 
 /**
  * This class is an implementation of the
@@ -42,7 +43,7 @@ public class PidCollector extends Collector
     private IPidList pidList;
     private long pidsCollected = 0;
     private IndexReader currentReader = null;
-    private final String pidFieldName = "pid";
+    private final static String pidFieldName = "pid";
     private final int maxInMemory;
     private final File tmpDir;
 
@@ -73,7 +74,7 @@ public class PidCollector extends Collector
         }
         else
         {
-            Fieldable pidField = doc.getFieldable( pidFieldName );
+            IndexableField pidField = doc.getField( pidFieldName );
             if( pidField == null )
             {
                 log.warn( "Unable to retrieve PID field '{}' from the index Document", pidFieldName );
@@ -114,9 +115,9 @@ public class PidCollector extends Collector
     }
 
     @Override
-    public void setNextReader( final IndexReader reader, final int nextDocBase ) throws IOException
+    public void setNextReader(AtomicReaderContext context) throws IOException
     {
-        currentReader = reader;
+        currentReader = context.reader();
     }
 
     @Override

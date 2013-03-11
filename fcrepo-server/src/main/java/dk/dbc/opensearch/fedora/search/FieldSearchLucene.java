@@ -22,7 +22,7 @@ package dk.dbc.opensearch.fedora.search;
 
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.WhitespaceAnalyzer;
+import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.NIOFSDirectory;
@@ -183,7 +183,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         {
             String error = String.format( "FATAL: Could not initialize lucene directory '%s': %s", sDirectory, ex.getMessage() );
             log.error( error );
-            throw new ModuleInitializationException( error, getRole() );
+            throw new ModuleInitializationException( error, getRole(), ex );
         }
         log.debug( "LuceneDirectory: {}", sDirectory );
 

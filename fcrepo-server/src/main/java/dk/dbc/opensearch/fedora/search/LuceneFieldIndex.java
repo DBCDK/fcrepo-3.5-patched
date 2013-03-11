@@ -21,15 +21,12 @@ package dk.dbc.opensearch.fedora.search;
 
 
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
-import org.apache.lucene.document.Field.Index;
 import org.apache.lucene.document.Field.Store;
-import org.apache.lucene.document.NumericField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TieredMergePolicy;
-import org.apache.lucene.queryParser.ParseException;
+import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
@@ -56,6 +53,14 @@ import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
 import java.util.concurrent.atomic.AtomicLong;
+import org.apache.lucene.document.LongField;
+import org.apache.lucene.document.StringField;
+import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.SlowCompositeReaderWrapper;
+import org.apache.lucene.util.Bits;
 
 /**
  * This class ensures that the underlying lucene index can be manipulated in
@@ -75,7 +80,7 @@ public final class LuceneFieldIndex
     private static final Logger log = LoggerFactory.getLogger( LuceneFieldIndex.class );
     private final IndexWriter writer;
 
-    private IndexReader reader = null;
+    private DirectoryReader reader = null;
     private IndexSearcher searcher = null;
 
     private final int pidCollectorMaxInMemory;
@@ -442,22 +447,23 @@ public final class LuceneFieldIndex
                 switch( fieldName )
                 {
                 case PID:
-                    doc.add( new Field( fieldName.toString(), fieldValue, Store.YES, Index.NOT_ANALYZED ) );
+                    doc.add( new StringField( fieldName.toString(), fieldValue, Store.YES ) );
                     log.trace( "Added { {}: {} } to index document", fieldName.toString(), fieldValue );
                     pid = fieldValue;
 
-                    doc.add( new Field( PID_IDENTIFIER, fieldValue.split( ":" )[1], Store.NO, Index.NOT_ANALYZED ) );
-                    doc.add( new Field( PID_NAMESPACE, fieldValue.split( ":" )[0], Store.NO, Index.NOT_ANALYZED ) );
+                    doc.add( new StringField( PID_IDENTIFIER, fieldValue.split( ":" )[1], Store.NO ) );
+                    doc.add( new StringField( PID_NAMESPACE, fieldValue.split( ":" )[0], Store.NO ) );
 
-                    doc.add( new Field( fieldName.equalsFieldName(), FIELDSTART + fieldValue + FIELDEND, Store.NO, Index.NOT_ANALYZED ) );
+                    doc.add( new StringField( fieldName.equalsFieldName(), FIELDSTART + fieldValue + FIELDEND, Store.NO ) );
 
                     break;
                 case DATE:
                     // DATE field in DC data is also stored in raw form so EQ an HAS searches can search
                     // against the raw string even, if it is not parsable as a timestamp (bug 13799)
                     String fieldLower = fieldValue.toLowerCase();
-                    doc.add( new Field( DATE_RAW, fieldLower, Store.NO, Index.ANALYZED ));
-                    doc.add( new Field( DATE_RAW_EQ, FIELDSTART + fieldLower + FIELDEND, Store.NO, Index.ANALYZED ));
+                    doc.add( new TextField( DATE_RAW, fieldLower, Store.NO ));
+                    doc.add( new TextField( DATE_RAW, fieldLower, Store.NO ));
+                    doc.add( new TextField( DATE_RAW_EQ, FIELDSTART + fieldLower + FIELDEND, Store.NO ));
                     // Fall through to next case, so it is also parsed as timestamp if possible:
                 case CDATE:
                 case MDATE:
@@ -477,7 +483,8 @@ public final class LuceneFieldIndex
 
                     if( timestamp > 0 )
                     {
-                        NumericField date = new NumericField( fieldName.toString(), Store.YES, true );
+                        LongField date = new LongField(fieldName.toString(), timestamp, Store.YES);
+
                         date.setLongValue( timestamp );
                         doc.add( date );
                         log.trace( "Added { {}: {} } to index document", fieldName.toString(), timestamp );
@@ -486,8 +493,8 @@ public final class LuceneFieldIndex
                     break;
                 default:
                     fieldValue = fieldValue.toLowerCase();
-                    doc.add( new Field( fieldName.toString(), fieldValue, Store.YES, Index.ANALYZED ) );
-                    doc.add( new Field( fieldName.equalsFieldName(), FIELDSTART + fieldValue + FIELDEND, Store.NO, Index.NOT_ANALYZED ) );
+                    doc.add( new TextField( fieldName.toString(), fieldValue, Store.YES ) );
+                    doc.add( new StringField( fieldName.equalsFieldName(), FIELDSTART + fieldValue + FIELDEND, Store.NO ) );
                     log.trace( "Added { {}: {} } to index document", fieldName.toString(), fieldValue );
                 }
             }
@@ -615,7 +622,7 @@ public final class LuceneFieldIndex
             {
                 synchronized (this)
                 {
-                    IndexReader newReader = IndexReader.openIfChanged( reader, this.writer, true );
+                    DirectoryReader newReader = DirectoryReader.openIfChanged( reader, this.writer, true );
                     if ( newReader != null )
                     {
                         log.debug( "Reader has changed. Creating new reader and searcher.");
@@ -695,11 +702,11 @@ public final class LuceneFieldIndex
     {
         IPidList results = null;
 
-        IndexReader localReader;
+        DirectoryReader localReader;
 
         synchronized (this)
         {
-            IndexReader newReader = IndexReader.openIfChanged( reader, this.writer, true );
+            DirectoryReader newReader = DirectoryReader.openIfChanged( reader, this.writer, true );
             if ( newReader != null )
             {
                 log.debug( "Reader has changed. Creating new reader and searcher.");
@@ -721,14 +728,17 @@ public final class LuceneFieldIndex
 
         try
         {
-            int numDocs = localReader.numDocs();
-            int numDelDocs = localReader.numDeletedDocs();
+            AtomicReader atomicReader = SlowCompositeReaderWrapper.wrap( localReader );
+            int numDocs = atomicReader.numDocs();
+            int numDelDocs = atomicReader.numDeletedDocs();
             log.debug( "getAll, reader has {} documents, {} deleted documents", numDocs, numDelDocs );
             PidCollector pidCollector = new PidCollector( pidCollectorMaxInMemory, pidCollectorTmpDir );
-            pidCollector.setNextReader( localReader, 0 );
-            for( int i = 0; i < numDocs+numDelDocs ; i++ )
+            pidCollector.setNextReader( atomicReader.getContext() );
+            Bits liveDocs = MultiFields.getLiveDocs( atomicReader );
+
+            for( int i = 0; i < numDocs + numDelDocs ; i++ )
             {
-                if( localReader.isDeleted( i ) )
+                if (liveDocs != null && !liveDocs.get(i))
                 {
                     // Skip deleted documents
                     log.trace( "Skipping deleted document {}", i );
@@ -738,7 +748,6 @@ public final class LuceneFieldIndex
                 log.trace( "Getting doc id {}", i );
                 pidCollector.collect( i );
             }
-
             results = pidCollector.getResults();
         }
         finally
@@ -758,10 +767,6 @@ public final class LuceneFieldIndex
      */
     void closeIndex() throws IOException
     {
-        if( null != this.searcher )
-        {
-            this.searcher.close();
-        }
         if( null != this.reader )
         {
             this.reader.close();
@@ -944,7 +949,7 @@ public final class LuceneFieldIndex
                 return new WildcardQuery( new Term( idxField, value.toLowerCase() ) );
             }
         }
-        else if( ( op.equals( Operator.EQUALS ) && !field.isDateField() ) || ( value.indexOf( "\"" ) == 0 && value.lastIndexOf( "\"" ) == value.length() - 1 ) )
+        else if( ( op.equals( Operator.EQUALS ) && !field.isDateField() ) || ( value.indexOf( '\"' ) == 0 && value.lastIndexOf( '\"' ) == value.length() - 1 ) )
         {
             String eqField = field.equalsFieldName();
             String eqValue = FIELDSTART + value + FIELDEND;

@@ -42,8 +42,8 @@
     </resources>
 
     <plugins>
-      <!-- Note: This plugin was defined as required by: client, integrationtest, 
-        & server.test. It is certainly required by fedorahome.zip (integrationtest) 
+      <!-- Note: This plugin was defined as required by: client, integrationtest,
+        & server.test. It is certainly required by fedorahome.zip (integrationtest)
         & server.test. The other two dependencies listed above are questionable. -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
@@ -111,7 +111,7 @@
               <classpathScope>runtime</classpathScope>
             </configuration>
           </execution>
-          
+
           <execution>
             <id>gen-vocab</id>
             <phase>process-classes</phase>
@@ -123,7 +123,7 @@
               <arguments>
                 <argument>${project.build.directory}/vocabulary.txt</argument>
               </arguments>
-              <!-- Note: this execution has the following dependencies: openrdf-sesame-2.2.1-onejar.jar 
+              <!-- Note: this execution has the following dependencies: openrdf-sesame-2.2.1-onejar.jar
                 mulgara-core-2.1.4.jar fedora-common.jar -->
             </configuration>
           </execution>
@@ -131,7 +131,7 @@
       </plugin>
 
 
-      <!-- ** This plugin needs to be removed when ANT is gone. The unit/integration 
+      <!-- ** This plugin needs to be removed when ANT is gone. The unit/integration
         test regex's should be defined at root/pom.xml ** -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -322,7 +322,14 @@
         </executions>
 
       </plugin>
-
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>2.3.2</version>
+        <configuration>
+          <showDeprecation>true</showDeprecation>
+        </configuration>
+      </plugin>
     </plugins>
 
   </build>
@@ -796,9 +803,22 @@
     <dependency>
       <groupId>org.apache.lucene</groupId>
       <artifactId>lucene-core</artifactId>
-      <version>3.5.0</version>
+      <version>4.1.0</version>
     </dependency>
-
-
+    <dependency>
+      <groupId>org.apache.lucene</groupId>
+      <artifactId>lucene-analyzers-common</artifactId>
+      <version>4.1.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.lucene</groupId>
+      <artifactId>lucene-queryparser</artifactId>
+      <version>4.1.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.esotericsoftware.kryo</groupId>
+      <artifactId>kryo</artifactId>
+      <version>2.20</version>
+    </dependency>
   </dependencies>
 </project>

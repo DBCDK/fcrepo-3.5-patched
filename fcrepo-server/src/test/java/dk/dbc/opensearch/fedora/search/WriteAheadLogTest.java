@@ -28,12 +28,19 @@ import dk.dbc.opensearch.fedora.search.WriteAheadLog.DocumentData;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import org.apache.lucene.analysis.SimpleAnalyzer;
+import java.util.Iterator;
+import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.LongField;
+import org.apache.lucene.document.StringField;
+import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.search.IndexSearcher;
@@ -41,6 +48,7 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.Version;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -99,11 +107,12 @@ public class WriteAheadLogTest
     private Document makeLuceneDocument( String pid, Pair<String, String>... fields )
     {
         Document doc = new Document();
-        doc.add( new Field( "pid", pid, Field.Store.YES, Field.Index.NOT_ANALYZED ) );
+        doc.add( new StringField( "pid", pid, Field.Store.YES ) );
         for( Pair<String, String> pair : fields )
         {
-            doc.add( new Field( pair.getFirst(), pair.getSecond(), Field.Store.YES, Field.Index.NOT_ANALYZED ) );
+            doc.add( new TextField( pair.getFirst(), pair.getSecond(), Field.Store.YES ) );
         }
+        doc.add( new LongField( "longValue", 123456, Field.Store.YES ) );
 
         return doc;
     }
@@ -134,8 +143,11 @@ public class WriteAheadLogTest
 
         for ( ScoreDoc sdoc : result.scoreDocs )
         {
+            Bits liveDocs = MultiFields.getLiveDocs( reader );
+            boolean isDeleted =  ( liveDocs != null && !liveDocs.get( sdoc.doc ) );
+
             System.out.println( sdoc );
-            System.out.println( reader.isDeleted( sdoc.doc ) );
+            System.out.println( isDeleted );
             Document document = reader.document( sdoc.doc );
             System.out.println( document );
         }
@@ -296,12 +308,11 @@ public class WriteAheadLogTest
         WriteAheadLog.writeDocumentData( fileAccess, pid2, doc2 );
 
         fileAccess.close();
-
         // Recover the log file
-
-        WriteAheadLog.recoverUncomittedFile( objectFile, writer );
+        int recovered = WriteAheadLog.recoverUncomittedFile( objectFile, writer );
 
         // Verify that
+        assertEquals( 2, recovered );
 
         IndexReader reader = IndexReader.open( writer, false );
         IndexSearcher searcher = new IndexSearcher( reader );
@@ -354,21 +365,42 @@ public class WriteAheadLogTest
         // Initialize the WAL to recover the lost files
 
         WriteAheadLog wal = new WriteAheadLog( writer, folder.getRoot(), 1000, true );
-        wal.initialize();
+        int recovered = wal.initialize();
+        assertEquals( 4, recovered );
 
         // Verify that
 
-        IndexReader reader = IndexReader.open( writer, false );
+        IndexReader reader = DirectoryReader.open( writer, false );
         IndexSearcher searcher = new IndexSearcher( reader );
 
         TopDocs result = searcher.search( new TermQuery( WriteAheadLog.getPidTerm( pid1 ) ), 100 );
-        //assertEquals( 0, result.scoreDocs.length );
+        assertEquals( 0, result.scoreDocs.length );
         System.out.println( "" );
 
         result = searcher.search( new TermQuery( WriteAheadLog.getPidTerm( pid2 ) ), 100 );
         assertEquals( 1, result.scoreDocs.length );
         Document doc2 = reader.document( result.scoreDocs[0].doc );
-        assertEquals( doc2b.toString(), doc2.toString() );
+
+        Iterator<IndexableField> it1 = doc2b.iterator();
+        Iterator<IndexableField> it2 = doc2.iterator();
+        do
+        {
+            IndexableField expected = it1.next();
+            IndexableField actual = it2.next();
+            assertEquals( expected.fieldType().stored(), actual.fieldType().stored() );
+            if (! (expected instanceof LongField) )
+            {
+                assertEquals( expected.fieldType().indexed(), actual.fieldType().indexed() );
+                assertEquals( expected.fieldType().omitNorms(), actual.fieldType().omitNorms() );
+                assertEquals( expected.fieldType().indexOptions(), actual.fieldType().indexOptions() );
+            }
+            assertEquals( expected.name(), actual.name() );
+            assertEquals( expected.stringValue(), actual.stringValue() );
+            assertEquals( expected.numericValue(), actual.numericValue() );
+        }
+        while (it1.hasNext() && it2.hasNext());
+
+//        assertEquals( doc2b.toString(), doc2.toString() );
 
         result = searcher.search( new TermQuery( WriteAheadLog.getPidTerm( pid3 ) ), 100 );
         assertEquals( 1, result.scoreDocs.length );

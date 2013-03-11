@@ -60,7 +60,7 @@
             <configuration>
               <wsdlFiles>
                 <wsdlFile>
-                  Fedora-API-M.wsdl 
+                  Fedora-API-M.wsdl
                 </wsdlFile>
               </wsdlFiles>
 
@@ -95,7 +95,7 @@
             <configuration>
               <wsdlFiles>
                 <wsdlFile>
-                  Fedora-API-A.wsdl 
+                  Fedora-API-A.wsdl
                 </wsdlFile>
               </wsdlFiles>
 
@@ -290,11 +290,16 @@
       <artifactId>axis</artifactId>
     </dependency>
 
-    <dependency>
+<!--    <dependency>
       <groupId>org.apache.lucene</groupId>
       <artifactId>lucene-core</artifactId>
-      <version>3.5.0</version>
+      <version>4.1.0</version>
     </dependency>
+    <dependency>
+      <groupId>org.apache.lucene</groupId>
+      <artifactId>lucene-analyzers-common</artifactId>
+      <version>4.1.0</version>
+    </dependency>-->
 
     <dependency>
       <groupId>org.fcrepo</groupId>
@@ -327,13 +332,13 @@
       <groupId>org.slf4j</groupId>
       <artifactId>jcl-over-slf4j</artifactId>
     </dependency>
-    
+
     <dependency>
       <groupId>dom4j</groupId>
       <artifactId>dom4j</artifactId>
       <version>1.6.1</version>
     </dependency>
-    
+
     <dependency>
       <groupId>org.fcrepo</groupId>
       <artifactId>saxon</artifactId>

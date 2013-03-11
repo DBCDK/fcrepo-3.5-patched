@@ -20,7 +20,7 @@ along with opensearch.  If not, see <http://www.gnu.org/licenses/>.
 package dk.dbc.opensearch.fedora.search;
 
 
-import org.apache.lucene.analysis.WhitespaceAnalyzer;
+import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.TieredMergePolicy;
@@ -72,7 +72,6 @@ public class LuceneFieldIndexTest {
     private final static int PID_COLLECTOR_MAX_IN_MEMORY = Integer.MAX_VALUE;
     private final static File PID_COLLECTOR_TMP_DIR = null;
 
-    private final String dateNow;
     private final Pair<FedoraFieldName, String> date;
 
     private static FSDirectory fsdir;
@@ -81,7 +80,7 @@ public class LuceneFieldIndexTest {
 
     public LuceneFieldIndexTest() throws ParseException
     {
-        dateNow = dateFormatter.format( new Date( now ) );
+        String dateNow = dateFormatter.format( new Date( now ) );
         date = new Pair<FedoraFieldName, String >( FedoraFieldName.DATE, dateNow );
     }
 
