@@ -167,7 +167,7 @@ public class LuceneFieldIndexTest {
 
         IPidList searchResult = instance.search( fsq );
 
-        assertFalse( searchResult.size() == 0 );
+        assertEquals( 1, searchResult.size() );
 
         String uid = "demo:1";
         instance.removeDocument( uid );
@@ -194,6 +194,7 @@ public class LuceneFieldIndexTest {
         IPidList searchResult = instance.search( fsq );
 
         String[] nextPidArray = searchResult.getNextPids(1).toArray(new String[0]);
+        assertEquals( 1, nextPidArray.length );
         assertEquals( "demo:1", nextPidArray[0] );
     }
 

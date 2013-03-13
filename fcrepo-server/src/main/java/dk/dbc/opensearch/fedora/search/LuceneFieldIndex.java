@@ -57,9 +57,8 @@ import org.apache.lucene.document.LongField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.AtomicReader;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.MultiFields;
-import org.apache.lucene.index.SlowCompositeReaderWrapper;
+import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.search.SearcherManager;
 import org.apache.lucene.util.Bits;
 
 /**
@@ -80,8 +79,7 @@ public final class LuceneFieldIndex
     private static final Logger log = LoggerFactory.getLogger( LuceneFieldIndex.class );
     private final IndexWriter writer;
 
-    private DirectoryReader reader = null;
-    private IndexSearcher searcher = null;
+    private final SearcherManager searchManager;
 
     private final int pidCollectorMaxInMemory;
     private final File pidCollectorTmpDir;
@@ -124,11 +122,6 @@ public final class LuceneFieldIndex
         int getNumDocs() throws IOException;
         int getMaxDoc();
 
-        // These methods have been hidden from interface, since they only add to the confusion
-        // They are information about the writers buffered documents, not search cache information
-        //int getNumRamDocs();
-        //long getRamSizeInBytes();
-
         void forceMerge() throws IOException, IllegalArgumentException;
     }
 
@@ -147,19 +140,9 @@ public final class LuceneFieldIndex
             return writer.numDocs();
         }
 
-        public int getNumRamDocs()
-        {
-            return writer.numRamDocs();
-        }
-
         public int getMaxDoc()
         {
             return writer.maxDoc();
-        }
-
-        public long getRamSizeInBytes()
-        {
-            return writer.ramSizeInBytes();
         }
     }
 
@@ -168,8 +151,6 @@ public final class LuceneFieldIndex
         long getDocumentsIndexed();
         long getDocumentsDeleted();
         long getSearchesPerformed();
-        long getSearchersReused();
-        long getNewSearchersCreated();
 
         long getLastSearchTimeMS();
         long getAverageSearchTimeMS();
@@ -197,18 +178,6 @@ public final class LuceneFieldIndex
         public long getSearchesPerformed()
         {
             return searchesPerformed.get();
-        }
-
-        @Override
-        public long getSearchersReused()
-        {
-            return searchersReused.get();
-        }
-
-        @Override
-        public long getNewSearchersCreated()
-        {
-            return newSearchersCreated.get();
         }
 
         @Override
@@ -246,9 +215,6 @@ public final class LuceneFieldIndex
             documentsDeleted.set( 0 );
             searchesPerformed.set( 0 );
             lastSearchTimeMS = 0;
-            searchersReused.set( 0 );
-            newSearchersCreated.set( 0 );
-
         }
     }
 
@@ -380,8 +346,6 @@ public final class LuceneFieldIndex
 
     private final AtomicLong documentsIndexed = new AtomicLong();
     private final AtomicLong documentsDeleted = new AtomicLong();
-    private final AtomicLong newSearchersCreated = new AtomicLong();
-    private final AtomicLong searchersReused = new AtomicLong();
     private final AtomicLong searchesPerformed = new AtomicLong();
     private final AtomicLong totalSearchTimeMS = new AtomicLong();
     private volatile long lastSearchTimeMS = 0;
@@ -413,9 +377,7 @@ public final class LuceneFieldIndex
         {
             log.error( "Unable to register monitor. JMX Monitoring will be unavailable", ex);
         }
-        this.reader = IndexReader.open( this.writer, true );
-        this.searcher = new IndexSearcher( reader );
-        newSearchersCreated.incrementAndGet();
+        searchManager = new SearcherManager( this.writer, true, null );
 
         if ( this.wal != null )
         {
@@ -615,40 +577,10 @@ public final class LuceneFieldIndex
         }
         else
         {
-            // Local variables to hold current value in case another thread changes the class members
-            IndexReader localReader = null;
-            IndexSearcher localSearcher;
+            searchManager.maybeRefreshBlocking();
+            IndexSearcher localSearcher = searchManager.acquire();
             try
             {
-                synchronized (this)
-                {
-                    DirectoryReader newReader = DirectoryReader.openIfChanged( reader, this.writer, true );
-                    if ( newReader != null )
-                    {
-                        log.debug( "Reader has changed. Creating new reader and searcher.");
-                        // Release reference to old reader. reader will automatically shutdown when reference count reaches 0
-                        reader.decRef();
-                        reader = newReader;
-                        searcher = new IndexSearcher( reader );
-                        newSearchersCreated.incrementAndGet();
-                    }
-                    else
-                    {
-                        log.debug( "Reader is unchanged. Reusing searcher.");
-                        searchersReused.incrementAndGet();
-                    }
-                    localReader = reader;
-                    // Grab reference to reader so it is not closed while search is running
-                    localReader.incRef();
-                    localSearcher = searcher;
-                }
-                // DONE
-                // numDeletedDocs and numDocs are synchronized, so avoid calling them if possible
-                if ( log.isTraceEnabled() )
-                {
-                    log.trace( "number of deleted documents in reader: {}", localReader.numDeletedDocs() );
-                    log.trace( "number of documents in reader: {}", localReader.numDocs() );
-                }
                 final PidCollector pidCollector = new PidCollector( pidCollectorMaxInMemory, pidCollectorTmpDir );
                 log.debug( "Query: {}", luceneQuery.toString() );
                 localSearcher.search( luceneQuery, pidCollector );
@@ -656,11 +588,7 @@ public final class LuceneFieldIndex
             }
             finally
             {
-                if( null != localReader )
-                {
-                    // Release reference. reader will automatically shutdown when no-one holds a reference to them
-                    localReader.decRef();
-                }
+                searchManager.release( localSearcher );
             }
         }
 
@@ -702,59 +630,41 @@ public final class LuceneFieldIndex
     {
         IPidList results = null;
 
-        DirectoryReader localReader;
-
-        synchronized (this)
-        {
-            DirectoryReader newReader = DirectoryReader.openIfChanged( reader, this.writer, true );
-            if ( newReader != null )
-            {
-                log.debug( "Reader has changed. Creating new reader and searcher.");
-                // Release reference to old reader. reader will automatically shutdown when reference couunt reaches 0
-                reader.decRef();
-                reader = newReader;
-                searcher = new IndexSearcher( reader );
-                newSearchersCreated.incrementAndGet();
-            }
-            else
-            {
-                log.debug( "Reader is unchanged. Reusing searcher.");
-                searchersReused.incrementAndGet();
-            }
-            localReader = reader;
-            // Grab reference to reader so it is not closed while search is running
-            localReader.incRef();
-        }
+        searchManager.maybeRefreshBlocking();
+        IndexSearcher localSearcher = searchManager.acquire();
+        IndexReader localReader = localSearcher.getIndexReader();
 
         try
         {
-            AtomicReader atomicReader = SlowCompositeReaderWrapper.wrap( localReader );
-            int numDocs = atomicReader.numDocs();
-            int numDelDocs = atomicReader.numDeletedDocs();
-            log.debug( "getAll, reader has {} documents, {} deleted documents", numDocs, numDelDocs );
             PidCollector pidCollector = new PidCollector( pidCollectorMaxInMemory, pidCollectorTmpDir );
-            pidCollector.setNextReader( atomicReader.getContext() );
-            Bits liveDocs = MultiFields.getLiveDocs( atomicReader );
 
-            for( int i = 0; i < numDocs + numDelDocs ; i++ )
+            for ( AtomicReaderContext context : localReader.getContext().leaves())
             {
-                if (liveDocs != null && !liveDocs.get(i))
-                {
-                    // Skip deleted documents
-                    log.trace( "Skipping deleted document {}", i );
-                    continue;
-                }
+                AtomicReader subReader = context.reader();
+                pidCollector.setNextReader( context );
+                Bits liveDocs = subReader.getLiveDocs();
 
-                log.trace( "Getting doc id {}", i );
-                pidCollector.collect( i );
+                int numDocs = subReader.numDocs();
+                int numDelDocs = subReader.numDeletedDocs();
+                log.debug( "getAll, reader has {} documents, {} deleted documents", numDocs, numDelDocs );
+                for( int i = 0; i < numDocs + numDelDocs ; i++ )
+                {
+                    if (liveDocs != null && !liveDocs.get(i))
+                    {
+                        // Skip deleted documents
+                        log.trace( "Skipping deleted document {}", i );
+                        continue;
+                    }
+                    log.trace( "Getting doc id {}", i );
+                    pidCollector.collect( i );
+                }
             }
             results = pidCollector.getResults();
         }
         finally
         {
-            localReader.decRef();
+            searchManager.release( localSearcher );
         }
-
         return results;
     }
 
@@ -767,10 +677,7 @@ public final class LuceneFieldIndex
      */
     void closeIndex() throws IOException
     {
-        if( null != this.reader )
-        {
-            this.reader.close();
-        }
+        searchManager.close();
         if ( wal != null )
         {
             wal.shutdown();
