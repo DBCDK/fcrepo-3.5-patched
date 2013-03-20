@@ -91,7 +91,6 @@ public class ModuleTest
     private static SimpleDateFormat zTimeFormatter;
     private static SimpleDateFormat utcFormatter;
     private static SimpleDateFormat simpleUtcFormatter;
-    private static SimpleDateFormat simpleTimeFormatter;
 
     private static final Date yesterDate = new Date( timeNow - 86400000L );
     private static final Date toDate = new Date( timeNow );
@@ -122,7 +121,6 @@ public class ModuleTest
         utcFormatter.setTimeZone( TimeZone.getTimeZone( "UTC" ) );
         simpleUtcFormatter = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSS" );
         simpleUtcFormatter.setTimeZone( TimeZone.getTimeZone( "UTC" ) );
-        simpleTimeFormatter = new SimpleDateFormat( "yyyy-MM-dd'T'HH:mm:ss.SSS" );
 
         final Map<String, String> params = getParameters();
 
@@ -132,6 +130,8 @@ public class ModuleTest
             {
                 parm.getParameter( "writeLockTimeout" );
                 returns( params.get( "writeLockTimeout") );
+                parm.getParameter( "maxThreadStates" );
+                returns( params.get( "maxThreadStates") );
                 parm.getParameter( "resultLifetime" );
                 returns( params.get( "resultLifetime" ) );
                 parm.getParameter( "luceneDirectory" );
@@ -636,14 +636,9 @@ public class ModuleTest
 
         FieldSearchResult fsr = fieldsearch.findObjects( fields, maxResults, fsq );
 
-        fsq = getFieldSearchQuery( query );
-
-        fsr = fieldsearch.findObjects( fields, maxResults, fsq );
-
         assertTrue( 2 == fsr.objectFieldsList().size() );
 
         Set<String> mandatories = new HashSet<String>();
-        mandatories = new HashSet<String>();
         mandatories.add( "demo:1" );
         mandatories.add( "work:1" );
         for( ObjectFields field: fsr.objectFieldsList())
@@ -672,7 +667,6 @@ public class ModuleTest
         assertTrue( 2 == fsr.objectFieldsList().size() );
 
         Set<String> mandatories = new HashSet<String>();
-        mandatories = new HashSet<String>();
         mandatories.add( "demo:1" );
         mandatories.add( "work:1" );
         for( ObjectFields field: fsr.objectFieldsList())
@@ -1119,7 +1113,7 @@ public class ModuleTest
     @Test
     public void testRetrievalOfSetsOfResults() throws Exception
     {
-        String pid = "";
+        String pid;
         String[] title = new String[1];
         String author = "";
         String source = "testRetrievalOfSetsOfResults";
@@ -1536,6 +1530,7 @@ public class ModuleTest
     {
         final Map<String, String> params = new HashMap<String, String>();
         params.put( "writeLockTimeout", "1000" );
+        params.put( "maxThreadStates", "8");
         params.put( "resultLifetime", "10" );
         //TODO: a separate tests should verify that invalid values cannot be
         // given as parameters

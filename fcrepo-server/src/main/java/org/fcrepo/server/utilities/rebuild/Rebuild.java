@@ -113,6 +113,7 @@ public class Rebuild
     public void run() {
         try {
             if (m_options != null) {
+                long startTime = System.currentTimeMillis();
                 System.err.println();
                 System.err.println("Rebuilding...");
                 try {
@@ -161,6 +162,8 @@ public class Rebuild
                     System.err.print("Finished.");
                     System.err.println();
                 }
+                long endTime = System.currentTimeMillis();
+                System.out.println( "In " + ( endTime - startTime) / 1000 + " seconds" );
                 return;
             }
         } catch (Exception e) {

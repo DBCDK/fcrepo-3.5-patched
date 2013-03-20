@@ -364,6 +364,12 @@
             <comment>Timeout in milliseconds. Specifies how long lucene should
             wait for the index to be released</comment>
         </param>
+        <param name="maxThreadStates" value="8">
+            <comment>The maximum number of simultaneous threads that may be
+              indexing documents at once in IndexWriter; if more
+              than this many threads arrive they will wait for
+              others to finish</comment>
+        </param>
         <param name="resultLifetime" value="900">
             <comment>The time a given search result should be valid in, in
             seconds</comment>

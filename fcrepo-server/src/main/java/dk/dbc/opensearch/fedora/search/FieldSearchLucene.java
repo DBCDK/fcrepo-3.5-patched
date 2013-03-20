@@ -166,6 +166,17 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         long luceneWriteLockTimeout = Long.parseLong( writeLockTimeout );
         log.debug( "luceneWritelockTimeout = {}", writeLockTimeout );
 
+        // maxThreadStates
+        String maxThreadStates = getParameter( "maxThreadStates" );
+        if ( maxThreadStates.equals( "" ) )
+        {
+            String error = "FATAL: parameter maxThreadStates must be specified.";
+            log.error( error );
+            throw new ModuleInitializationException( error, getRole() );
+        }
+        int luceneMaxThreadStates = Integer.parseInt( maxThreadStates );
+        log.debug( "luceneMaxThreadStates = {}", luceneMaxThreadStates );
+
         // directory
         String sDirectory = getParameter( "luceneDirectory" );
         if ( sDirectory.equals( "" ) )
@@ -199,7 +210,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         TieredMergePolicy mergePolicy = new TieredMergePolicy();
         try
         {
-            IndexWriter writer = createIndexWriter( luceneWriteLockTimeout, analyzer, directory, new TieredMergePolicy() );
+            IndexWriter writer = createIndexWriter( luceneWriteLockTimeout, luceneMaxThreadStates, analyzer, directory, new TieredMergePolicy() );
 
             WriteAheadLog wal = ( writeAheadLogDir == null) ? null : new WriteAheadLog( writer, writeAheadLogDir, writeAheadLogCommitSize, writeAheadLogKeepFileOpen);
 
@@ -612,7 +623,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
     }
 
 
-    private IndexWriter createIndexWriter( long luceneWriteLockTimeout, Analyzer analyzer, Directory directory, TieredMergePolicy mergePolicy) throws IOException
+    private IndexWriter createIndexWriter( long luceneWriteLockTimeout, int maxThreadStates, Analyzer analyzer, Directory directory, TieredMergePolicy mergePolicy) throws IOException
     {
         log.debug( "openWriter called" );
 
@@ -623,7 +634,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         }
 
         IndexWriterConfig conf = new IndexWriterConfig( Version.LUCENE_41, analyzer ).setWriteLockTimeout( luceneWriteLockTimeout ).
-                setMergePolicy( mergePolicy );
+                setMergePolicy( mergePolicy ).setMaxThreadStates( maxThreadStates );
         IndexWriter writer = new IndexWriter( directory, conf );
 
         return writer;

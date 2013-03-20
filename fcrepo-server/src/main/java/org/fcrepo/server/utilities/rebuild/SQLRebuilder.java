@@ -23,6 +23,10 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,6 +67,7 @@ public class SQLRebuilder
 
     private static final Logger logger =
             LoggerFactory.getLogger(Rebuilder.class);
+    public static final String THREADS_OPTION = "threads";
 
     private ServerConfiguration m_serverConfig;
 
@@ -71,6 +76,8 @@ public class SQLRebuilder
     private ConnectionPool m_connectionPool;
 
     private Context m_context;
+
+    ExecutorService threadPool;
 
     /**
      * Get a short phrase describing what the user can do with this rebuilder.
@@ -113,6 +120,7 @@ public class SQLRebuilder
     public Map<String, String> getOptions()
  {
         Map<String, String> m = new HashMap<String, String>();
+        m.put( THREADS_OPTION, "number of threads to use for index rebuild" );
         return m;
     }
 
@@ -121,6 +129,12 @@ public class SQLRebuilder
      */
     @Override
     public void start(Map<String, String> options) throws Exception {
+        int threads = Integer.parseInt(options.get(THREADS_OPTION));
+        threadPool = new ThreadPoolExecutor(threads, threads,
+                                      0L, TimeUnit.MILLISECONDS,
+                                      new ArrayBlockingQueue<Runnable>( 500 ),
+                                      new ThreadPoolExecutor.CallerRunsPolicy());
+
         // This must be done before starting "RebuildServer"
         // rather than after, so any application caches
         // (in particular the hash map held by PIDGenerator)
@@ -260,114 +274,122 @@ public class SQLRebuilder
      * Add the data of interest for the given object.
      */
     @Override
-    public void addObject(DigitalObject obj) {
-        // CURRENT TIME:
-        // Get the current time to use for created dates on object
-        // and object components (if they are not already there).
-        Date nowUTC = new Date();
+    public void addObject(final DigitalObject obj) {
 
-        // DOReplicator replicator=(DOReplicator)
-        // m_server.getModule("org.fcrepo.server.storage.replication.DOReplicator");
-        DOManager manager =
-                (DOManager) m_server
-                        .getModule("org.fcrepo.server.storage.DOManager");
-        FieldSearch fieldSearch =
-                (FieldSearch) m_server
-                        .getModule("org.fcrepo.server.search.FieldSearch");
-        PIDGenerator pidGenerator =
-                (PIDGenerator) m_server
-                        .getModule("org.fcrepo.server.management.PIDGenerator");
+        Runnable task = new Runnable() {
+            @Override
+            public void run()
+            {
+                // CURRENT TIME:
+                // Get the current time to use for created dates on object
+                // and object components (if they are not already there).
+                Date nowUTC = new Date();
 
-        // SET OBJECT PROPERTIES:
-        logger.debug("Rebuild: Setting object/component states and create dates if unset...");
-        // set object state to "A" (Active) if not already set
-        if (obj.getState() == null || obj.getState().equals("")) {
-            obj.setState("A");
-        }
-        // set object create date to UTC if not already set
-        if (obj.getCreateDate() == null || obj.getCreateDate().equals("")) {
-            obj.setCreateDate(nowUTC);
-        }
-        // set object last modified date to UTC
-        obj.setLastModDate(nowUTC);
+                // DOReplicator replicator=(DOReplicator)
+                // m_server.getModule("org.fcrepo.server.storage.replication.DOReplicator");
+                DOManager manager =
+                        (DOManager) m_server
+                                .getModule("org.fcrepo.server.storage.DOManager");
+                FieldSearch fieldSearch =
+                        (FieldSearch) m_server
+                                .getModule("org.fcrepo.server.search.FieldSearch");
+                PIDGenerator pidGenerator =
+                        (PIDGenerator) m_server
+                                .getModule("org.fcrepo.server.management.PIDGenerator");
 
-        // SET OBJECT PROPERTIES:
-        logger.debug("Rebuild: Setting object/component states and create dates if unset...");
-        // set object state to "A" (Active) if not already set
-        if (obj.getState() == null || obj.getState().equals("")) {
-            obj.setState("A");
-        }
-        // set object create date to UTC if not already set
-        if (obj.getCreateDate() == null || obj.getCreateDate().equals("")) {
-            obj.setCreateDate(nowUTC);
-        }
-        // set object last modified date to UTC
-        obj.setLastModDate(nowUTC);
-
-        // SET DATASTREAM PROPERTIES...
-        Iterator<String> dsIter = obj.datastreamIdIterator();
-        while (dsIter.hasNext()) {
-            for (Datastream ds : obj.datastreams(dsIter.next())) {
-                // Set create date to UTC if not already set
-                if (ds.DSCreateDT == null || ds.DSCreateDT.equals("")) {
-                    ds.DSCreateDT = nowUTC;
+                // SET OBJECT PROPERTIES:
+                logger.debug("Rebuild: Setting object/component states and create dates if unset...");
+                // set object state to "A" (Active) if not already set
+                if (obj.getState() == null || obj.getState().equals("")) {
+                    obj.setState("A");
                 }
-                // Set state to "A" (Active) if not already set
-                if (ds.DSState == null || ds.DSState.equals("")) {
-                    ds.DSState = "A";
+                // set object create date to UTC if not already set
+                if (obj.getCreateDate() == null || obj.getCreateDate().equals("")) {
+                    obj.setCreateDate(nowUTC);
+                }
+                // set object last modified date to UTC
+                obj.setLastModDate(nowUTC);
+
+                // SET OBJECT PROPERTIES:
+                logger.debug("Rebuild: Setting object/component states and create dates if unset...");
+                // set object state to "A" (Active) if not already set
+                if (obj.getState() == null || obj.getState().equals("")) {
+                    obj.setState("A");
+                }
+                // set object create date to UTC if not already set
+                if (obj.getCreateDate() == null || obj.getCreateDate().equals("")) {
+                    obj.setCreateDate(nowUTC);
+                }
+                // set object last modified date to UTC
+                obj.setLastModDate(nowUTC);
+
+                // SET DATASTREAM PROPERTIES...
+                Iterator<String> dsIter = obj.datastreamIdIterator();
+                while (dsIter.hasNext()) {
+                    for (Datastream ds : obj.datastreams(dsIter.next())) {
+                        // Set create date to UTC if not already set
+                        if (ds.DSCreateDT == null || ds.DSCreateDT.equals("")) {
+                            ds.DSCreateDT = nowUTC;
+                        }
+                        // Set state to "A" (Active) if not already set
+                        if (ds.DSState == null || ds.DSState.equals("")) {
+                            ds.DSState = "A";
+                        }
+                    }
+                }
+
+                // GET DIGITAL OBJECT WRITER:
+                // get an object writer configured with the DEFAULT export format
+                // barmintor: this appears to be unused code, commenting out with intent to delete
+                //logger.debug("INGEST: Instantiating a SimpleDOWriter...");
+                //try {
+                //    DOWriter w =
+                //            manager.getWriter(Server.USE_DEFINITIVE_STORE,
+                //                              m_context,
+                //                              obj.getPid());
+                //} catch (ServerException se) {
+                //}
+
+                // PID GENERATION:
+                // have the system generate a PID if one was not provided
+                logger.debug("INGEST: Stream contained PID with retainable namespace-id... will use PID from stream.");
+                try {
+                    pidGenerator.neverGeneratePID(obj.getPid());
+                } catch (IOException e) {
+                    throw new RuntimeException("Error calling pidGenerator.neverGeneratePID(): "
+                                                       + e.getMessage(),
+                                               e);
+                }
+
+                // REGISTRY:
+                // at this point the object is valid, so make a record
+                // of it in the digital object registry
+                try {
+                    registerObject(obj);
+                } catch (StorageDeviceException e) {
+                }
+
+                try {
+                    logger.info("COMMIT: Attempting replication: " + obj.getPid());
+                    DOReader reader =
+                            manager.getReader(Server.USE_DEFINITIVE_STORE,
+                                              m_context,
+                                              obj.getPid());
+                    logger.info("COMMIT: Updating FieldSearch indexes...");
+                    fieldSearch.update(reader);
+
+                } catch (ServerException se) {
+                    System.out.println("Error while replicating: "
+                            + se.getClass().getName() + ": " + se.getMessage());
+                    se.printStackTrace();
+                } catch (Throwable th) {
+                    System.out.println("Error while replicating: "
+                            + th.getClass().getName() + ": " + th.getMessage());
+                    th.printStackTrace();
                 }
             }
-        }
-
-        // GET DIGITAL OBJECT WRITER:
-        // get an object writer configured with the DEFAULT export format
-        // barmintor: this appears to be unused code, commenting out with intent to delete
-        //logger.debug("INGEST: Instantiating a SimpleDOWriter...");
-        //try {
-        //    DOWriter w =
-        //            manager.getWriter(Server.USE_DEFINITIVE_STORE,
-        //                              m_context,
-        //                              obj.getPid());
-        //} catch (ServerException se) {
-        //}
-
-        // PID GENERATION:
-        // have the system generate a PID if one was not provided
-        logger.debug("INGEST: Stream contained PID with retainable namespace-id... will use PID from stream.");
-        try {
-            pidGenerator.neverGeneratePID(obj.getPid());
-        } catch (IOException e) {
-            throw new RuntimeException("Error calling pidGenerator.neverGeneratePID(): "
-                                               + e.getMessage(),
-                                       e);
-        }
-
-        // REGISTRY:
-        // at this point the object is valid, so make a record
-        // of it in the digital object registry
-        try {
-            registerObject(obj);
-        } catch (StorageDeviceException e) {
-        }
-
-        try {
-            logger.info("COMMIT: Attempting replication: " + obj.getPid());
-            DOReader reader =
-                    manager.getReader(Server.USE_DEFINITIVE_STORE,
-                                      m_context,
-                                      obj.getPid());
-            logger.info("COMMIT: Updating FieldSearch indexes...");
-            fieldSearch.update(reader);
-
-        } catch (ServerException se) {
-            System.out.println("Error while replicating: "
-                    + se.getClass().getName() + ": " + se.getMessage());
-            se.printStackTrace();
-        } catch (Throwable th) {
-            System.out.println("Error while replicating: "
-                    + th.getClass().getName() + ": " + th.getMessage());
-            th.printStackTrace();
-        }
+        };
+        threadPool.execute( task);
     }
 
     /**
@@ -463,7 +485,17 @@ public class SQLRebuilder
      */
     @Override
     public void finish() {
-        // nothing to do
+        threadPool.shutdown();
+        try
+        {
+            threadPool.awaitTermination( 14, TimeUnit.DAYS );
+        }
+        catch( InterruptedException ex )
+        {
+            System.out.println("Interrupted while waiting for completion: "
+                    + ex.getClass().getName() + ": " + ex.getMessage());
+            ex.printStackTrace();
+        }
     }
 
     /**

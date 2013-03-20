@@ -28,7 +28,6 @@ import org.fcrepo.server.Server;
 import org.fcrepo.server.errors.InvalidStateException;
 import org.fcrepo.server.errors.ModuleInitializationException;
 import org.fcrepo.server.errors.ModuleShutdownException;
-import org.fcrepo.server.errors.QueryParseException;
 import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.search.Condition;
 import org.fcrepo.server.search.FieldSearchQuery;
@@ -67,11 +66,9 @@ import org.junit.Test;
 public class FieldSearchLuceneTest {
 
     private FieldSearchLucene fieldsearch;
-    private static final long timeNow = System.currentTimeMillis();
-    private static final String now = Long.toString( timeNow );
-    private final int maxResults = 10;
+    private final static int maxResults = 10;
 
-    private MockRepositoryReader repo = new MockRepositoryReader();
+    private final MockRepositoryReader repo = new MockRepositoryReader();
     private DOReader reader;
 
     @Mocked Server server;
@@ -84,6 +81,7 @@ public class FieldSearchLuceneTest {
 
         final Map<String, String> params = new HashMap<String,String>();
         params.put( "writeLockTimeout", "1000");
+        params.put( "maxThreadStates", "8");
         params.put( "resultLifetime", "10" );
         params.put( "luceneDirectory", "RAMDirectory" );
         params.put( "defaultAnalyzer", "SimpleAnalyzer" );
