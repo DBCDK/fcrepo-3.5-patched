@@ -820,5 +820,11 @@
       <artifactId>kryo</artifactId>
       <version>2.20</version>
     </dependency>
+    <dependency>
+      <groupId>com.googlecode.multithreadedtc</groupId>
+      <artifactId>multithreadedtc</artifactId>
+      <version>1.01</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>

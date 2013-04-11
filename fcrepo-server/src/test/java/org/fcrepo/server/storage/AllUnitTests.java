@@ -21,6 +21,7 @@ public class AllUnitTests {
 
         suite.addTest(org.fcrepo.server.storage.translation.AllUnitTests.suite());
         suite.addTest(org.fcrepo.server.storage.lowlevel.akubra.AllUnitTests.suite());
+        suite.addTest(org.fcrepo.server.storage.DefaultDOManagerTest.suite());
 
         return suite;
     }

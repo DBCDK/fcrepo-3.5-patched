@@ -333,6 +333,8 @@ public class DefaultDOManager
         throws ModuleInitializationException {
         super(moduleParameters, server, role);
         //        m_lockedPIDs = new HashSet<String>();
+        if ( server == null )
+            throw new NullPointerException("Server is null");
         stringLock = new StringLock();
     }
 
@@ -558,7 +560,7 @@ public class DefaultDOManager
                                                                     .getName()
                                                             + ": "
                                                             + e.getMessage(),
-                                                    getRole());
+                                                    getRole(), e);
         }
 
         // get ref to lowlevelstorage module
@@ -954,7 +956,7 @@ public class DefaultDOManager
      *        "new" if the system should generate a new PID for the object, otherwise
      *        the value of the additional pid parameter for ingests (may be null or any valid pid)
      */
-    public synchronized DOWriter getIngestWriter(boolean cachedObjectRequired,
+    public DOWriter getIngestWriter(boolean cachedObjectRequired,
                                                  Context context,
                                                  InputStream in,
                                                  String format,
@@ -976,6 +978,8 @@ public class DefaultDOManager
                 // and object components (if they are not already there).
                 Date nowUTC = Server.getCurrentDate(context);
 
+//                ByteArrayOutputStream tempBuffer = new ByteArrayOutputStream();
+//
                 // TEMP STORAGE:
                 // write ingest input stream to a temporary file
                 tempFile = File.createTempFile("fedora-ingest-temp", ".xml");
@@ -984,11 +988,15 @@ public class DefaultDOManager
                 StreamUtility.pipeStream(in,
                                          new FileOutputStream(tempFile),
                                          4096);
+//                StreamUtility.pipeStream(in,
+//                                         tempBuffer,
+//                                         4096);
 
                 // VALIDATION:
                 // perform initial validation of the ingest submission file
                 logger.debug("Validation (ingest phase)");
                 m_validator.validate(tempFile,
+//                m_validator.validate(new ByteArrayInputStream(tempBuffer.toByteArray()),
                                      format,
                                      DOValidatorImpl.VALIDATE_ALL,
                                      "ingest");
@@ -1000,6 +1008,7 @@ public class DefaultDOManager
                 logger.debug("Deserializing from format: " + format);
                 m_translator
                         .deserialize(new FileInputStream(tempFile),
+//                        .deserialize(new ByteArrayInputStream(tempBuffer.toByteArray()),
                                      obj,
                                      format,
                                      encoding,
@@ -1113,9 +1122,15 @@ public class DefaultDOManager
 
                 logger.info("New object PID is {}", obj.getPid());
 
+                // WRITE LOCK:
+                // ensure no one else can modify the object now
+                getWriteLock(obj.getPid());
+
+
                 // CHECK REGISTRY:
                 // ensure the object doesn't already exist
                 if (objectExists(obj.getPid())) {
+                    releaseWriteLock(obj.getPid());
                     throw new ObjectExistsException("The PID '"
                             + obj.getPid()
                             + "' already exists in the registry; the object can't be re-created.");
@@ -1132,10 +1147,6 @@ public class DefaultDOManager
                                        m_defaultExportFormat,
                                        m_storageCharacterEncoding,
                                        obj);
-
-                // WRITE LOCK:
-                // ensure no one else can modify the object now
-                getWriteLock(obj.getPid());
 
                 // DEFAULT DATASTREAMS:
                 populateDC(context, obj, w, nowUTC);
