@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import mockit.Deencapsulation;
 import mockit.Delegate;
 import mockit.Expectations;
 import mockit.Mocked;
@@ -53,17 +54,13 @@ public class DefaultDOManagerTest extends MultithreadedTestCase
     @Mocked Server server;
     @Mocked Context context;
 
-    @BeforeClass
-    public static void setupClass()
-    {
-        System.setProperty("fedora.home", "src/main/resources/fcfg");
-    }
-
     DefaultDOManager getInstance() throws Exception
     {
-       final Map<String, String> params = new HashMap<String,String>();
+        final Map<String, String> params = new HashMap<String,String>();
         params.put("pidNamespace", "changeme");
         params.put("defaultExportFormat", "info:fedora/fedora-system:FOXML-1.1");
+
+        Deencapsulation.setField( Constants.class, "FEDORA_HOME", "src/main/resources/fcfg" );
 
         final DefaultDOManager instance = new DefaultDOManager(params, server, "DOManager");
 
