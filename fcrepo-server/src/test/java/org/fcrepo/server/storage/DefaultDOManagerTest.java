@@ -46,8 +46,6 @@ public class DefaultDOManagerTest extends MultithreadedTestCase
 
     private final String FORMAT = "info:fedora/fedora-system:FOXML-1.1";
     private final String ENCODING = "UTF-8";
-    private static final File FCFG_BASE =
-            new File("../fcrepo-server/src/main/resources/fcfg/server/fedora-base.fcfg");
     private static final File FEDORA_HOME =
             new File("../fcrepo-server/src/main/resources/fcfg");
 
@@ -122,7 +120,7 @@ public class DefaultDOManagerTest extends MultithreadedTestCase
 
                 };
                 // XMLDatastreamProcessor mocks
-                Server.getInstance(new File(Constants.FEDORA_HOME),
+                Server.getInstance(FEDORA_HOME,
                                             false); result = server;
                 server.getModule("org.fcrepo.server.storage.DOManager"); result = instance;
             }
