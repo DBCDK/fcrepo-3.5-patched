@@ -97,7 +97,7 @@ public class TestCommandLineFormats
             assertXpathExists(
                     "//foxml:objectProperties/foxml:property[@NAME='info:fedora/fedora-system:def/model#label' and @VALUE='Data Object (Coliseum) for Local Simple Image Demo']",
                     xmlIn);
-            assertXpathEvaluatesTo("6", "count(//foxml:datastream)", xmlIn);
+            assertXpathEvaluatesTo("5", "count(//foxml:datastream)", xmlIn);
             assertXpathNotExists("//foxml:disseminator", xmlIn);
         } finally {
             apim.purgeObject("demo:997", "", false);
@@ -131,7 +131,7 @@ public class TestCommandLineFormats
             assertXpathExists(
                     "//foxml:objectProperties/foxml:property[@NAME='info:fedora/fedora-system:def/model#label' and @VALUE='Data Object (Coliseum) for Local Simple Image Demo']",
                     xmlIn);
-            assertXpathEvaluatesTo("6", "count(//foxml:datastream)", xmlIn);
+            assertXpathEvaluatesTo("5", "count(//foxml:datastream)", xmlIn);
             assertXpathNotExists("//foxml:disseminator", xmlIn);
         } finally {
             apim.purgeObject("demo:998", "", false);
@@ -165,7 +165,7 @@ public class TestCommandLineFormats
             assertXpathExists(
                     "//foxml:objectProperties/foxml:property[@NAME='info:fedora/fedora-system:def/model#label' and @VALUE='Data Object (Coliseum) for Local Simple Image Demo']",
                     xmlIn);
-            assertXpathEvaluatesTo("6", "count(//foxml:datastream)", xmlIn);
+            assertXpathEvaluatesTo("5", "count(//foxml:datastream)", xmlIn);
             assertXpathNotExists("//foxml:disseminator", xmlIn);
         } finally {
             apim.purgeObject("demo:999", "", false);
@@ -199,7 +199,7 @@ public class TestCommandLineFormats
             assertXpathExists(
                     "//foxml:objectProperties/foxml:property[@NAME='info:fedora/fedora-system:def/model#label' and @VALUE='Data Object (Coliseum) for Local Simple Image Demo']",
                     xmlIn);
-            assertXpathEvaluatesTo("6", "count(//foxml:datastream)", xmlIn);
+            assertXpathEvaluatesTo("5", "count(//foxml:datastream)", xmlIn);
             assertXpathNotExists("//foxml:disseminator", xmlIn);
         } finally {
             apim.purgeObject("demo:999b", "", false);
@@ -233,7 +233,7 @@ public class TestCommandLineFormats
             assertXpathExists(
                     "//foxml:objectProperties/foxml:property[@NAME='info:fedora/fedora-system:def/model#label' and @VALUE='Data Object (Coliseum) for Local Simple Image Demo']",
                     xmlIn);
-            assertXpathEvaluatesTo("7", "count(//foxml:datastream)", xmlIn);
+            assertXpathEvaluatesTo("6", "count(//foxml:datastream)", xmlIn);
             assertXpathNotExists("//foxml:disseminator", xmlIn);
         } finally {
             apim.purgeObject("demo:1000", "", false);
@@ -267,7 +267,7 @@ public class TestCommandLineFormats
             assertXpathExists(
                     "//foxml:objectProperties/foxml:property[@NAME='info:fedora/fedora-system:def/model#label' and @VALUE='Data Object (Coliseum) for Local Simple Image Demo']",
                     xmlIn);
-            assertXpathEvaluatesTo("4", "count(//foxml:datastream)", xmlIn);
+            assertXpathEvaluatesTo("3", "count(//foxml:datastream)", xmlIn);
             assertXpathNotExists("//foxml:disseminator", xmlIn);
         } finally {
             apim.purgeObject("demo:1001", "", false);
@@ -298,7 +298,7 @@ public class TestCommandLineFormats
             assertXpathExists(
                     "//foxml:objectProperties/foxml:property[@NAME='info:fedora/fedora-system:def/model#label' and @VALUE='Data Object (Coliseum) for Local Simple Image Demo']",
                     xmlIn);
-            assertXpathEvaluatesTo("6", "count(//foxml:datastream)", xmlIn);
+            assertXpathEvaluatesTo("5", "count(//foxml:datastream)", xmlIn);
             assertXpathNotExists("//foxml:disseminator", xmlIn);
             assertXpathNotExists("foxml:digitalObject[@VERSION='1.1']", xmlIn);
 
@@ -333,7 +333,7 @@ public class TestCommandLineFormats
             assertXpathExists(
                     "//foxml:objectProperties/foxml:property[@NAME='info:fedora/fedora-system:def/model#label' and @VALUE='Data Object (Coliseum) for Local Simple Image Demo']",
                     xmlIn);
-            assertXpathEvaluatesTo("6", "count(//foxml:datastream)", xmlIn);
+            assertXpathEvaluatesTo("5", "count(//foxml:datastream)", xmlIn);
             assertXpathNotExists("//foxml:disseminator", xmlIn);
             assertXpathExists("foxml:digitalObject[@VERSION='1.1']", xmlIn);
 

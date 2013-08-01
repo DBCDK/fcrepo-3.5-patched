@@ -142,7 +142,7 @@ public abstract class TestXMLDODeserializer
                      ds1copy.xmlContent.length,
                      ds1copyOfCopy.xmlContent.length);
     }
-
+/*
     @Test
     public void testAuditDatastream() throws Exception {
         AuditRecord record = new AuditRecord();
@@ -182,7 +182,7 @@ public abstract class TestXMLDODeserializer
 
         temp.delete();
     }
-
+*/
     /** Tests the serializers/deserializers when faced with null object property values.
      * <p>
      * Currently, this test assures that null iproperty values are handled consistently

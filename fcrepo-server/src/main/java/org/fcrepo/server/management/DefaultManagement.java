@@ -1529,9 +1529,9 @@ public class DefaultManagement
         // parse with xerces and re-serialize the fixed xml to a byte array
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            OutputFormat fmt = new OutputFormat("XML", "UTF-8", true);
-            fmt.setIndent(2);
-            fmt.setLineWidth(120);
+            OutputFormat fmt = new OutputFormat("XML", "UTF-8", false);
+//            fmt.setIndent(2);
+//            fmt.setLineWidth(120);
             fmt.setPreserveSpace(false);
             fmt.setOmitXMLDeclaration(!includeXMLDeclaration);
             fmt.setOmitDocumentType(true);
@@ -1831,6 +1831,7 @@ public class DefaultManagement
                                 String componentID,
                                 String justification,
                                 Date nowUTC) throws ServerException {
+        /*
         AuditRecord audit = new AuditRecord();
         audit.id = w.newAuditRecordID();
         audit.processType = "Fedora API-M";
@@ -1841,6 +1842,7 @@ public class DefaultManagement
         audit.date = nowUTC;
         audit.justification = justification;
         w.getAuditRecords().add(audit);
+        */
     }
 
     /**

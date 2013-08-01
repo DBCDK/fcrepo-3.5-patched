@@ -158,15 +158,15 @@ public class FOXMLDOSerializer
             writer.print(obj.getPid());
             writer.print("\"");
         }
-        writer.print("\nxmlns:");
+        writer.print(" xmlns:");
         writer.print(FOXML.prefix);
         writer.print("=\"");
         writer.print(FOXML.uri);
-        writer.print("\"\nxmlns:");
+        writer.print("\" xmlns:");
         writer.print(XSI.prefix);
         writer.print("=\"");
         writer.print(XSI.uri);
-        writer.print("\"\n");
+        writer.print("\" ");
         writer.print(XSI.SCHEMA_LOCATION.qName);
         writer.print("=\"");
         writer.print(FOXML.uri);
@@ -405,7 +405,7 @@ public class FOXMLDOSerializer
     private void appendAudit(DigitalObject obj,
                              PrintWriter writer,
                              String encoding) throws ObjectIntegrityException {
-
+        /*
         if (obj.getAuditRecords().size() > 0) {
             // Audit trail datastream re-created from audit records.
             // There is only ONE version of the audit trail datastream!
@@ -442,6 +442,7 @@ public class FOXMLDOSerializer
             writer.print(FOXML.prefix);
             writer.print(":datastream>\n");
         }
+        */
     }
 
     private void appendInlineXML(DigitalObject obj,

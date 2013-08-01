@@ -36,7 +36,6 @@ import org.fcrepo.server.storage.translation.DOTranslatorModule;
 import org.fcrepo.server.storage.types.DigitalObject;
 import org.fcrepo.server.utilities.SQLUtility;
 import org.fcrepo.server.validation.DOValidatorModule;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

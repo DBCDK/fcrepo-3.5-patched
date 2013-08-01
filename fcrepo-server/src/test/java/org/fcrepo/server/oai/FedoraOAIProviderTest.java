@@ -269,26 +269,26 @@ public class FedoraOAIProviderTest
         assertTrue(header.isAvailable());
 
         String expectedXml =
-            "<oai_dc:dc xmlns:oai_dc=\"http://www.openarchives.org/OAI/2.0/oai_dc/\"\n" +
-            "xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n" +
-            "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n" +
-            "xsi:schemaLocation=\"http://www.openarchives.org/OAI/2.0/oai_dc/ http://www.openarchives.org/OAI/2.0/oai_dc.xsd\">\n" +
-            "  <dc:title>title</dc:title>\n" +
-            "  <dc:creator>creator</dc:creator>\n" +
-            "  <dc:subject>subject</dc:subject>\n" +
-            "  <dc:description>description</dc:description>\n" +
-            "  <dc:publisher>publisher</dc:publisher>\n" +
-            "  <dc:contributor>contributor</dc:contributor>\n" +
-            "  <dc:date>date</dc:date>\n" +
-            "  <dc:type>type</dc:type>\n" +
-            "  <dc:format>format</dc:format>\n" +
-            "  <dc:identifier>identifier</dc:identifier>\n" +
-            "  <dc:source>source</dc:source>\n" +
-            "  <dc:language>language</dc:language>\n" +
-            "  <dc:relation>relation</dc:relation>\n" +
-            "  <dc:coverage>coverage</dc:coverage>\n" +
-            "  <dc:rights>right</dc:rights>\n" +
-            "</oai_dc:dc>\n";
+            "<oai_dc:dc xmlns:oai_dc=\"http://www.openarchives.org/OAI/2.0/oai_dc/\" " +
+            "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" " +
+            "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" " +
+            "xsi:schemaLocation=\"http://www.openarchives.org/OAI/2.0/oai_dc/ http://www.openarchives.org/OAI/2.0/oai_dc.xsd\">" +
+            "<dc:title>title</dc:title>" +
+            "<dc:creator>creator</dc:creator>" +
+            "<dc:subject>subject</dc:subject>" +
+            "<dc:description>description</dc:description>" +
+            "<dc:publisher>publisher</dc:publisher>" +
+            "<dc:contributor>contributor</dc:contributor>" +
+            "<dc:date>date</dc:date>" +
+            "<dc:type>type</dc:type>" +
+            "<dc:format>format</dc:format>" +
+            "<dc:identifier>identifier</dc:identifier>" +
+            "<dc:source>source</dc:source>" +
+            "<dc:language>language</dc:language>" +
+            "<dc:relation>relation</dc:relation>" +
+            "<dc:coverage>coverage</dc:coverage>" +
+            "<dc:rights>right</dc:rights>" +
+            "</oai_dc:dc>";
 
         assertEquals(expectedXml, record.getMetadata());
     }
@@ -356,26 +356,26 @@ public class FedoraOAIProviderTest
         assertTrue(header.isAvailable());
 
         String expectedXml =
-            "<oai_dc:dc xmlns:oai_dc=\"http://www.openarchives.org/OAI/2.0/oai_dc/\"\n" +
-            "xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n" +
-            "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n" +
-            "xsi:schemaLocation=\"http://www.openarchives.org/OAI/2.0/oai_dc/ http://www.openarchives.org/OAI/2.0/oai_dc.xsd\">\n" +
-            "  <dc:title>title</dc:title>\n" +
-            "  <dc:creator>creator</dc:creator>\n" +
-            "  <dc:subject>subject</dc:subject>\n" +
-            "  <dc:description>description</dc:description>\n" +
-            "  <dc:publisher>publisher</dc:publisher>\n" +
-            "  <dc:contributor>contributor</dc:contributor>\n" +
-            "  <dc:date>date</dc:date>\n" +
-            "  <dc:type>type</dc:type>\n" +
-            "  <dc:format>format</dc:format>\n" +
-            "  <dc:identifier>identifier</dc:identifier>\n" +
-            "  <dc:source>source</dc:source>\n" +
-            "  <dc:language>language</dc:language>\n" +
-            "  <dc:relation>relation</dc:relation>\n" +
-            "  <dc:coverage>coverage</dc:coverage>\n" +
-            "  <dc:rights>right</dc:rights>\n" +
-            "</oai_dc:dc>\n";
+            "<oai_dc:dc xmlns:oai_dc=\"http://www.openarchives.org/OAI/2.0/oai_dc/\" " +
+            "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" " +
+            "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" " +
+            "xsi:schemaLocation=\"http://www.openarchives.org/OAI/2.0/oai_dc/ http://www.openarchives.org/OAI/2.0/oai_dc.xsd\">" +
+            "<dc:title>title</dc:title>" +
+            "<dc:creator>creator</dc:creator>" +
+            "<dc:subject>subject</dc:subject>" +
+            "<dc:description>description</dc:description>" +
+            "<dc:publisher>publisher</dc:publisher>" +
+            "<dc:contributor>contributor</dc:contributor>" +
+            "<dc:date>date</dc:date>" +
+            "<dc:type>type</dc:type>" +
+            "<dc:format>format</dc:format>" +
+            "<dc:identifier>identifier</dc:identifier>" +
+            "<dc:source>source</dc:source>" +
+            "<dc:language>language</dc:language>" +
+            "<dc:relation>relation</dc:relation>" +
+            "<dc:coverage>coverage</dc:coverage>" +
+            "<dc:rights>right</dc:rights>" +
+            "</oai_dc:dc>";
 
         assertEquals(expectedXml, record.getMetadata());
 
@@ -439,26 +439,26 @@ public class FedoraOAIProviderTest
         assertTrue(header.isAvailable());
 
         String expectedXml =
-            "<oai_dc:dc xmlns:oai_dc=\"http://www.openarchives.org/OAI/2.0/oai_dc/\"\n" +
-            "xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n" +
-            "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n" +
-            "xsi:schemaLocation=\"http://www.openarchives.org/OAI/2.0/oai_dc/ http://www.openarchives.org/OAI/2.0/oai_dc.xsd\">\n" +
-            "  <dc:title>title</dc:title>\n" +
-            "  <dc:creator>creator</dc:creator>\n" +
-            "  <dc:subject>subject</dc:subject>\n" +
-            "  <dc:description>description</dc:description>\n" +
-            "  <dc:publisher>publisher</dc:publisher>\n" +
-            "  <dc:contributor>contributor</dc:contributor>\n" +
-            "  <dc:date>date</dc:date>\n" +
-            "  <dc:type>type</dc:type>\n" +
-            "  <dc:format>format</dc:format>\n" +
-            "  <dc:identifier>identifier</dc:identifier>\n" +
-            "  <dc:source>source</dc:source>\n" +
-            "  <dc:language>language</dc:language>\n" +
-            "  <dc:relation>relation</dc:relation>\n" +
-            "  <dc:coverage>coverage</dc:coverage>\n" +
-            "  <dc:rights>right</dc:rights>\n" +
-            "</oai_dc:dc>\n";
+            "<oai_dc:dc xmlns:oai_dc=\"http://www.openarchives.org/OAI/2.0/oai_dc/\" " +
+            "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" " +
+            "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" " +
+            "xsi:schemaLocation=\"http://www.openarchives.org/OAI/2.0/oai_dc/ http://www.openarchives.org/OAI/2.0/oai_dc.xsd\">" +
+            "<dc:title>title</dc:title>" +
+            "<dc:creator>creator</dc:creator>" +
+            "<dc:subject>subject</dc:subject>" +
+            "<dc:description>description</dc:description>" +
+            "<dc:publisher>publisher</dc:publisher>" +
+            "<dc:contributor>contributor</dc:contributor>" +
+            "<dc:date>date</dc:date>" +
+            "<dc:type>type</dc:type>" +
+            "<dc:format>format</dc:format>" +
+            "<dc:identifier>identifier</dc:identifier>" +
+            "<dc:source>source</dc:source>" +
+            "<dc:language>language</dc:language>" +
+            "<dc:relation>relation</dc:relation>" +
+            "<dc:coverage>coverage</dc:coverage>" +
+            "<dc:rights>right</dc:rights>" +
+            "</oai_dc:dc>";
 
         assertEquals(expectedXml, record.getMetadata());
     }

@@ -1,5 +1,5 @@
 /* The contents of this file are subject to the license and copyright terms
- * detailed in the license directory at the root of the source tree (also 
+ * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
 package org.fcrepo.server.utilities;
@@ -31,7 +31,7 @@ import javax.xml.XMLConstants;
 
 /**
  * Dublin Core Fields.
- * 
+ *
  * @author Chris Wilper
  * @version $Id$
  */
@@ -70,7 +70,7 @@ public class DCFields
     private final ArrayList<DCField> m_rights = new ArrayList<DCField>();
 
     private StringBuffer m_currentContent;
-    
+
     private String m_lang;
 
     public DCFields() {}
@@ -241,7 +241,7 @@ public class DCFields
     public String getAsXML() {
         return getAsXML(null);
     }
-    
+
     /**
      * Ensure the dc:identifiers include the pid of the target object
             * @param targetPid
@@ -258,10 +258,10 @@ public class DCFields
         }
         StringBuffer out = new StringBuffer();
         out.append("<" + OAI_DC.prefix + ":dc" + " xmlns:" + OAI_DC.prefix
-                + "=\"" + OAI_DC.uri + "\"" + "\nxmlns:" + DC.prefix + "=\""
-                + DC.uri + "\"\nxmlns:xsi=\"" + XSI.uri
-                + "\"\nxsi:schemaLocation=\"" + OAI_DC.uri + " "
-                + OAI_DC2_0.xsdLocation + "\">\n");
+                + "=\"" + OAI_DC.uri + "\"" + " xmlns:" + DC.prefix + "=\""
+                + DC.uri + "\" xmlns:xsi=\"" + XSI.uri
+                + "\" xsi:schemaLocation=\"" + OAI_DC.uri + " "
+                + OAI_DC2_0.xsdLocation + "\">");
         appendXML(titles(), "title", out);
         appendXML(creators(), "creator", out);
         appendXML(subjects(), "subject", out);
@@ -280,7 +280,7 @@ public class DCFields
         appendXML(relations(), "relation", out);
         appendXML(coverages(), "coverage", out);
         appendXML(rights(), "rights", out);
-        out.append("</oai_dc:dc>\n");
+        out.append("</oai_dc:dc>");
         return out.toString();    }
 
     private void appendXML(List<DCField> values, String name, StringBuffer out) {
@@ -289,12 +289,12 @@ public class DCFields
         }
     }
     private void appendXML(DCField value, String name, StringBuffer out) {
-        out.append("  <dc:" + name);
+        out.append("<dc:" + name);
         if (value.getLang() != null) {
             out.append(" xml:lang=\"" + value.getLang() + "\"");
         }
         out.append(">");
         out.append(StreamUtility.enc(value.getValue()));
-        out.append("</dc:" + name + ">\n");
+        out.append("</dc:" + name + ">");
     }
 }
