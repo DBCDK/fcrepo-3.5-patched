@@ -31,7 +31,6 @@ import java.util.Map.Entry;
 import java.util.regex.Pattern;
 
 import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
 
 import com.sun.org.apache.xml.internal.serialize.OutputFormat;
 import com.sun.org.apache.xml.internal.serialize.XMLSerializer;
@@ -88,6 +87,11 @@ import org.fcrepo.server.validation.ValidationConstants;
 import org.fcrepo.server.validation.ValidationUtility;
 import org.fcrepo.server.validation.ecm.EcmValidator;
 import org.fcrepo.utilities.DateUtility;
+import org.fcrepo.utilities.XmlTransformUtility;
+import org.jrdf.graph.URIReference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
 
 /**
  * Implements API-M without regard to the transport/messaging protocol.
@@ -1536,11 +1540,8 @@ public class DefaultManagement
             fmt.setOmitXMLDeclaration(!includeXMLDeclaration);
             fmt.setOmitDocumentType(true);
             XMLSerializer ser = new XMLSerializer(out, fmt);
-            DocumentBuilderFactory factory =
-                    DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(true);
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            Document doc = builder.parse(in);
+            Document doc =
+                XmlTransformUtility.parseNamespaceAware(in);
             ser.serialize(doc);
             return out.toByteArray();
         } catch (Exception e) {

@@ -41,6 +41,7 @@ import org.fcrepo.server.errors.authorization.AuthzException;
 import org.fcrepo.server.management.Management;
 import org.fcrepo.server.storage.types.MIMETypedStream;
 import org.fcrepo.server.storage.types.Property;
+import org.fcrepo.utilities.XmlTransformUtility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,7 +73,13 @@ public class BaseRestResource {
     protected String fedoraServerHost;
     protected ObjectMapper mapper;
 
-    protected DatastreamFilenameHelper datastreamFilenameHelper;
+    protected Server m_server;
+    protected Management m_management;
+    protected Access m_access;
+    protected String m_hostname;
+    protected ObjectMapper m_mapper;
+    
+    protected DatastreamFilenameHelper m_datastreamFilenameHelper;
 
     @javax.ws.rs.core.Context
     protected HttpServletRequest servletRequest;
@@ -110,11 +117,10 @@ public class BaseRestResource {
            TransformerConfigurationException,
            TransformerException {
         File xslFile = new File(fedoraServer.getHomeDir(), xslt);
-        TransformerFactory factory = TransformerFactory.newInstance();
-        if (factory.getClass().getName().equals("net.sf.saxon.TransformerFactoryImpl")) {
-            factory.setAttribute(FeatureKeys.VERSION_WARNING, Boolean.FALSE);
-        }
-        Templates template = factory.newTemplates(new StreamSource(xslFile));
+
+        // XmlTransformUtility maintains a cache of Templates
+        Templates template =
+                XmlTransformUtility.getTemplates(xslFile);
         Transformer transformer = template.newTransformer();
         String appContext = getContext().getEnvironmentValue(Constants.FEDORA_APP_CONTEXT_NAME);
         transformer.setParameter("fedora", appContext);

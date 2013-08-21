@@ -86,7 +86,6 @@ public class HierarchicalLowestChildDenyOverridesPolicyAlg
             throw earlyException;
         }
 
-        factory = DocumentBuilderFactory.newInstance();
     }
 
     /**

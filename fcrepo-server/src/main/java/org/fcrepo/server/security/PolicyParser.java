@@ -34,6 +34,7 @@ import org.xml.sax.SAXParseException;
 import org.fcrepo.common.FaultException;
 import org.fcrepo.server.errors.ValidationException;
 import org.fcrepo.server.utilities.StreamUtility;
+import org.fcrepo.utilities.XmlTransformUtility;
 
 
 
@@ -48,10 +49,15 @@ import org.fcrepo.server.utilities.StreamUtility;
 public class PolicyParser {
 
     private final byte[] m_schemaBytes;
+    
+    private static final String W3C_XML_SCHEMA_NS_URI = "http://www.w3.org/2001/XMLSchema";
+    
+    // Neither of these factories are thread-safe, so access is synchronized in methods below
+    private static final SchemaFactory SCHEMA_FACTORY = SchemaFactory.newInstance(W3C_XML_SCHEMA_NS_URI);
 
+    private static final ErrorHandler THROW_ALL = new ThrowAllErrorHandler();
+    
     private final Validator m_validator;
-
-    private final DocumentBuilder m_domParser;
 
     /**
      * Creates an instance that will validate according to the given schema.
@@ -70,7 +76,7 @@ public class PolicyParser {
             throws SAXException {
         m_schemaBytes = schemaBytes;
         m_validator = createXSDValidator(new ByteArrayInputStream(m_schemaBytes));
-        m_domParser = createDOMParser();
+//        m_domParser = createDOMParser();
     }
 
     /**
@@ -108,10 +114,17 @@ public class PolicyParser {
 
         // Parse; die if not well-formed
         Document doc = null;
+        DocumentBuilder domParser = null;
         try {
-            doc = m_domParser.parse(policyStream);
+            domParser = XmlTransformUtility.borrowDocumentBuilder();
+            domParser.setErrorHandler(THROW_ALL);
+            doc = domParser.parse(policyStream);
         } catch (Exception e) {
             throw new ValidationException("Policy invalid; malformed XML", e);
+        } finally {
+            if (domParser != null) {
+                XmlTransformUtility.returnDocumentBuilder(domParser);
+            }
         }
 
         if (schemaValidate) {
@@ -142,20 +155,19 @@ public class PolicyParser {
                                           + "Sun XACML implementation", e);
         }
     }
-
-    private static DocumentBuilder createDOMParser() {
-        try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setIgnoringComments(true);
-            factory.setNamespaceAware(true);
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            builder.setErrorHandler(new ThrowAllErrorHandler());
-            return builder;
-        } catch (ParserConfigurationException e) {
-            throw new FaultException(e);
-        }
-    }
-
+//    private static DocumentBuilder createDOMParser() {
+//        try {
+//            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+//            factory.setIgnoringComments(true);
+//            factory.setNamespaceAware(true);
+//            DocumentBuilder builder = factory.newDocumentBuilder();
+//            builder.setErrorHandler(new ThrowAllErrorHandler());
+//            return builder;
+//        } catch (ParserConfigurationException e) {
+//            throw new FaultException(e);
+//        }
+//    }
+//
     private static Validator createXSDValidator(InputStream schemaStream)
             throws SAXException {
         if (schemaStream == null) return null;

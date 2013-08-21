@@ -29,6 +29,9 @@ import org.fcrepo.server.storage.types.BasicDigitalObject;
 import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.DigitalObject;
 import org.fcrepo.utilities.LogConfig;
+import org.fcrepo.utilities.XmlTransformUtility;
+import org.trippi.io.TripleIteratorFactory;
+import org.w3c.dom.Document;
 
 
 
@@ -43,6 +46,13 @@ import org.fcrepo.utilities.LogConfig;
 public class ConvertObjectSerialization {
 
     private static final String ENCODING = "UTF-8";
+
+    private static final OutputFormat fmt = new OutputFormat("XML", ENCODING, true);
+    static {
+        fmt.setIndent(2);
+        fmt.setLineWidth(80);
+        fmt.setPreserveSpace(false);
+    }
 
     private final Date m_now = new Date();
 
@@ -111,12 +121,13 @@ public class ConvertObjectSerialization {
         fmt.setLineWidth(80);
         fmt.setPreserveSpace(false);
         XMLSerializer ser = new XMLSerializer(destination, fmt);
-        DocumentBuilderFactory factory =
-                DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(true);
-        DocumentBuilder builder = factory.newDocumentBuilder();
-        Document doc = builder.parse(source);
-        ser.serialize(doc);
+        DocumentBuilder builder = XmlTransformUtility.borrowDocumentBuilder();
+        try {
+            Document doc = builder.parse(source);
+            ser.serialize(doc);
+        } finally {
+            XmlTransformUtility.returnDocumentBuilder(builder);
+        }
         destination.close();
     }
 

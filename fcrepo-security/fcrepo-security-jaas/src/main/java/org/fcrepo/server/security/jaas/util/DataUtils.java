@@ -33,6 +33,9 @@ import java.security.NoSuchAlgorithmException;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 
+import org.fcrepo.utilities.XmlTransformUtility;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 
 import com.sun.org.apache.xml.internal.serialize.OutputFormat;
@@ -40,16 +43,16 @@ import com.sun.org.apache.xml.internal.serialize.XMLSerializer;
 
 public class DataUtils {
 
+    private static Logger logger = LoggerFactory.getLogger(DataUtils.class);
+
     public static Document getDocumentFromFile(File file) throws Exception {
         byte[] document = loadFile(file);
-        DocumentBuilderFactory documentBuilderFactory =
-                DocumentBuilderFactory.newInstance();
-        documentBuilderFactory.setNamespaceAware(true);
-        DocumentBuilder docBuilder =
-                documentBuilderFactory.newDocumentBuilder();
+        return getDocumentFromBytes(document);
+    }
 
-        Document doc = docBuilder.parse(new ByteArrayInputStream(document));
-
+    public static Document getDocumentFromBytes(byte[] data) throws Exception {
+        Document doc =
+            XmlTransformUtility.parseNamespaceAware(new ByteArrayInputStream(data));
         return doc;
     }
 
@@ -76,17 +79,12 @@ public class DataUtils {
         return data.toByteArray();
     }
 
-    public static void saveDocument(String filename, byte[] document)
+    public static void saveDocument(String filename, byte[] data)
             throws Exception {
         Document doc = null;
         try {
-            DocumentBuilderFactory documentBuilderFactory =
-                    DocumentBuilderFactory.newInstance();
-            documentBuilderFactory.setNamespaceAware(true);
-            DocumentBuilder docBuilder =
-                    documentBuilderFactory.newDocumentBuilder();
-
-            doc = docBuilder.parse(new ByteArrayInputStream(document));
+            doc =
+                XmlTransformUtility.parseNamespaceAware(new ByteArrayInputStream(data));
         } catch (Exception e) {
             String message = "Unable to save file: " + filename;
             System.err.println(message);
@@ -130,14 +128,9 @@ public class DataUtils {
         return new String(out.toByteArray(), "UTF-8");
     }
 
-    public static String format(byte[] document) throws Exception {
-        DocumentBuilderFactory documentBuilderFactory =
-                DocumentBuilderFactory.newInstance();
-        documentBuilderFactory.setNamespaceAware(true);
-        DocumentBuilder docBuilder =
-                documentBuilderFactory.newDocumentBuilder();
-
-        Document doc = docBuilder.parse(new ByteArrayInputStream(document));
+    public static String format(byte[] data) throws Exception {
+        Document doc =
+            XmlTransformUtility.parseNamespaceAware(new ByteArrayInputStream(data));
 
         OutputFormat format = new OutputFormat(doc);
         format.setEncoding("UTF-8");
@@ -162,10 +155,8 @@ public class DataUtils {
         ByteArrayOutputStream outStream = new ByteArrayOutputStream();
         XMLSerializer serializer = new XMLSerializer(outStream, format);
 
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(true);
-        DocumentBuilder builder = factory.newDocumentBuilder();
-        Document doc = builder.parse(new ByteArrayInputStream(data));
+        Document doc =
+            XmlTransformUtility.parseNamespaceAware(new ByteArrayInputStream(data));
         serializer.serialize(doc);
 
         ByteArrayInputStream in =

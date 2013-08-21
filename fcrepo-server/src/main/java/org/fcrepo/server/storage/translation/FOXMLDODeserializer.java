@@ -18,8 +18,6 @@ import java.util.Iterator;
 import java.util.StringTokenizer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.xml.parsers.SAXParser;
-import javax.xml.parsers.SAXParserFactory;
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.Models;
 import org.fcrepo.common.xml.format.XMLFormat;
@@ -44,6 +42,7 @@ import org.slf4j.LoggerFactory;
 import org.xml.sax.Attributes;
 import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
+import org.fcrepo.utilities.XmlTransformUtility;
 
 
 
@@ -77,8 +76,6 @@ public class FOXMLDODeserializer
     /** The object to deserialize to. */
     private DigitalObject m_obj;
 
-    /** SAX parser */
-    private SAXParser m_parser;
 
     // Namespace prefix-to-URI mapping info from SAX2 startPrefixMapping events.
     private NamespaceHandler m_prefixMap;
@@ -224,16 +221,6 @@ public class FOXMLDODeserializer
         logger.debug("Deserializing " + m_format.uri + " for transContext: "
                 + transContext);
 
-        // initialize sax for this parse
-        try {
-            SAXParserFactory spf = SAXParserFactory.newInstance();
-            spf.setValidating(false);
-            spf.setNamespaceAware(true);
-            m_parser = spf.newSAXParser();
-        } catch (Exception e) {
-            throw new RuntimeException("Error initializing SAX parser", e);
-        }
-
         m_obj = obj;
         m_obj.setLabel("");
         m_obj.setOwnerId("");
@@ -241,7 +228,7 @@ public class FOXMLDODeserializer
         m_transContext = transContext;
         initialize();
         try {
-            m_parser.parse(in, this);
+            XmlTransformUtility.parseWithoutValidating(in, this);
         } catch (IOException ioe) {
             throw new StreamIOException("low-level stream io problem occurred "
                     + "while sax was parsing this object.");
@@ -356,7 +343,7 @@ public class FOXMLDODeserializer
                 if (versionable == null || versionable.equals("")) {
                     m_dsVersionable = true;
                 } else {
-                    m_dsVersionable = new Boolean(versionable).booleanValue();
+                    m_dsVersionable = Boolean.valueOf(versionable);
                 }
                 // Never allow the AUDIT datastream to be versioned
                 // since it naturally represents a system-controlled
@@ -663,7 +650,7 @@ public class FOXMLDODeserializer
             if (versionable == null || versionable.equals("")) {
                 m_dissVersionable = true;
             } else {
-                m_dissVersionable = new Boolean(versionable).booleanValue();
+                m_dissVersionable = Boolean.valueOf(versionable);
             }
         } else if (localName.equals("disseminatorVersion")) {
             m_diss = new Disseminator();
@@ -675,7 +662,7 @@ public class FOXMLDODeserializer
             if (versionable == null || versionable.equals("")) {
                 m_dissVersionable = true;
             } else {
-                m_dissVersionable = new Boolean(versionable).booleanValue();
+                m_dissVersionable = Boolean.valueOf(versionable);
             }
             m_diss.dissVersionID = grab(a, FOXML.uri, "ID");
             m_diss.dissLabel = grab(a, FOXML.uri, "LABEL");

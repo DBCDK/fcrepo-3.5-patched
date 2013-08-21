@@ -194,9 +194,8 @@ public class DOValidatorSchematron {
         try {
             // Create a transformer for that uses the Schematron preprocessor stylesheet.
             // Transform the Schematron schema (rules) into a validating stylesheet.
-            TransformerFactory tfactory = XmlTransformUtility.getTransformerFactory();
             Transformer ptransformer =
-                    tfactory.newTransformer(preprocessorSource);
+                    XmlTransformUtility.getTransformer(preprocessorSource);
             ptransformer.setParameter("phase", phase);
             ptransformer.transform(rulesSource, new StreamResult(out));
         } catch (TransformerException e) {

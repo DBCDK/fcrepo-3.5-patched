@@ -63,6 +63,9 @@ import org.fcrepo.server.security.Authorization;
 import org.fcrepo.server.utilities.status.ServerState;
 import org.fcrepo.server.utilities.status.ServerStatusFile;
 import org.fcrepo.utilities.DateUtility;
+import org.fcrepo.utilities.XmlTransformUtility;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.MutablePropertyValues;
 import org.springframework.beans.factory.ListableBeanFactory;
@@ -1152,17 +1155,13 @@ public abstract class Server
             throws ServerInitializationException {
         File configFile = null;
         try {
-            DocumentBuilderFactory factory =
-                    DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(true);
-            DocumentBuilder builder = factory.newDocumentBuilder();
             configFile =
                     new File(homeDir + File.separator + "server"
                             + File.separator + CONFIG_DIR + File.separator
                             + CONFIG_FILE);
             // suck it in
             Element rootElement =
-                    builder.parse(configFile).getDocumentElement();
+                    XmlTransformUtility.parseNamespaceAware(configFile).getDocumentElement();
             // ensure root element name ok
             if (!rootElement.getLocalName().equals(CONFIG_ELEMENT_ROOT)) {
                 throw new ServerInitializationException(MessageFormat
@@ -1181,12 +1180,14 @@ public abstract class Server
             throw new ServerInitializationException(MessageFormat
                     .format(INIT_CONFIG_SEVERE_UNREADABLE, new Object[] {
                             configFile, ioe.getMessage()}));
-        } catch (ParserConfigurationException pce) {
-            throw new ServerInitializationException(INIT_XMLPARSER_SEVERE_MISSING);
         } catch (SAXException saxe) {
             throw new ServerInitializationException(MessageFormat
                     .format(INIT_CONFIG_SEVERE_MALFORMEDXML, new Object[] {
                             configFile, saxe.getMessage()}));
+        } catch (Exception e) {
+            throw new ServerInitializationException(MessageFormat
+                    .format(INIT_XMLPARSER_SEVERE_MISSING, new Object[] {
+                            configFile, e.getMessage()}));
         }
     }
 

@@ -351,5 +351,9 @@
       <scope>provided</scope>
     </dependency>
 
+    <dependency>
+    	<groupId>commons-pool</groupId>
+    	<artifactId>commons-pool</artifactId>
+    </dependency>
   </dependencies>
 </project>

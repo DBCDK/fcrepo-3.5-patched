@@ -86,7 +86,6 @@ public class HierarchicalLowestChildPermitOverridesPolicyAlg
             throw earlyException;
         }
 
-        factory = DocumentBuilderFactory.newInstance();
     }
 
     /**

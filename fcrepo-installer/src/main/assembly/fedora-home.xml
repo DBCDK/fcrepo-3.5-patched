@@ -342,6 +342,7 @@
         <include>commons-discovery:commons-discovery:jar:*</include>
         <include>commons-httpclient:commons-httpclient:jar:*</include>
         <include>commons-pool:commons-pool:jar:*</include>
+        <include>commons-pool:commons-pool:jar:*</include>
         <include>gnu.getopt:java-getopt:jar:*</include>
         <include>javax.activation:activation:jar:*</include>
         <include>javax.mail:mail:jar:*</include>
