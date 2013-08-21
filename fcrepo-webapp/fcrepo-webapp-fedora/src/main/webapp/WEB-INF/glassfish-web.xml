@@ -1,0 +1,4 @@
+<sun-web-app error-url="">
+    <context-root>/fedora</context-root>
+    <class-loader delegate="false"/>
+</sun-web-app>
