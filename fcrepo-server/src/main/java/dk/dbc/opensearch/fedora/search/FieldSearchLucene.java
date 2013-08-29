@@ -234,13 +234,11 @@ public final class FieldSearchLucene extends Module implements FieldSearch
     @Override
     public void update( final DOReader reader ) throws ServerException
     {
-        log.trace( "Entering update" );
-
-        log.trace( "Preparing object data fields for indexing" );
+        String objectPID = reader.GetObjectPID();
+        log.info("Updating {}", objectPID);
 
         Date fedoraCreateDate = reader.getCreateDate();
         Date fedoraLastModDate = reader.getLastModDate();
-        String objectPID = reader.GetObjectPID();
         String objectState = reader.GetObjectState();
         String objectLabel = reader.GetObjectLabel();
         String ownerId = reader.getOwnerId();
@@ -305,6 +303,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
     @Override
     public boolean delete( final String identifier ) throws ServerException
     {
+        log.info("Deleting {}", identifier);
         boolean res = false;
         try {
             res = this.fsl.delete( identifier );

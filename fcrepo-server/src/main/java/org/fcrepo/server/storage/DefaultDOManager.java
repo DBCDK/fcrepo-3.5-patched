@@ -268,7 +268,7 @@ public class DefaultDOManager
 
         void lock( String pid )
         {
-            logger.info( String.format( "Thread '%s' calling DOLock.lock with pid: '%s'", Thread.currentThread().getId(), pid  ) );
+            logger.debug( String.format( "Thread '%s' calling DOLock.lock with pid: '%s'", Thread.currentThread().getId(), pid  ) );
             ReentrantLock pidLock= null;
             LockAdmin lockAdm = null;
             synchronized(lockMap)
@@ -318,7 +318,7 @@ public class DefaultDOManager
 
                 if( lockAdm.counterIsZero() )
                 {
-                    logger.info( String.format( "DOLock.unlock, removed lock associated with pid: '%s' from the lockMap", pid ) );
+                    logger.debug( String.format( "DOLock.unlock, removed lock associated with pid: '%s' from the lockMap", pid ) );
                     lockMap.remove( pid );
                 }
             }
@@ -1334,7 +1334,7 @@ public class DefaultDOManager
             // FIELD SEARCH INDEX:
             // remove digital object from the default search index
             try {
-                logger.info("Deleting from FieldSearch index");
+                logger.trace("Deleting from FieldSearch index");
                 m_fieldSearch.delete(obj.getPid());
             } catch (ServerException se) {
                 logger.warn("Object couldn't be removed from FieldSearch index ("
@@ -1603,11 +1603,11 @@ public class DefaultDOManager
 
                 // REPLICATE:
                 // add to replication jobs table and do replication to db
-                logger.info("Updating dissemination index");
+                logger.trace("Updating dissemination index");
                 String whichIndex = "FieldSearch";
 
                 try {
-                    logger.info("Updating FieldSearch index");
+                    logger.trace("Updating FieldSearch index");
                     m_fieldSearch.update(new SimpleDOReader(null,
                                                             null,
                                                             null,

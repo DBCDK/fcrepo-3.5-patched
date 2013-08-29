@@ -735,9 +735,9 @@ public final class LuceneFieldIndex
                     log.trace( "Lowercasing {} ({})", value, searchField );
                     value = value.toLowerCase();
                 }
-                if( ( operator.equals( Operator.CONTAINS ) ) && ( isSpecialCaseQuery( searchField, value ) ) )
+                if( ( operator.equals( Operator.CONTAINS ) ) && value.trim().isEmpty() )
                 {
-                    return new AllFieldsQuery( "*" );
+                    value = "*";
                 }
 
                 String debugQuery = String.format( "Building query: '%s %s %s'", searchField.toLowerCase(), operator, value );

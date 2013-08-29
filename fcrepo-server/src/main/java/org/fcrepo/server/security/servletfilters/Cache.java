@@ -178,8 +178,6 @@ public class Cache {
             logger.debug(m + "----------------------------------------------");
             logger.debug(m + "> " + getCacheId() + " [" + userid + "] ["
                     + password + "]");
-        } else {
-            logger.info("Authenticating user [" + userid + "]");
         }
 
         CacheElement cacheElement = getCacheElement(userid /* , password */);

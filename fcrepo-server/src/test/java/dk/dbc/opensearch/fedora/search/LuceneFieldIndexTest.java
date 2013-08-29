@@ -47,6 +47,7 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import org.junit.Ignore;
 
 /**
  *
@@ -183,6 +184,7 @@ public class LuceneFieldIndexTest {
     /**
      * happy path test of the search method
      */
+
     @Test
     public void testSearch() throws Exception
     {

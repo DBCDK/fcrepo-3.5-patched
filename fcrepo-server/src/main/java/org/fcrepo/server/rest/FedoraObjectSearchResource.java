@@ -108,7 +108,7 @@ public class FedoraObjectSearchResource extends BaseRestResource {
      * stream consisting of an html table is returned providing a browser-savvy
      * means of viewing the object profile. If the value specified is "true",
      * then a MIME-typed stream consisting of XML is returned.</li>
-     */
+*/
     @Path("nextPID")
     @POST
     public Response getNextPID(

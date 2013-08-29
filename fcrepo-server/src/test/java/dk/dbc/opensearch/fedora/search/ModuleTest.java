@@ -202,6 +202,23 @@ public class ModuleTest
         assertEquals( "demo:1", fsr.objectFieldsList().get( 0 ).getPid() );
     }
 
+    @Test
+    public void testSearchWildcardPid() throws Exception
+    {
+        ingestObject( "demo:1", new String[]{ "demo object2" }, "", "unit test" );
+        fieldsearch.update( reader );
+
+        ingestObject( "demo:2", new String[]{ "Demo object2" }, "", "second" );
+        fieldsearch.update( reader );
+
+        String[] returnfields = new String[]{ "pid" };
+        FieldSearchQuery fsq = getFieldSearchQuery( "pid", Operator.EQUALS, "*" );
+
+        FieldSearchResult fsr = fieldsearch.findObjects( returnfields, maxResults, fsq );
+
+        assertEquals( 2, fsr.objectFieldsList().size() );
+    }
+
     /**
      * Tests that an object can be retrieved through a non-unique field, the
      * title field
@@ -330,6 +347,30 @@ public class ModuleTest
 
         fsq = new FieldSearchQuery( "*se" );
         fsr = fieldsearch.findObjects( returnfields, maxResults, fsq );
+
+        assertEquals( 2, fsr.objectFieldsList().size() );
+    }
+
+    @Test
+    public void testAllRecordsConditionDoesNotOverrideOtherConditions() throws Exception
+    {
+        // Earlier implementation had a bug that interpreted "pid=demo:* source~*" as a query for all records
+        // any condition that would match all records would make LuceneFieldIndex.constructQuery ignore eariler conditions
+
+        ingestObject( "demo:1", new String[]{ "Cas Se" }, "source1", "unit test", toDate, toDate );
+        fieldsearch.update( reader );
+        ingestObject( "demo:2", new String[]{ "Voi Me" }, "source2", "unit test", toDate, toDate );
+        fieldsearch.update( reader );
+        ingestObject( "namespace:1", new String[]{ "Kas Se" }, "source3", "unit test", toDate, toDate );
+        fieldsearch.update( reader );
+
+        String[] returnfields = new String[]{ "pid" };
+        Map<String, Pair<Operator, String>> query = new HashMap<String, Pair<Operator, String>>();
+        query.put( "pid", new Pair<Operator, String>( Operator.EQUALS, "demo:*" ) );
+        query.put( "source", new Pair<Operator, String>( Operator.CONTAINS, "*" ) );
+        FieldSearchQuery fsq = getFieldSearchQuery( query );
+
+        FieldSearchResult fsr = fieldsearch.findObjects( returnfields, maxResults, fsq );
 
         assertEquals( 2, fsr.objectFieldsList().size() );
     }
@@ -510,7 +551,7 @@ public class ModuleTest
     @Test
     public void testContainsSearchOnEmptyFieldsReturnsIndex() throws Exception
     {
-        ingestObject( "demo:1", new String[]{ "Jenseits von Gut und Böse" }, "", "unit test"  );
+        ingestObject( "demo:1", new String[]{ "Jenseits von Gut und Böse" }, "Test", "unit test"  );
         fieldsearch.update( reader );
 
         String[] fields = new String[]{ "pid" };
@@ -1390,9 +1431,9 @@ public class ModuleTest
     {
         return new Expectations()
         {{
+                reader.GetObjectPID();returns( pid );
                 reader.getCreateDate();returns( toDate );
                 reader.getLastModDate(); returns( toDate );
-                reader.GetObjectPID();returns( pid );
                 reader.GetObjectState();returns( "I" );
                 reader.GetObjectLabel(); returns( "" );
                 reader.getOwnerId(); returns( anyString );
@@ -1410,9 +1451,9 @@ public class ModuleTest
     {
         return new Expectations()
         {{
+                reader.GetObjectPID();returns( pid );
                 reader.getCreateDate();returns( toDate );
                 reader.getLastModDate(); returns( toDate );
-                reader.GetObjectPID();returns( pid );
                 reader.GetObjectState();returns( "I" );
                 reader.GetObjectLabel(); returns( "" );
                 reader.getOwnerId(); returns( anyString );
@@ -1432,9 +1473,9 @@ public class ModuleTest
     {
         return new Expectations()
         {{
+                reader.GetObjectPID();returns( pid );
                 reader.getCreateDate();returns( createDate );
                 reader.getLastModDate(); returns( modifyDate );
-                reader.GetObjectPID();returns( pid );
                 reader.GetObjectState();returns( "I" );
                 reader.GetObjectLabel(); returns( "" );
                 reader.getOwnerId(); returns( anyString );
@@ -1451,9 +1492,9 @@ public class ModuleTest
     {
         return new NonStrictExpectations()
         {{
+                reader.GetObjectPID();returns( pid );
                 reader.getCreateDate();returns( toDate );
                 reader.getLastModDate(); returns( toDate );
-                reader.GetObjectPID();returns( pid );
                 reader.GetObjectState();returns( "I" );
                 reader.GetObjectLabel(); returns( "" );
                 reader.getOwnerId(); returns( anyString );
