@@ -4,13 +4,16 @@
  */
 package org.fcrepo.server.utilities;
 
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.joran.JoranConfigurator;
+import ch.qos.logback.core.joran.spi.JoranException;
 import java.io.File;
 
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
 
 import org.fcrepo.common.Constants;
-import org.fcrepo.utilities.LogConfig;
+import org.slf4j.LoggerFactory;
 import org.slf4j.bridge.SLF4JBridgeHandler;
 
 /**
@@ -34,8 +37,19 @@ public class LogSetupContextListener implements ServletContextListener {
 
         // Configure logging from file
         System.setProperty("fedora.home", Constants.FEDORA_HOME);
-        LogConfig.initFromFile(new File(new File(Constants.FEDORA_HOME),
-                                        "server/config/logback.xml"));
+        LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
+        JoranConfigurator configurator = new JoranConfigurator();
+        configurator.setContext(lc);
+        lc.reset();
+        final File logbackConfigFile =
+                new File(new File(Constants.FEDORA_HOME), "server/config/logback.xml");
+        try {
+            configurator.doConfigure(logbackConfigFile);
+        } catch (JoranException e) {
+            throw new IllegalStateException(
+                    "Could not configure Logback! Tried using configuration file: " +
+                            logbackConfigFile.getAbsolutePath(), e);
+        }
 
         // Replace java.util.logging's default handlers with one that
         // redirects everything to SLF4J
