@@ -1,5 +1,5 @@
 /* The contents of this file are subject to the license and copyright terms
- * detailed in the license directory at the root of the source tree (also 
+ * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
 package org.fcrepo.server.utilities;
@@ -13,7 +13,7 @@ import java.util.Iterator;
 /**
  * A ConnectionWrapper that creates tables on the target database given a
  * TableSpec.
- * 
+ *
  * @author Chris Wilper
  */
 public class TableCreatingConnection
@@ -23,7 +23,7 @@ public class TableCreatingConnection
 
     /**
      * Constructs a TableCreatingConnection.
-     * 
+     *
      * @param wrapped
      *        The wrapped connection.
      * @param converter
@@ -37,7 +37,7 @@ public class TableCreatingConnection
 
     /**
      * Get the DDLConverter this TableCreatingConnection works with.
-     * 
+     *
      * @return The converter.
      */
     public DDLConverter getDDLConverter() {
@@ -50,7 +50,7 @@ public class TableCreatingConnection
      * </p>
      * This method may execute more than one update command and it ignores the
      * transaction state of the connection.
-     * 
+     *
      * @param spec
      *        A description of the table to be created.
      */

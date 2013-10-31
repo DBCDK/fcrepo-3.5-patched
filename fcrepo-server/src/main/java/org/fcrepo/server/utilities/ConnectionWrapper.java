@@ -1,5 +1,5 @@
 /* The contents of this file are subject to the license and copyright terms
- * detailed in the license directory at the root of the source tree (also 
+ * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
 package org.fcrepo.server.utilities;
@@ -20,11 +20,12 @@ import java.sql.Savepoint;
 import java.sql.Statement;
 
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 /**
  * A wrapper around a java.sql.Connection that calls the wrapped Connection's
  * methods for all calls.
- * 
+ *
  * @author Chris Wilper
  */
 public abstract class ConnectionWrapper
@@ -35,7 +36,7 @@ public abstract class ConnectionWrapper
     public ConnectionWrapper(Connection wrapped) {
         m_wrappedConnection = wrapped;
     }
-    
+
     public boolean isWrapperFor(Class<?> iface) {
         throw new UnsupportedOperationException(
                 "Java 1.6 Connection methods are not supported");
@@ -99,6 +100,31 @@ public abstract class ConnectionWrapper
     public String getClientInfo(String a) {
         throw new UnsupportedOperationException(
                 "Java 1.6 Connection methods are not supported");
+    }
+
+    public void setSchema(String schema) throws SQLException {
+        throw new UnsupportedOperationException(
+                "Java 1.7 Connection methods are not supported");
+    }
+
+    public String getSchema() throws SQLException {
+        throw new UnsupportedOperationException(
+                "Java 1.7 Connection methods are not supported");
+    }
+
+    public void abort(Executor executor) throws SQLException {
+        throw new UnsupportedOperationException(
+                "Java 1.7 Connection methods are not supported");
+    }
+
+    public void setNetworkTimeout(Executor executor, int milliseconds) throws SQLException {
+        throw new UnsupportedOperationException(
+                "Java 1.7 Connection methods are not supported");
+    }
+
+    public int getNetworkTimeout() throws SQLException {
+        throw new UnsupportedOperationException(
+                "Java 1.7 Connection methods are not supported");
     }
 
     public Statement createStatement() throws SQLException {

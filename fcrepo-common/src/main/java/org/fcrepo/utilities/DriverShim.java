@@ -1,5 +1,5 @@
 /* The contents of this file are subject to the license and copyright terms
- * detailed in the license directory at the root of the source tree (also 
+ * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
 package org.fcrepo.utilities;
@@ -16,8 +16,10 @@ import java.sql.DriverPropertyInfo;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
 
 import java.util.Properties;
+import java.util.logging.Logger;
 
 /**
  * Allows one to load a JDBC driver at runtime. java.sql.DriverManager will
@@ -138,5 +140,9 @@ public class DriverShim
                     + " org.SomeDriver jdbcURL name pwd tbl");
             System.exit(1);
         }
+    }
+
+    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+        throw new SQLFeatureNotSupportedException("Not supported yet.");
     }
 }
