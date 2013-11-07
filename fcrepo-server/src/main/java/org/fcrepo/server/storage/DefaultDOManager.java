@@ -24,6 +24,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.Map.Entry;
@@ -39,6 +40,7 @@ import org.fcrepo.common.Models;
 
 import org.fcrepo.server.Context;
 import org.fcrepo.server.Module;
+import org.fcrepo.server.ReadOnlyContext;
 import org.fcrepo.server.RecoveryContext;
 import org.fcrepo.server.Server;
 import org.fcrepo.server.errors.ConnectionPoolNotFoundException;
@@ -49,7 +51,6 @@ import org.fcrepo.server.errors.ModuleInitializationException;
 import org.fcrepo.server.errors.ObjectAlreadyInLowlevelStorageException;
 import org.fcrepo.server.errors.ObjectExistsException;
 import org.fcrepo.server.errors.ObjectLockedException;
-import org.fcrepo.server.errors.ObjectNotFoundException;
 import org.fcrepo.server.errors.ObjectNotInLowlevelStorageException;
 import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.errors.StorageDeviceException;
@@ -57,9 +58,12 @@ import org.fcrepo.server.errors.StreamIOException;
 import org.fcrepo.server.management.Management;
 import org.fcrepo.server.management.PIDGenerator;
 import org.fcrepo.server.resourceIndex.ResourceIndex;
+import org.fcrepo.server.search.Condition;
 import org.fcrepo.server.search.FieldSearch;
 import org.fcrepo.server.search.FieldSearchQuery;
 import org.fcrepo.server.search.FieldSearchResult;
+import org.fcrepo.server.search.ObjectFields;
+import org.fcrepo.server.search.Operator;
 import org.fcrepo.server.storage.lowlevel.ILowlevelStorage;
 import org.fcrepo.server.storage.translation.DOTranslationUtility;
 import org.fcrepo.server.storage.translation.DOTranslator;
@@ -134,7 +138,7 @@ public class DefaultDOManager
 
     private ModelDeploymentMap m_cModelDeploymentMap;
 
-    private StringLock stringLock;
+    private final StringLock stringLock;
 
 
     /**
@@ -155,7 +159,7 @@ public class DefaultDOManager
 
     private class LockAdmin
     {
-        private ReentrantLock lock;
+        private final ReentrantLock lock;
         private int counter;
         private long owner;
 
@@ -256,7 +260,7 @@ public class DefaultDOManager
     }
 
 
-        private Map< String, LockAdmin > lockMap;
+        private final Map< String, LockAdmin > lockMap;
         /**
          * Constructor for the StringLock class
          */
@@ -269,8 +273,8 @@ public class DefaultDOManager
         void lock( String pid )
         {
             logger.debug( String.format( "Thread '%s' calling DOLock.lock with pid: '%s'", Thread.currentThread().getId(), pid  ) );
-            ReentrantLock pidLock= null;
-            LockAdmin lockAdm = null;
+            ReentrantLock pidLock;
+            LockAdmin lockAdm;
             synchronized(lockMap)
             {
                 lockAdm = lockMap.get( pid );
@@ -292,7 +296,6 @@ public class DefaultDOManager
         void unlock( String pid )
         {
             logger.debug( String.format( "Thread '%s' calling DOLock.unlock with pid: '%s'", Thread.currentThread().getId(), pid  ) );
-            ReentrantLock pidLock = null;
 
             synchronized(lockMap)
             {
@@ -1558,21 +1561,6 @@ public class DefaultDOManager
                 ResultSet results = null;
                 try {
                     conn = m_connectionPool.getReadWriteConnection();
-                    String query =
-                            "SELECT systemVersion FROM doRegistry WHERE doPID=?";
-                    s = conn.prepareStatement(query);
-                    s.setString(1,obj.getPid());
-                    results = s.executeQuery();
-                    if (!results.next()) {
-                        throw new ObjectNotFoundException("Error creating replication job: The requested object doesn't exist in the registry.");
-                    }
-                    int systemVersion = results.getInt("systemVersion");
-                    systemVersion++;
-                    query = "UPDATE doRegistry SET systemVersion="
-                        + systemVersion + " WHERE doPID=?";
-                    s = conn.prepareStatement(query);
-                    s.setString(1,obj.getPid());
-                    s.executeUpdate();
 
                     //TODO hasModel
                     if (obj.hasContentModel(Models.SERVICE_DEPLOYMENT_3_0)) {
@@ -1710,40 +1698,21 @@ public class DefaultDOManager
     /**
      * Checks the object registry for the given object.
      */
-    public boolean objectExists(String pid) throws StorageDeviceException {
+    public boolean objectExists( String pid) throws StorageDeviceException {
         logger.debug("Checking if " + pid + " already exists");
-        Connection conn = null;
-        PreparedStatement s = null;
-        ResultSet results = null;
         try {
-            String query =
-                    "SELECT doPID FROM doRegistry WHERE doPID=?";
-            conn = m_connectionPool.getReadOnlyConnection();
-            s = conn.prepareStatement(query);
-            s.setString(1,pid);
-            results = s.executeQuery();
-            return results.next(); // 'true' if match found, else 'false'
-        } catch (SQLException sqle) {
-            throw new StorageDeviceException("Unexpected error from SQL database: "
-                    + sqle.getMessage(), sqle);
-        } finally {
-            try {
-                if (results != null) {
-                    results.close();
-                }
-                if (s != null) {
-                    s.close();
-                }
-                if (conn != null) {
-                    m_connectionPool.free(conn);
-                }
-            } catch (SQLException sqle) {
-                throw new StorageDeviceException("Unexpected error from SQL database: "
-                        + sqle.getMessage(), sqle);
-            } finally {
-                results = null;
-                s = null;
-            }
+            Context context = ReadOnlyContext.getContext(null,
+                                         null,
+                                         null,
+                                         false);
+            List<Condition> conditions = new ArrayList<Condition>();
+            conditions.add(new Condition("pid", Operator.EQUALS, pid));
+            FieldSearchQuery query = new FieldSearchQuery(conditions);
+            FieldSearchResult findObjects = findObjects(context, new String[] { "PID" }, 1, query);
+            return findObjects.getCompleteListSize() > 0;
+        }
+        catch (Exception ex) {
+            throw new StorageDeviceException("Failed to determine if object exists", ex);
         }
     }
 
@@ -1752,45 +1721,7 @@ public class DefaultDOManager
      * exist in the registry before calling this method.
      */
     private void registerObject(DigitalObject obj) throws StorageDeviceException {
-        String theLabel = "the label field is no longer used";
-        String ownerID = "the ownerID field is no longer used";
-        String pid = obj.getPid();
-
-        Connection conn = null;
-        PreparedStatement st = null;
-        try {
-            String query =
-                    "INSERT INTO doRegistry (doPID, ownerId, label) VALUES (?, ?, ?)";
-            conn = m_connectionPool.getReadWriteConnection();
-            st = conn.prepareStatement(query);
-            st.setString(1,pid);
-            st.setString(2,ownerID);
-            st.setString(3,theLabel);
-            st.executeUpdate();
-        } catch (SQLException sqle) {
-            // clean up if the INSERT didn't succeeed
-            try {
-                unregisterObject(obj);
-            } catch (Throwable th) {
-            }
-            // ...then notify the caller with the original exception
-            throw new StorageDeviceException("Unexpected error from SQL database while registering object: "
-                    + sqle.getMessage(), sqle);
-        } finally {
-            try {
-                if (st != null) {
-                    st.close();
-                }
-                if (conn != null) {
-                    m_connectionPool.free(conn);
-                }
-            } catch (Exception sqle) {
-                throw new StorageDeviceException("Unexpected error from SQL database while registering object: "
-                        + sqle.getMessage(), sqle);
-            } finally {
-                st = null;
-            }
-        }
+        // Empty method left here for unit test interception
     }
 
     /**
@@ -1798,15 +1729,10 @@ public class DefaultDOManager
      */
     private void unregisterObject(DigitalObject obj)
             throws StorageDeviceException {
-        String pid = obj.getPid();
         Connection conn = null;
         PreparedStatement st = null;
         try {
             conn = m_connectionPool.getReadWriteConnection();
-            String query = "DELETE FROM doRegistry WHERE doPID=?";
-            st = conn.prepareStatement(query);
-            st.setString(1,pid);
-            st.executeUpdate();
 
             //TODO hasModel
             if (obj.hasContentModel(Models.SERVICE_DEPLOYMENT_3_0)) {
@@ -1834,7 +1760,34 @@ public class DefaultDOManager
 
     public String[] listObjectPIDs(Context context)
             throws StorageDeviceException {
-        return getPIDs("WHERE systemVersion > 0");
+
+        try {
+            List<Condition> conditions = new ArrayList<Condition>();
+            conditions.add(new Condition("pid", Operator.EQUALS, "*"));
+            FieldSearchQuery query = new FieldSearchQuery(conditions);
+            FieldSearchResult findObjects = findObjects(context, new String[] { "PID" }, 1, query);
+            long size = findObjects.getCompleteListSize();
+            if (size > Integer.MAX_VALUE) {
+                throw new StorageDeviceException( "Too many objects in repository to return: " + size);
+            }
+            String[] result = new String[(int)size];
+            int index = 0;
+            for (ObjectFields fields : findObjects.objectFieldsList()) {
+                result[index++] = fields.getPid();
+            }
+            String token = findObjects.getToken();
+            while (token != null) {
+                findObjects = resumeFindObjects(context, token);
+                for (ObjectFields fields : findObjects.objectFieldsList()) {
+                    result[index++] = fields.getPid();
+                }
+                token = findObjects.getToken();
+            }
+            return result;
+        }
+        catch (Exception ex) {
+            throw new StorageDeviceException("Failed to determine objects", ex);
+        }
     }
 
     // translates simple wildcard string to sql-appropriate.
@@ -1944,53 +1897,6 @@ public class DefaultDOManager
         }
     }
 
-    /** whereClause is a WHERE clause, starting with "where" */
-    private String[] getPIDs(String whereClause) throws StorageDeviceException {
-        ArrayList<String> pidList = new ArrayList<String>();
-        Connection conn = null;
-        PreparedStatement s = null;
-        ResultSet results = null;
-        try {
-            conn = m_connectionPool.getReadOnlyConnection();
-            String query = "SELECT doPID FROM doRegistry " + whereClause;
-            s = conn.prepareStatement(query);
-            logger.debug("Executing db query: " + query);
-            results = s.executeQuery();
-            while (results.next()) {
-                pidList.add(results.getString("doPID"));
-            }
-            String[] ret = new String[pidList.size()];
-            Iterator<String> pidIter = pidList.iterator();
-            int i = 0;
-            while (pidIter.hasNext()) {
-                ret[i++] = pidIter.next();
-            }
-            return ret;
-        } catch (SQLException sqle) {
-            throw new StorageDeviceException("Unexpected error from SQL database: "
-                    + sqle.getMessage(), sqle);
-
-        } finally {
-            try {
-                if (results != null) {
-                    results.close();
-                }
-                if (s != null) {
-                    s.close();
-                }
-                if (conn != null) {
-                    m_connectionPool.free(conn);
-                }
-            } catch (SQLException sqle) {
-                throw new StorageDeviceException("Unexpected error from SQL database: "
-                        + sqle.getMessage(), sqle);
-            } finally {
-                results = null;
-                s = null;
-            }
-        }
-    }
-
     public FieldSearchResult findObjects(Context context,
                                          String[] resultFields,
                                          int maxResults,
@@ -2063,67 +1969,28 @@ public class DefaultDOManager
 
         Connection conn = null;
         try {
-            conn = m_connectionPool.getReadOnlyConnection();
+            Context context = ReadOnlyContext.getContext(null,
+                                         null,
+                                         null,
+                                         false);
 
             StringBuffer hash = new StringBuffer();
-            hash.append(getNumObjectsWithVersion(conn, 0));
-            hash.append("|");
-
-            hash.append(getLatestModificationDate(conn));
-
+            List<Condition> conditions = new ArrayList<Condition>();
+            conditions.add(new Condition("pid", Operator.EQUALS, "*"));
+            FieldSearchQuery query = new FieldSearchQuery(conditions);
+            FieldSearchResult findObjects = findObjects(context, new String[] { "PID" }, 1, query);
+            long size = findObjects.getCompleteListSize();
+            hash.append(size);
+            //hash.append(getNumObjectsWithVersion(conn, 0));
+            hash.append('|');
+            //hash.append(getLatestModificationDate(conn));
             return hash.toString();
-
-        } catch (SQLException e) {
-            throw new GeneralException("SQL error encountered while computing "
+        } catch (Exception e) {
+            throw new GeneralException("Error encountered while computing "
                     + "repository hash", e);
         } finally {
             if (conn != null) {
                 m_connectionPool.free(conn);
-            }
-        }
-    }
-
-    /**
-     * Get the number of objects in the registry whose system version is equal
-     * to the given value. If n is less than one, return the total number of
-     * objects in the registry.
-     */
-    private int getNumObjectsWithVersion(Connection conn, int n)
-            throws SQLException {
-
-        PreparedStatement st = null;
-        try {
-            StringBuffer query = new StringBuffer();
-            query.append("SELECT COUNT(*) FROM doRegistry");
-            if (n > 0) {
-                query.append(" WHERE systemVersion = " + n);
-            }
-            st = conn.prepareStatement(query.toString());
-            ResultSet results = st.executeQuery();
-            results.next();
-            return results.getInt(1);
-        } finally {
-            if (st != null) {
-                st.close();
-            }
-        }
-    }
-
-    private long getLatestModificationDate(Connection conn)
-            throws SQLException {
-        PreparedStatement st = null;
-        try {
-            st = conn.prepareStatement("SELECT MAX(mDate) " + "FROM doFields ");
-            ResultSet results =
-                    st.executeQuery();
-            if (results.next()) {
-                return results.getLong(1);
-            } else {
-                return 0L;
-            }
-        } finally {
-            if (st != null) {
-                st.close();
             }
         }
     }

@@ -44,7 +44,6 @@ import org.fcrepo.server.config.ServerConfiguration;
 import org.fcrepo.server.errors.InitializationException;
 import org.fcrepo.server.errors.LowlevelStorageException;
 import org.fcrepo.server.errors.ModuleInitializationException;
-import org.fcrepo.server.errors.ObjectNotFoundException;
 import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.errors.StorageDeviceException;
 import org.fcrepo.server.management.PIDGenerator;
@@ -155,7 +154,6 @@ public class SQLRebuilder
             m_context =
                     ReadOnlyContext.getContext("utility", "fedoraAdmin", "", /* null, */
                     ReadOnlyContext.DO_OP);
-            String registryClassTemp = m_server.getParameter("registry");
             ILowlevelStorage llstore =
                     (ILowlevelStorage) m_server
                             .getModule("org.fcrepo.server.storage.lowlevel.ILowlevelStorage");
@@ -187,15 +185,11 @@ public class SQLRebuilder
             }
             r.close();
             r = null;
-        } catch (SQLException sqle) {
-            throw new SQLException(sqle.getMessage());
         } finally {
             try {
                 if (r != null) {
                     r.close();
                 }
-            } catch (SQLException sqle2) {
-                throw sqle2;
             } finally {
                 r = null;
             }
@@ -397,22 +391,10 @@ public class SQLRebuilder
      */
     private void registerObject(DigitalObject obj)
             throws StorageDeviceException {
-        String pid = obj.getPid();
-        String userId = "the userID field is no longer used";
-        String label = "the label field is no longer used";
 
         Connection conn = null;
-        PreparedStatement s1 = null;
         try {
-            String query =
-                    "INSERT INTO doRegistry (doPID, ownerId, label) VALUES (?, ?, ?)";
             conn = m_connectionPool.getReadWriteConnection();
-            s1 = conn.prepareStatement(query);
-            s1.setString(1,pid);
-            s1.setString(2,userId);
-            s1.setString(3, label);
-            s1.executeUpdate();
-
             if (obj.hasContentModel(Models.SERVICE_DEPLOYMENT_3_0)){
                 updateDeploymentMap(obj, conn);
             }
@@ -420,62 +402,8 @@ public class SQLRebuilder
             throw new StorageDeviceException("Unexpected error from SQL database while registering object: "
                     + sqle.getMessage());
         } finally {
-            try {
-                if (s1 != null) {
-                    s1.close();
-                }
-            } catch (Exception sqle) {
-                throw new StorageDeviceException("Unexpected error from SQL database while registering object: "
-                        + sqle.getMessage());
-            } finally {
-                s1 = null;
-            }
-        }
-
-        PreparedStatement s2 = null;
-        ResultSet results = null;
-        try {
-            // REGISTRY:
-            // update systemVersion in doRegistry (add one)
-            logger.debug("COMMIT: Updating registry...");
-            String query =
-                    "SELECT systemVersion FROM doRegistry WHERE doPID=?";
-            s2 = conn.prepareStatement(query);
-            s2.setString(1, pid);
-            results = s2.executeQuery();
-            if (!results.next()) {
-                throw new ObjectNotFoundException("Error creating replication job: The requested object doesn't exist in the registry.");
-            }
-            int systemVersion = results.getInt("systemVersion");
-            systemVersion++;
-            query = "UPDATE doRegistry SET systemVersion=? WHERE doPID=?";
-            s2 = conn.prepareStatement(query);
-            s2.setInt(1, systemVersion);
-            s2.setString(2,pid);
-            s2.executeUpdate();
-        } catch (SQLException sqle) {
-            throw new StorageDeviceException("Error creating replication job: "
-                    + sqle.getMessage());
-        } catch (ObjectNotFoundException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        } finally {
-            try {
-                if (results != null) {
-                    results.close();
-                }
-                if (s2 != null) {
-                    s2.close();
-                }
-                if (conn != null) {
-                    m_connectionPool.free(conn);
-                }
-            } catch (SQLException sqle) {
-                throw new StorageDeviceException("Unexpected error from SQL database: "
-                        + sqle.getMessage());
-            } finally {
-                results = null;
-                s2 = null;
+            if (conn != null) {
+                m_connectionPool.free(conn);
             }
         }
     }
