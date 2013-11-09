@@ -16,6 +16,11 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.bridge.SLF4JBridgeHandler;
 
@@ -62,6 +67,8 @@ public class Rebuild
     private final Rebuilder m_rebuilder;
 
     private final Map<String, String> m_options;
+
+    public static final String THREADS_OPTION = "threads";
 
     public Rebuild(Rebuilder rebuilder,
                    Map<String, String> options,
@@ -119,9 +126,14 @@ public class Rebuild
                 try {
                     // looks good, so init the rebuilder
                     m_rebuilder.start(m_options);
+                    int threads = Integer.parseInt(m_options.get(THREADS_OPTION));
+                    ExecutorService threadPool = new ThreadPoolExecutor(threads, threads,
+                                                  0L, TimeUnit.MILLISECONDS,
+                                                  new ArrayBlockingQueue<Runnable>( 500 ),
+                                                  new ThreadPoolExecutor.CallerRunsPolicy());
 
                     // add each object in llstore
-                    ILowlevelStorage llstore =
+                    final ILowlevelStorage llstore =
                             (ILowlevelStorage) getServer()
                                     .getModule(llstoreInterface);
                     if (llstore == null) {
@@ -132,20 +144,45 @@ public class Rebuild
                                 + " with impl " + llstore.getClass().getName());
                     }
                     Iterator<String> pids = ((IListable) llstore).listObjects();
-                    int total = 0;
-                    int errors = 0;
-                    DODeserializer deser = new FOXML1_1DODeserializer();
+                    final AtomicInteger total = new AtomicInteger();
+                    final AtomicInteger errors = new AtomicInteger();
+
+                    final ThreadLocal<DODeserializer> deser = new ThreadLocal<DODeserializer>() {
+
+                        @Override
+                        protected DODeserializer initialValue() {
+                            return new FOXML1_1DODeserializer();
+                        }
+
+                    };
 
                     while (pids.hasNext()) {
-                        total++;
-                        String pid = pids.next();
-                        System.out.println("Adding object #" + total + ": "
+                        final String pid = pids.next();
+                        System.out.println("Adding object #" + total.incrementAndGet() + ": "
                                 + pid);
-                        if (!addObject(m_rebuilder, llstore, deser, pid)) {
-                            errors++;
-                        }
+                        Runnable task = new Runnable() {
+                            @Override
+                            public void run() {
+                                if (!addObject(m_rebuilder, llstore, deser.get(), pid)) {
+                                    errors.incrementAndGet();
+                                }
+                            }
+                        };
+                        threadPool.execute( task);
                     }
-                    if (errors == 0) {
+                    threadPool.shutdown();
+                    try
+                    {
+                        threadPool.awaitTermination( 14, TimeUnit.DAYS );
+                    }
+                    catch( InterruptedException ex )
+                    {
+                        System.out.println("Interrupted while waiting for completion: "
+                                + ex.getClass().getName() + ": " + ex.getMessage());
+                        ex.printStackTrace();
+                    }
+
+                    if (errors.get() == 0) {
                         System.out.println("SUCCESS: " + total
                                 + " objects rebuilt.");
                     } else {
@@ -233,6 +270,9 @@ public class Rebuild
         int c = 1;
 
         if (System.getProperty("rebuilder") == null) {
+            String threads = getOptionValue(THREADS_OPTION, "Number of threads for processing");
+            options.put(THREADS_OPTION, threads);
+
             if (options.size() > 0) {
                 c =
                     getChoice("Start rebuilding with the above options?",
