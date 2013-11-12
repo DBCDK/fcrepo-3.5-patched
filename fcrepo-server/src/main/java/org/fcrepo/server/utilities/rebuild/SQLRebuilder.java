@@ -372,18 +372,18 @@ public class SQLRebuilder
     private void registerObject(DigitalObject obj)
             throws StorageDeviceException {
 
-        Connection conn = null;
-        try {
-            conn = m_connectionPool.getReadWriteConnection();
-            if (obj.hasContentModel(Models.SERVICE_DEPLOYMENT_3_0)){
+        if (obj.hasContentModel(Models.SERVICE_DEPLOYMENT_3_0)){
+            Connection conn = null;
+            try {
+                conn = m_connectionPool.getReadWriteConnection();
                 updateDeploymentMap(obj, conn);
-            }
-        } catch (SQLException sqle) {
-            throw new StorageDeviceException("Unexpected error from SQL database while registering object: "
-                    + sqle.getMessage());
-        } finally {
-            if (conn != null) {
-                m_connectionPool.free(conn);
+            } catch (SQLException sqle) {
+                throw new StorageDeviceException("Unexpected error from SQL database while registering object: "
+                        + sqle.getMessage());
+            } finally {
+                if (conn != null) {
+                    m_connectionPool.free(conn);
+                }
             }
         }
     }
