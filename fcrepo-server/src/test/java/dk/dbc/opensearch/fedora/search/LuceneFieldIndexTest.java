@@ -47,7 +47,6 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import org.junit.Ignore;
 
 /**
  *
@@ -198,6 +197,38 @@ public class LuceneFieldIndexTest {
         String[] nextPidArray = searchResult.getNextPids(1).toArray(new String[0]);
         assertEquals( 1, nextPidArray.length );
         assertEquals( "demo:1", nextPidArray[0] );
+    }
+
+    @Test
+    public void findHighestId() throws Exception
+    {
+        instance.indexFields( constructIndexFields( new Pair<FedoraFieldName, String>( FedoraFieldName.PID, "demo:a" ) ), 0 );
+        instance.indexFields( constructIndexFields( new Pair<FedoraFieldName, String>( FedoraFieldName.PID, "demo:2" ) ), 0 );
+        instance.indexFields( constructIndexFields( new Pair<FedoraFieldName, String>( FedoraFieldName.PID, "demo:6" ) ), 0 );
+        instance.indexFields( constructIndexFields( new Pair<FedoraFieldName, String>( FedoraFieldName.PID, "demo:4" ) ), 0 );
+        instance.indexFields( constructIndexFields( new Pair<FedoraFieldName, String>( FedoraFieldName.PID, "demo:B" ) ), 0 );
+
+        int id = instance.findHighestId("demo");
+        assertEquals( 6, id );
+    }
+
+
+    @Test
+    public void findHighestId_whenIndexHasNoNumericalIdentifier() throws Exception
+    {
+        instance.indexFields( constructIndexFields( new Pair<FedoraFieldName, String>( FedoraFieldName.PID, "demo:a" ) ), 0 );
+
+        int id = instance.findHighestId("demo");
+        assertEquals( 0, id );
+    }
+
+    @Test
+    public void findHighestId_whenIndexHasNoMatchingNamespace() throws Exception
+    {
+        instance.indexFields( constructIndexFields( new Pair<FedoraFieldName, String>( FedoraFieldName.PID, "demo:3" ) ), 0 );
+
+        int id = instance.findHighestId("other");
+        assertEquals( 0, id );
     }
 
     @Test

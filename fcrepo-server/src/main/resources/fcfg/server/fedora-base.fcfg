@@ -473,9 +473,8 @@
 	    <param name="serializer_info:fedora/fedora-system:ATOMZip-1.1" value="org.fcrepo.server.storage.translation.AtomZip1_1DOSerializer"/>
 	    <param name="deserializer_info:fedora/fedora-system:ATOMZip-1.1" value="org.fcrepo.server.storage.translation.AtomZip1_1DODeserializer"/>
 	</module>
-	<module role="org.fcrepo.server.management.PIDGenerator" class="org.fcrepo.server.management.BasicPIDGenerator">
-		<comment>The pid generator.</comment>
-		<param name="pidgen_log_dir" value="pidgen"/>
+	<module role="org.fcrepo.server.management.PIDGenerator" class="dk.dbc.opensearch.fedora.search.LucenePIDGenerator">
+		<comment>Pid generator based on lucene index.</comment>
 	</module>
 	<module role="org.fcrepo.server.messaging.Messaging" class="org.fcrepo.server.messaging.MessagingModule">
 		<comment>Fedora's Java Messaging Service (JMS) Module</comment>

@@ -86,6 +86,11 @@ public class FedoraOAIProviderTest
         public FieldSearchResult resumeFindObjects(String sessionToken) throws ServerException {
             throw new UnsupportedOperationException("Not supported yet.");
         }
+
+        @Override
+        public int findHighestID(String namespace) throws ServerException {
+            throw new UnsupportedOperationException("Not supported yet.");
+        }
     }
 
     public static class MockFieldSearchResult implements FieldSearchResult {

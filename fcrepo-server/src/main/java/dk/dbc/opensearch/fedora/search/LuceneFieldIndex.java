@@ -53,12 +53,17 @@ import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
 import java.util.concurrent.atomic.AtomicLong;
+import org.apache.lucene.document.IntField;
 import org.apache.lucene.document.LongField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.search.SearcherManager;
+import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.TopFieldDocs;
 import org.apache.lucene.util.Bits;
 
 /**
@@ -92,6 +97,7 @@ public final class LuceneFieldIndex
     /** FieldSearch index optimizations aka. private FedoraFieldNames. */
     private final static String PID_NAMESPACE = FedoraFieldName.PID.toString() + "_namespace";
     private final static String PID_IDENTIFIER = FedoraFieldName.PID.toString() + "_identifier";
+    private final static String PID_INT = FedoraFieldName.PID.toString() + "_int";
 
     private final static String DATE_RAW = "dateraw";
     private final static String DATE_RAW_EQ = "dateraw_eq";
@@ -413,8 +419,19 @@ public final class LuceneFieldIndex
                     log.trace( "Added { {}: {} } to index document", fieldName.toString(), fieldValue );
                     pid = fieldValue;
 
-                    doc.add( new StringField( PID_IDENTIFIER, fieldValue.split( ":" )[1], Store.NO ) );
+                    String identifier = fieldValue.split( ":" )[1];
+
+                    doc.add( new StringField( PID_IDENTIFIER, identifier, Store.NO ) );
                     doc.add( new StringField( PID_NAMESPACE, fieldValue.split( ":" )[0], Store.NO ) );
+
+                    try {
+                        int id = Integer.parseInt(identifier);
+                        doc.add( new IntField( PID_INT, id, Store.YES ) );
+
+                    }
+                    catch ( NumberFormatException ex ) {
+                        // Not an error. Object ID was not an integer so it should not be considered for pid generation
+                    }
 
                     doc.add( new StringField( fieldName.equalsFieldName(), FIELDSTART + fieldValue + FIELDEND, Store.NO ) );
 
@@ -617,6 +634,29 @@ public final class LuceneFieldIndex
         */
 
         return results;
+    }
+
+    public int findHighestId(String namespace) throws IOException {
+        TermQuery luceneQuery = new TermQuery(new Term(PID_NAMESPACE, namespace));
+        searchManager.maybeRefreshBlocking();
+        IndexSearcher localSearcher = searchManager.acquire();
+        try {
+            log.debug("Query: {}", luceneQuery.toString());
+            TopFieldDocs search = localSearcher.search(luceneQuery, 1, new Sort(new SortField(PID_INT, SortField.Type.INT, true)));
+
+            if (search.scoreDocs.length > 0) {
+                IndexReader localReader = localSearcher.getIndexReader();
+                Document document = localReader.document( search.scoreDocs[0].doc );
+                IndexableField identifer = document.getField(PID_INT);
+                if (identifer != null) {
+                    return identifer.numericValue().intValue();
+                }
+            }
+            return 0;
+        }
+        finally {
+            searchManager.release(localSearcher);
+        }
     }
 
     /**

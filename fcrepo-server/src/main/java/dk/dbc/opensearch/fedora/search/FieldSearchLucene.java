@@ -408,6 +408,15 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         return fsr;
     }
 
+    @Override
+    public int findHighestID(String namespace) throws ServerException {
+        try {
+            return luceneindexer.findHighestId(namespace);
+        }
+        catch (IOException ex) {
+            throw new GeneralException( "Unable to search for highest id in namespace " + namespace, ex );
+        }
+    }
 
     /**
      * Closes the underlying lucene indexer.
@@ -638,4 +647,5 @@ public final class FieldSearchLucene extends Module implements FieldSearch
 
         return writer;
     }
+
 }

@@ -167,4 +167,9 @@ public class FieldSearchSQLModule
         return m_wrappedFieldSearch.resumeFindObjects(sessionToken);
     }
 
+    @Override
+    public int findHighestID(String namespace) throws ServerException {
+        return m_wrappedFieldSearch.findHighestID(namespace);
+    }
+
 }

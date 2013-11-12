@@ -16,6 +16,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import org.fcrepo.server.errors.MethodNotFoundException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -221,7 +222,7 @@ public class FieldSearchSQLImpl
                     // found at least one valid date, so add them.
                     for (int i = 0; i < wellFormedDates.size(); i++) {
                         Date dt = wellFormedDates.get(i);
-                        String query = 
+                        String query =
                         	"INSERT INTO dcDates (pid, dcDate) values (?, ?)";
                         st = conn.prepareStatement(query);
                         st.setString(1, pid);
@@ -415,5 +416,10 @@ public class FieldSearchSQLImpl
         }
         out.append(" .");
         return out.toString();
+    }
+
+    @Override
+    public int findHighestID(String namespace) throws ServerException {
+        throw new MethodNotFoundException("FieldSearchSQL does not implement findHighestID");
     }
 }

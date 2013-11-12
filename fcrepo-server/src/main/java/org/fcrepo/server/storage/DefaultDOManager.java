@@ -1555,40 +1555,21 @@ public class DefaultDOManager
                  * update systemVersion in doRegistry (add one), and update
                  * deploymene maps if necesssary.
                  */
-                logger.debug("Updating registry");
-                Connection conn = null;
-                PreparedStatement s = null;
-                ResultSet results = null;
-                try {
-                    conn = m_connectionPool.getReadWriteConnection();
-
-                    //TODO hasModel
-                    if (obj.hasContentModel(Models.SERVICE_DEPLOYMENT_3_0)) {
-                        updateDeploymentMap(obj, conn, false);
-                    }
-                } catch (SQLException sqle) {
-                    throw new StorageDeviceException("Error creating replication job: "
-                            + sqle.getMessage(), sqle);
-                } finally {
+                if (obj.hasContentModel(Models.SERVICE_DEPLOYMENT_3_0)) {
+                    logger.debug("Updating registry");
+                    Connection conn = null;
                     try {
-                        if (results != null) {
-                            results.close();
-                        }
-                        if (s != null) {
-                            s.close();
-                        }
+                        conn = m_connectionPool.getReadWriteConnection();
+                        updateDeploymentMap(obj, conn, false);
+                    } catch (SQLException sqle) {
+                        throw new StorageDeviceException("Error creating replication job: "
+                                + sqle.getMessage(), sqle);
+                    } finally {
                         if (conn != null) {
                             m_connectionPool.free(conn);
                         }
-                    } catch (SQLException sqle) {
-                        throw new StorageDeviceException("Unexpected error from SQL database: "
-                                + sqle.getMessage(), sqle);
-                    } finally {
-                        results = null;
-                        s = null;
                     }
                 }
-
                 // REPLICATE:
                 // add to replication jobs table and do replication to db
                 logger.trace("Updating dissemination index");
