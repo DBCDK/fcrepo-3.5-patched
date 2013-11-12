@@ -147,15 +147,6 @@ public class Rebuild
                     final AtomicInteger total = new AtomicInteger();
                     final AtomicInteger errors = new AtomicInteger();
 
-                    final ThreadLocal<DODeserializer> deser = new ThreadLocal<DODeserializer>() {
-
-                        @Override
-                        protected DODeserializer initialValue() {
-                            return new FOXML1_1DODeserializer();
-                        }
-
-                    };
-
                     while (pids.hasNext()) {
                         final String pid = pids.next();
                         System.out.println("Adding object #" + total.incrementAndGet() + ": "
@@ -163,7 +154,7 @@ public class Rebuild
                         Runnable task = new Runnable() {
                             @Override
                             public void run() {
-                                if (!addObject(m_rebuilder, llstore, deser.get(), pid)) {
+                                if (!addObject(m_rebuilder, llstore, new FOXML1_1DODeserializer(), pid)) {
                                     errors.incrementAndGet();
                                 }
                             }
@@ -177,7 +168,7 @@ public class Rebuild
                     }
                     catch( InterruptedException ex )
                     {
-                        System.out.println("Interrupted while waiting for completion: "
+                        System.err.println("Interrupted while waiting for completion: "
                                 + ex.getClass().getName() + ": " + ex.getMessage());
                         ex.printStackTrace();
                     }
@@ -186,7 +177,7 @@ public class Rebuild
                         System.out.println("SUCCESS: " + total
                                 + " objects rebuilt.");
                     } else {
-                        System.out.println("WARNING: " + errors + " of "
+                        System.err.println("WARNING: " + errors + " of "
                                 + total
                                 + " objects failed to rebuild due to errors.");
                     }
