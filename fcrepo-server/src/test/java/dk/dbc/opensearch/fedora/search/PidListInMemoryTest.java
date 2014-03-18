@@ -98,5 +98,4 @@ public class PidListInMemoryTest
         assertTrue( result.contains( PID_1 ) );
         assertTrue( result.contains( PID_2 ) );
     }
-
 }

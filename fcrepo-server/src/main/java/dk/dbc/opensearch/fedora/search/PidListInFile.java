@@ -129,7 +129,7 @@ public class PidListInFile implements IPidList
         // Write bytes
         stream.write( bytes );
         size++;
-        log.debug( "Appended PID '{}'. Size is now", pid, size );
+        log.debug( "Appended PID '{}'. Size is now {}", pid, size );
     }
 
 

@@ -110,7 +110,7 @@ class FieldSearchResultCache
         }
         else
         {
-            log.debug( "Found cached result for token {}, with size", token, result.getCompleteListSize() );
+            log.debug( "Found cached result for token {}, with size {}", token, result.getCompleteListSize() );
         }
         return result;
     }

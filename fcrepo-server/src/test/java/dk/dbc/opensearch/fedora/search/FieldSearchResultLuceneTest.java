@@ -205,12 +205,12 @@ public class FieldSearchResultLuceneTest
 
         setExpectationsForIndexSearch( query, maxResults + 1 );
 
-        FieldSearchResultLucene result = new FieldSearchResultLucene( indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds );
+        FieldSearchResultLucene result = new FieldSearchResultLucene(indexer, repoReader, resultFields, query, maxResults, resultLifeTimeinSeconds);
         long cursor = result.getCursor();
-	int length = result.objectFieldsList().size();
+        int length = result.objectFieldsList().size();
 
-        assertEquals( 0, cursor );
-	assertEquals( maxResults, length );
+        assertEquals(0, cursor);
+        assertEquals(maxResults, length);
     }
 
 
@@ -324,8 +324,6 @@ public class FieldSearchResultLuceneTest
         final InputStream metadata = new ByteArrayInputStream( dcxml.getBytes() );
         return new NonStrictExpectations()
         {
-
-
             {
                 repoReader.getReader( anyBoolean, (Context) any, anyString );
                 returns( objectReader );
@@ -334,8 +332,6 @@ public class FieldSearchResultLuceneTest
                 meta.getContentStream();
                 returns( metadata );
             }
-
-
         };
     }
 
@@ -347,8 +343,6 @@ public class FieldSearchResultLuceneTest
         final InputStream metadata = new ByteArrayInputStream( dcxml.getBytes() );
         return new NonStrictExpectations()
         {
-
-
             {
                 repoReader.getReader( anyBoolean, (Context) any, anyString );
                 returns( objectReader );
@@ -357,8 +351,6 @@ public class FieldSearchResultLuceneTest
                 meta.getContentStream();
                 returns( metadata );
             }
-
-
         };
     }
 
@@ -368,14 +360,10 @@ public class FieldSearchResultLuceneTest
         final IPidList indexResult = getNDemoSearchResults( numberOfSearchResults );
         return new NonStrictExpectations()
         {
-
-
             {
                 mockIndex.search( query );
                 returns( indexResult );
             }
-
-
         };
     }
 

@@ -133,6 +133,8 @@ class FieldSearchResultLucene implements FieldSearchResult
 
         Collection< String > pids = searchResultList.getNextPids( maxResults );
 
+        log.debug( "Got {} elements", pids.size() );
+
         for( String pid : pids )
         {
             log.debug( "Retrieving element {}", localResultCounter );
@@ -158,7 +160,7 @@ class FieldSearchResultLucene implements FieldSearchResult
 
         log.debug( "Result set counter points to element at pos {}", localResultCounter );
 
-        if( localResultCounter == size )
+        if( localResultCounter == size || pids.size() < maxResults)
         {
             log.debug( "Result set exhausted, null'ing token, resetting nextCursor" );
             token = null;
