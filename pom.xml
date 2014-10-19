@@ -452,7 +452,7 @@
     <repository>
       <id>duraspace-releases</id>
       <name>DuraSpace Releases Maven Repository</name>
-      <url>https://m2.duraspace.org/content/repositories/releases</url>
+      <url>http://m2.duraspace.org/content/repositories/releases</url>
       <releases>
         <enabled>true</enabled>
       </releases>
@@ -464,7 +464,19 @@
     <repository>
       <id>duraspace-thirdparty</id>
       <name>Duraspace Thirdparty Maven Repository</name>
-      <url>https://m2.duraspace.org/content/repositories/thirdparty</url>
+      <url>http://m2.duraspace.org/content/repositories/thirdparty</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+
+    <repository>
+      <id>duraspace-thirdparty-dbc</id>
+      <name>Duraspace Thirdparty Maven Repository Cached at DBC</name>
+      <url>https://mavenrepo.dbc.dk/content/repositories/duraspace-thirdparty/</url>
       <releases>
         <enabled>true</enabled>
       </releases>
@@ -511,7 +523,7 @@
       </snapshots>
     </repository>
 
-    <repository>
+<!--    <repository>
       <id>aduna</id>
       <name>Aduna Releases Maven Repository</name>
       <url>http://repo.aduna-software.org/maven2/releases/</url>
@@ -521,7 +533,7 @@
       <snapshots>
         <enabled>false</enabled>
       </snapshots>
-    </repository>
+    </repository>-->
 
   </repositories>
 
