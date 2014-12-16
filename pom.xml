@@ -247,6 +247,10 @@
         <version>2.1.4</version>
         <exclusions>
           <exclusion>
+            <groupId>org.codehaus.woodstox</groupId>
+            <artifactId>wstx-asl</artifactId>
+          </exclusion>
+          <exclusion>
             <groupId>commons-logging</groupId>
             <artifactId>commons-logging</artifactId>
           </exclusion>
@@ -523,18 +527,18 @@
       </snapshots>
     </repository>
 
-<!--    <repository>
+    <repository>
       <id>aduna</id>
       <name>Aduna Releases Maven Repository</name>
       <url>http://repo.aduna-software.org/maven2/releases/</url>
       <releases>
-        <enabled>true</enabled>
+        <enabled>false</enabled>
       </releases>
       <snapshots>
         <enabled>false</enabled>
       </snapshots>
-    </repository>-->
-
+    </repository>
+	
   </repositories>
 
   <scm>

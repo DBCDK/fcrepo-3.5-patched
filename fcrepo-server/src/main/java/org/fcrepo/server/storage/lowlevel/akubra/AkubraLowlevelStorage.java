@@ -390,7 +390,7 @@ public class AkubraLowlevelStorage
             successful = true;
             return new ConnectionClosingInputStream(connection, content);
         } catch (MissingBlobException e) {
-            throw new ObjectNotInLowlevelStorageException(key);
+            throw new ObjectNotInLowlevelStorageException(key, e);
         } finally {
             if (!successful) {
                 IOUtils.closeQuietly(content);
