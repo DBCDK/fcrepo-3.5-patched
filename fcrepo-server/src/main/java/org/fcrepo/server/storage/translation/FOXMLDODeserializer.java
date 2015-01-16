@@ -11,18 +11,31 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
+
 import java.text.ParseException;
+
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.StringTokenizer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
+
+import org.xml.sax.Attributes;
+import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.Models;
 import org.fcrepo.common.xml.format.XMLFormat;
+
 import org.fcrepo.server.errors.ObjectIntegrityException;
 import org.fcrepo.server.errors.StreamIOException;
 import org.fcrepo.server.errors.ValidationException;
@@ -37,13 +50,9 @@ import org.fcrepo.server.storage.types.DigitalObject;
 import org.fcrepo.server.storage.types.Disseminator;
 import org.fcrepo.server.utilities.StreamUtility;
 import org.fcrepo.server.validation.ValidationUtility;
+
 import org.fcrepo.utilities.Base64;
 import org.fcrepo.utilities.DateUtility;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.xml.sax.Attributes;
-import org.xml.sax.SAXException;
-import org.xml.sax.helpers.DefaultHandler;
 
 
 
@@ -81,9 +90,9 @@ public class FOXMLDODeserializer
     private SAXParser m_parser;
 
     // Namespace prefix-to-URI mapping info from SAX2 startPrefixMapping events.
-    private NamespaceHandler m_prefixMap;
+    private HashMap<String, String> m_prefixMap;
 
-    private NamespaceHandler m_localPrefixMap;
+    private HashMap<String, String> m_localPrefixMap;
 
     private ArrayList<String> m_prefixList;
 
@@ -255,11 +264,10 @@ public class FOXMLDODeserializer
             throw new ObjectIntegrityException("FOXMLDODeserializer: Input stream is not valid FOXML."
                     + " The digitalObject root element was not detected.");
         }
-        
+
         DOTranslationUtility.normalizeDatastreams(m_obj, m_transContext, m_characterEncoding);
     }
 
-    
     //---
     // DefaultHandler overrides
     //---
@@ -268,10 +276,10 @@ public class FOXMLDODeserializer
      * {@inheritDoc}
      */
     @Override
-    public void startPrefixMapping(String prefix, String uri) { 
-        m_prefixMap.addNamespace(prefix, uri);
+    public void startPrefixMapping(String prefix, String uri) {
+        m_prefixMap.put(prefix, uri);
         if (m_inXMLMetadata) {
-            m_localPrefixMap.addNamespace(prefix, uri);
+            m_localPrefixMap.put(prefix, uri);
             m_prefixList.add(prefix);
         }
     }
@@ -281,10 +289,9 @@ public class FOXMLDODeserializer
      */
     @Override
     public void endPrefixMapping(String prefix) {
-        m_prefixMap.removeNamespace(prefix);
-        
+        m_prefixMap.remove(prefix);
         if (m_inXMLMetadata) {
-            m_localPrefixMap.removeNamespace(prefix);
+            m_localPrefixMap.remove(prefix);
         }
     }
 
@@ -737,9 +744,9 @@ public class FOXMLDODeserializer
         // since it's supposed to be a standalone chunk.
         String[] parts = qName.split(":");
         if (parts.length == 2) {
-            String nsuri = m_localPrefixMap.getNamespace(parts[0]);
+            String nsuri = m_localPrefixMap.get(parts[0]);
             if (nsuri == null) {
-                m_localPrefixMap.addNamespace(parts[0], parts[1]);
+                m_localPrefixMap.put(parts[0], parts[1]);
                 m_prefixList.add(parts[0]);
             }
         }
@@ -751,7 +758,7 @@ public class FOXMLDODeserializer
                 out.append(":");
             }
             out.append(prefix + "=\""
-                    + StreamUtility.enc(m_prefixMap.getNamespace(prefix))
+                    + StreamUtility.enc(m_prefixMap.get(prefix))
                     + "\"");
         }
         for (int i = 0; i < a.getLength(); i++) {
@@ -946,8 +953,8 @@ public class FOXMLDODeserializer
         m_objPropertyName = "";
         m_readingBinaryContent = false; // indicates reading base64-encoded content
         m_inXMLMetadata = false;
-        m_prefixMap = new NamespaceHandler();
-        m_localPrefixMap = new NamespaceHandler();
+        m_prefixMap = new HashMap<String, String>();
+        m_localPrefixMap = new HashMap<String, String>();
         m_prefixList = new ArrayList<String>();
 
         // temporary variables for processing datastreams

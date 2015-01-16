@@ -35,8 +35,6 @@ public class AllUnitTests {
 
         suite.addTest(TestFOXML1_1DOSerializer.suite());
         suite.addTest(TestFOXML1_1DODeserializer.suite());
-        
-        suite.addTest(NamespaceHandlerTest.suite());
 
         suite.addTest(TestMETSFedoraExt1_0DOSerializer.suite());
         suite.addTest(TestMETSFedoraExt1_0DODeserializer.suite());
