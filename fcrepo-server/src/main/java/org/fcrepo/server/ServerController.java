@@ -4,29 +4,27 @@
  */
 package org.fcrepo.server;
 
+import dk.dbc.opensearch.fedora.search.FieldSearchLucene;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.logging.Level;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.fcrepo.common.Constants;
-
 import org.fcrepo.server.errors.DatastreamNotFoundException;
 import org.fcrepo.server.errors.GeneralException;
+import org.fcrepo.server.errors.ModuleInitializationException;
 import org.fcrepo.server.errors.ObjectNotFoundException;
 import org.fcrepo.server.errors.ServerException;
+import org.fcrepo.server.errors.ServerInitializationException;
 import org.fcrepo.server.errors.authorization.AuthzDeniedException;
 import org.fcrepo.server.errors.authorization.AuthzOperationalException;
 import org.fcrepo.server.errors.authorization.AuthzPermittedException;
@@ -39,11 +37,16 @@ import org.fcrepo.server.errors.servletExceptionExtensions.Ok200Exception;
 import org.fcrepo.server.errors.servletExceptionExtensions.Unavailable503Exception;
 import org.fcrepo.server.management.DefaultManagement;
 import org.fcrepo.server.management.ManagementModule;
+import org.fcrepo.server.search.FieldSearch;
 import org.fcrepo.server.security.Authorization;
+import org.fcrepo.server.storage.DOManager;
+import org.fcrepo.server.storage.DefaultDOManager;
 import org.fcrepo.server.utilities.PIDStreamIterableWrapper;
 import org.fcrepo.server.utilities.ServerUtilitySerializer;
 import org.fcrepo.server.utilities.status.ServerState;
 import org.fcrepo.server.utilities.status.ServerStatusFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
@@ -85,7 +88,9 @@ public class ServerController
             reloadPoliciesAction(request, response);
         } else if (action.equals("modifyDatastreamControlGroup")) {
             modifyDatastreamControlGroupAction(request, response);
-        } else {
+        } else if (action.equals("modifyWriteAccess")) {
+            modifyWriteAccessAction(request, response);
+        }else {
             throw new BadRequest400Exception(request, actionLabel, "bad action:  "
                                              + action, new String[0]);
         }
@@ -385,6 +390,100 @@ public class ServerController
 
     }
 
+    private void modifyWriteAccessAction(HttpServletRequest request, HttpServletResponse response) throws InternalError500Exception {
+        String actionLabel = "Modifying write access";
+        logger.info(actionLabel);
+        File fedoraHome = new File(Constants.FEDORA_HOME);  
+        PrintWriter pw = null;
+        Server server = null;
+        DefaultDOManager doManager = null;
+        FieldSearchLucene fsLucene = null;
+        boolean disableWrites;
+        int timeout;
+        
+        try {
+            pw = response.getWriter();
+        } catch (IOException ex) {
+            logger.error("Failed to modify write access",ex);
+            throw new InternalError500Exception(request, actionLabel, "Error getting resposne writer", new String[0]);
+        }
+        
+        
+        try{
+            response.setStatus(HttpServletResponse.SC_OK);
+            response.setCharacterEncoding("UTF-8");
+            
+            try {
+                server = Server.getInstance(fedoraHome, false);
+            } catch (Exception ex) {
+                throw new InternalError500Exception(request, actionLabel, "Error getting Server instance", new String[0]);
+            } 
+            
+            if(server == null){
+                throw new InternalError500Exception(request, actionLabel, "Server instance is null", new String[0]);
+            }
+            
+            doManager = (DefaultDOManager) server.getModule("org.fcrepo.server.storage.DOManager");
+            if(doManager == null){
+                throw new InternalError500Exception(request, actionLabel, "Error getting DefaultDOManager", new String[0]);
+            }
+            
+            fsLucene = (FieldSearchLucene) server.getModule("org.fcrepo.server.search.FieldSearch");
+            if(fsLucene == null){
+                throw new InternalError500Exception(request, actionLabel, "Error getting FieldSearchLucene", new String[0]);
+            }
+            
+            try{
+                disableWrites = Boolean.parseBoolean(request.getParameter("disable"));
+                timeout = Integer.parseInt(request.getParameter("timeoutms"));
+            }catch(NumberFormatException t){
+                throw new InternalError500Exception(request, actionLabel, "Error parsing parameters. need disable={true|false} and timeoutms={integer}", new String[0]);
+            }
+            
+            pw.write(actionLabel+"\n"); 
+            if(disableWrites){
+
+                doManager.setWritesDisabled(true);
+                pw.write("- Write access disabled\n");  
+                
+                long start = System.currentTimeMillis();
+                while(doManager.writesInProgress() > 0){        
+                    if(System.currentTimeMillis()-start > timeout){                
+                        String errorDetails = "Could not finish up writes within given time limit. Writes in progress: "+doManager.writesInProgress();
+                        throw new InternalError500Exception(request, actionLabel, errorDetails, new String[0]);
+                    }
+                    pw.write("- Waiting.. Writes in progress: "+doManager.writesInProgress()+"\n");  
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException ex) {
+                        throw new InternalError500Exception(request, actionLabel, "Error thread couldn't sleep", new String[0]);
+                    }
+                }
+                pw.write("- Current writes flushed succesfully\n");
+             
+                try {
+                    fsLucene.flush();
+                    pw.write("- Lucene WriteAheadLog flushed succesfully\n");
+                } catch (Exception ex) {
+                    throw new InternalError500Exception(request, actionLabel, "Could not flush Lucene WriteAheadLog"+ex.getMessage(), new String[0]);
+                }
+                pw.write("- All ok!");
+            }else{
+                doManager.setWritesDisabled(false);
+                pw.write("- Write access enabled\n");
+                pw.write("- All ok!");
+            } 
+        }catch(InternalError500Exception e){
+            logger.error("Failed to modify write access: "+e.getDetail());
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            pw.write(e.getDetail());   
+            throw e;
+        }finally{
+            pw.flush();
+            pw.close();
+        }
+
+    }
 
     @Override
     public void init() throws ServletException {
@@ -490,5 +589,7 @@ public class ServerController
             s_server = null;
         }
     }
+
+    
 
 }

@@ -648,4 +648,8 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         return writer;
     }
 
+    public void flush() throws IOException {
+        luceneindexer.flush();
+    }
+
 }

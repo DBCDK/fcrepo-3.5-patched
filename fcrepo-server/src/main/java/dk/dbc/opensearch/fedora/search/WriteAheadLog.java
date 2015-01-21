@@ -332,6 +332,17 @@ public class WriteAheadLog extends WriteAheadLogStats
         totalUpdateInLuceneTimeMicroS.addAndGet( (updateEnd - updateStart)/1000 );
     }
 
+    public synchronized void flush() throws IOException{
+        commitWriter();
+        if ( fileAccess != null )
+        {
+            fileAccess.close();
+            fileAccess = null;
+        }
+        currentFile.delete();
+        currentFile = createNewFile();  
+        
+    }
     public synchronized void shutdown() throws IOException
     {
         log.info( "Shutting down Write Ahead Log");

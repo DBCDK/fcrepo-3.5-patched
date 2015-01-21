@@ -747,6 +747,10 @@ public final class LuceneFieldIndex
 
         }
     }
+    
+    void flush() throws IOException {
+        wal.flush();
+    }
 
     private Query constructQuery( final FieldSearchQuery fsq ) throws ParseException
     {

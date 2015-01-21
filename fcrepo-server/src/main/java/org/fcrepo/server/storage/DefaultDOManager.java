@@ -55,6 +55,7 @@ import org.fcrepo.server.errors.ObjectNotInLowlevelStorageException;
 import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.errors.StorageDeviceException;
 import org.fcrepo.server.errors.StreamIOException;
+import org.fcrepo.server.errors.StorageMaintenanceException;
 import org.fcrepo.server.management.Management;
 import org.fcrepo.server.management.PIDGenerator;
 import org.fcrepo.server.resourceIndex.ResourceIndex;
@@ -150,179 +151,187 @@ public class DefaultDOManager
      * The counter is used to maintain the map so we know when a lock is no longer
      * in use and can be deleted
      */
-    private class StringLock
-    {
-    /**
-     * inner inner class used by the other inner class StringLock
-     * It maintains a lock and a counter
-     */
-
-    private class LockAdmin
-    {
-        private final ReentrantLock lock;
-        private int counter;
-        private long owner;
-
-        LockAdmin()
-        {
-            this.lock = new ReentrantLock();
-            this.counter = 0;
-            this.owner = 0L;
-        }
+    private class StringLock {
 
         /**
-         *  Retrieves the lock of the pair.
-         *  @return ReentrantLock The lock of the pair.
+         * inner inner class used by the other inner class StringLock It
+         * maintains a lock and a counter
          */
-        ReentrantLock getLock()
-        {
-            return lock;
-        }
 
-        /**
-         *  Retrieves the counter of the pair.
-         *  @return int The counter the pair.
-         */
-        boolean counterIsZero()
-        {
-            if( counter == 0 )
-            {
-                return true;
-            }
-            return false;
-        }
+        private class LockAdmin {
 
-        /**
-         * decreases the counter part of the pair with 1
-         * @throws IllegalStateException if the counter is attempted to
-         * be decreased below zero
-         */
-        void decreaseCounter() throws IllegalStateException
-        {
-            if( counter == 0 )
-            {
-                String msg = "counter is decreased below zero!!" ;
-                logger.error( msg );
-                throw new IllegalStateException( msg );
+            private final ReentrantLock lock;
+            private int counter;
+            private long owner;
+
+            LockAdmin() {
+                this.lock = new ReentrantLock();
+                this.counter = 0;
+                this.owner = 0L;
             }
 
-            counter--;
+            /**
+             * Retrieves the lock of the pair.
+             *
+             * @return ReentrantLock The lock of the pair.
+             */
+            ReentrantLock getLock() {
+                return lock;
+            }
+
+            /**
+             * Retrieves the counter of the pair.
+             *
+             * @return int The counter the pair.
+             */
+            boolean counterIsZero() {
+                if (counter == 0) {
+                    return true;
+                }
+                return false;
+            }
+
+            /**
+             * decreases the counter part of the pair with 1
+             *
+             * @throws IllegalStateException if the counter is attempted to be
+             * decreased below zero
+             */
+            void decreaseCounter() throws IllegalStateException {
+                if (counter == 0) {
+                    String msg = "counter is decreased below zero!!";
+                    logger.error(msg);
+                    throw new IllegalStateException(msg);
+                }
+
+                counter--;
+            }
+
+            /**
+             * increases the counter part of the pair with 1
+             */
+            void increaseCounter() {
+                counter++;
+            }
+
+            /**
+             * sets the owner of the lock
+             */
+            void setOwner(long id) {
+                owner = id;
+            }
+
+            /**
+             * gets the owner of the lock
+             */
+            long getOwner() {
+                return owner;
+            }
+
+            /**
+             * A string representation of the elements in the following format:
+             * a string representation of the lock, the value of the counter and
+             * the value of the threadId of the thread currently holding the
+             * lock
+             *
+             * @return a String representation of the object
+             */
+            @Override
+            public String toString() {
+                return String.format("LockPair< %s, %s, %s >", lock.toString(), counter, owner);
+            }
+
+            /**
+             * Returns a unique hashcode for the specific combination of
+             * elements in this Pair. Notice, if you use the same two objects in
+             * the same order in two different Pairs, then the two Pairs will
+             * return the same hashcode.
+             */
+            @Override
+            public int hashCode() {
+                return lock.hashCode() ^ counter ^ (int) owner;
+            }
         }
 
-        /**
-         * increases the counter part of the pair with 1
-         */
-        void increaseCounter()
-        {
-            counter++;
-        }
+        private final Map< String, LockAdmin> lockMap;
+        private boolean writesDisabled = false;
 
-        /**
-         * sets the owner of the lock
-         */
-        void setOwner( long id )
-        {
-            owner = id;
-        }
-
-        /**
-         * gets the owner of the lock
-         */
-        long getOwner()
-        {
-            return owner;
-        }
-
-        /**
-         *  A string representation of the elements in the following format:
-         *  a string representation of the lock, the value of the counter and the
-         *  value of the threadId of the thread currently holding the lock
-         *  @return a String representation of the object
-         */
-        @Override
-            public String toString()
-        {
-            return String.format( "LockPair< %s, %s, %s >", lock.toString(), counter, owner );
-        }
-
-        /**
-         *  Returns a unique hashcode for the specific combination
-         *  of elements in this Pair.
-         *  Notice, if you use the same two objects in the same order in
-         *  two different Pairs,
-         *  then the two Pairs will return the same hashcode.
-         */
-        @Override
-            public int hashCode()
-        {
-            return lock.hashCode() ^ counter ^ (int)owner;
-        }
-    }
-
-
-        private final Map< String, LockAdmin > lockMap;
         /**
          * Constructor for the StringLock class
          */
-        StringLock()
-        {
-            lockMap = new HashMap< String, LockAdmin >();
-            logger.info( "DOLock constructed" );
+        StringLock() {
+            lockMap = new HashMap< String, LockAdmin>();
+            logger.info("DOLock constructed");
         }
-
-        void lock( String pid )
-        {
-            logger.debug( String.format( "Thread '%s' calling DOLock.lock with pid: '%s'", Thread.currentThread().getId(), pid  ) );
+        
+        void setWritesDisabled(boolean writesDisabled){
+            synchronized (lockMap) {
+                this.writesDisabled = writesDisabled;
+                logger.info("Write access modified: writesDisabled="+writesDisabled);
+            }
+        }
+        
+        int lockCount(){
+            return this.lockMap.size();
+        }
+        
+        void lock(String pid) throws ObjectLockedException, StorageMaintenanceException {
+            logger.debug(String.format("Thread '%s' calling DOLock.lock with pid: '%s'", Thread.currentThread().getId(), pid));
             ReentrantLock pidLock;
             LockAdmin lockAdm;
-            synchronized(lockMap)
-            {
-                lockAdm = lockMap.get( pid );
-                if( lockAdm == null )
-                {
+            synchronized (lockMap) {
+                lockAdm = lockMap.get(pid);
+
+                // If Fedora is set to temporarily blocking all writes, 
+                // only the current lock owner may acquire the lock 
+                // in order to finish up work. All other threads are rejected
+                // until writes are enabled again.
+                if (writesDisabled) {
+                    if (lockAdm == null || lockAdm.getOwner() != Thread.currentThread().getId()) {
+                        throw new StorageMaintenanceException("Writes are temporarily disabled");
+                    }
+                }
+
+                if (lockAdm == null) {
                     lockAdm = new LockAdmin();
-                    lockMap.put( pid, lockAdm );
+                    lockMap.put(pid, lockAdm);
                 }
 
                 lockAdm.increaseCounter();
                 pidLock = lockAdm.getLock();
             }
-            logger.trace( String.format( "DOLock.lock, Thread '%s' trying to get lock on pid :'%s'", Thread.currentThread().getId() ,pid  ) );
+
+            logger.trace(String.format("DOLock.lock, Thread '%s' trying to get lock on pid :'%s'", Thread.currentThread().getId(), pid));
             pidLock.lock();
-            lockAdm.setOwner( Thread.currentThread().getId() );
-            logger.trace( String.format( "DOLock.lock, Thread '%s' got lock on pid: '%s'", Thread.currentThread().getId(), pid ) );
+            lockAdm.setOwner(Thread.currentThread().getId());
+            logger.trace(String.format("DOLock.lock, Thread '%s' got lock on pid: '%s'", Thread.currentThread().getId(), pid));
         }
 
-        void unlock( String pid )
-        {
-            logger.debug( String.format( "Thread '%s' calling DOLock.unlock with pid: '%s'", Thread.currentThread().getId(), pid  ) );
+        void unlock(String pid) {
+            logger.debug(String.format("Thread '%s' calling DOLock.unlock with pid: '%s'", Thread.currentThread().getId(), pid));
 
-            synchronized(lockMap)
-            {
-                LockAdmin lockAdm = lockMap.get( pid );
-                if( lockAdm == null )
-                {
-                    String msg = String.format( "DOLock.unlock called and no LockAdmin corresponding to the PID: '%s' found in the lockMap", pid );
-                    logger.error( msg );
-                    throw new IllegalStateException( msg );
+            synchronized (lockMap) {
+                LockAdmin lockAdm = lockMap.get(pid);
+                if (lockAdm == null) {
+                    String msg = String.format("DOLock.unlock called and no LockAdmin corresponding to the PID: '%s' found in the lockMap", pid);
+                    logger.error(msg);
+                    throw new IllegalStateException(msg);
                 }
 
-                logger.trace( String.format( "DOLock.unlock called by thread: '%s' when lock for pid: '%s' is owned by thread: '%s'", Thread.currentThread().getId(), pid, lockAdm.getOwner() ) );
-                if( lockAdm.getOwner() != Thread.currentThread().getId() )
-                {
-                    String msg = String.format( "DOLock.unlock called by thread: '%s' but lock for pid: '%s' is owned by thread: '%s'", Thread.currentThread().getId(), pid, lockAdm.getOwner() );
-                    logger.error( msg );
-                    throw new IllegalStateException( msg );
+                logger.trace(String.format("DOLock.unlock called by thread: '%s' when lock for pid: '%s' is owned by thread: '%s'", Thread.currentThread().getId(), pid, lockAdm.getOwner()));
+                if (lockAdm.getOwner() != Thread.currentThread().getId()) {
+                    String msg = String.format("DOLock.unlock called by thread: '%s' but lock for pid: '%s' is owned by thread: '%s'", Thread.currentThread().getId(), pid, lockAdm.getOwner());
+                    logger.error(msg);
+                    throw new IllegalStateException(msg);
                 }
 
-                logger.debug( String.format( "DOLock.unlock, thread: '%s' released lock on pid: '%s'", Thread.currentThread().getId(), pid ) );
+                logger.debug(String.format("DOLock.unlock, thread: '%s' released lock on pid: '%s'", Thread.currentThread().getId(), pid));
                 lockAdm.getLock().unlock();
                 lockAdm.decreaseCounter();
 
-                if( lockAdm.counterIsZero() )
-                {
-                    logger.debug( String.format( "DOLock.unlock, removed lock associated with pid: '%s' from the lockMap", pid ) );
-                    lockMap.remove( pid );
+                if (lockAdm.counterIsZero()) {
+                    logger.debug(String.format("DOLock.unlock, removed lock associated with pid: '%s' from the lockMap", pid));
+                    lockMap.remove(pid);
                 }
             }
         }
@@ -475,6 +484,14 @@ public class DefaultDOManager
             // fedora-system PIDs must be ingestable as-is
             m_retainPIDs.add("fedora-system");
         }
+    }
+    
+    public void setWritesDisabled(boolean writesDisabled){
+        stringLock.setWritesDisabled(writesDisabled);
+    }
+    
+    public int writesInProgress(){
+        return stringLock.lockCount();
     }
 
     @Override
@@ -783,8 +800,7 @@ public class DefaultDOManager
         //        }
     }
 
-    private void getWriteLock(String pid) throws ObjectLockedException {
-
+    private void getWriteLock(String pid) throws ObjectLockedException, StorageMaintenanceException {
         stringLock.lock( pid );
 
         // synchronized (m_lockedPIDs) {
