@@ -3,10 +3,13 @@ build
 stubwrappers
 activemq-data
 derby.log
+fcrepo-server/bin
 fcrepo-server/test
 .classpath
 .project
 .settings/
 .DS_Store
 *.iml
+*.ipr
+*.iws
 .idea

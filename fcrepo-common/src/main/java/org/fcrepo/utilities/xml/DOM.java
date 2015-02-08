@@ -1,27 +1,27 @@
 package org.fcrepo.utilities.xml;
 
 
-import org.w3c.dom.Document;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.StringReader;
+import java.io.StringWriter;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerException;
-import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.StringReader;
-import java.io.StringWriter;
+
+import org.fcrepo.utilities.XmlTransformUtility;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
 
 /**
  * Helpers for doing DOM parsing and manipulations.
@@ -150,7 +150,7 @@ public class DOM {
      * @return the dom as an XML String.
      * @throws TransformerException if the dom could not be converted.
      */
-    public static String domToString(Node dom) throws TransformerException {
+    public static String domToString(Node dom) throws Exception {
         return domToString(dom, false);
     }
 
@@ -164,8 +164,8 @@ public class DOM {
      */
     // TODO: Consider optimizing this with ThreadLocal Transformers
     public static String domToString(Node dom, boolean withXmlDeclaration)
-            throws TransformerException {
-        Transformer t = TransformerFactory.newInstance().newTransformer();
+            throws Exception {
+        Transformer t = XmlTransformUtility.getTransformer();
         t.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
         if (withXmlDeclaration) {
             t.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no");

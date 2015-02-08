@@ -3,81 +3,40 @@ package org.fcrepo.server.security.xacml.pdp.finder.attribute;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 
-import com.sun.xacml.EvaluationCtx;
-import com.sun.xacml.attr.AttributeDesignator;
-import com.sun.xacml.attr.AttributeFactory;
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.BagAttribute;
-import com.sun.xacml.attr.StandardAttributeFactory;
-import com.sun.xacml.cond.EvaluationResult;
-
+import org.fcrepo.common.rdf.SimpleURIReference;
+import org.fcrepo.server.resourceIndex.ResourceIndex;
+import org.fcrepo.server.security.PolicyFinderModule;
+import org.fcrepo.server.security.xacml.pdp.finder.AttributeFinderException;
 import org.jrdf.graph.PredicateNode;
 import org.jrdf.graph.SubjectNode;
 import org.jrdf.graph.Triple;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.trippi.TripleIterator;
 import org.trippi.TrippiException;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.fcrepo.common.rdf.SimpleURIReference;
-
-import org.fcrepo.server.resourceIndex.ResourceIndex;
-import org.fcrepo.server.security.AttributeFinderModule;
-import org.fcrepo.server.security.PolicyFinderModule;
-import org.fcrepo.server.security.xacml.MelcoeXacmlException;
-import org.fcrepo.server.security.xacml.pdp.finder.AttributeFinderConfigUtil;
-import org.fcrepo.server.security.xacml.pdp.finder.AttributeFinderException;
-import org.fcrepo.server.security.xacml.util.AttributeFinderConfig;
-import org.fcrepo.server.security.xacml.util.ContextUtil;
-import org.fcrepo.server.security.xacml.util.RelationshipResolver;
-import org.fcrepo.server.security.xacml.util.AttributeFinderConfig.Designator;
-import org.fcrepo.server.storage.DOManager;
+import org.jboss.security.xacml.sunxacml.EvaluationCtx;
+import org.jboss.security.xacml.sunxacml.attr.AttributeFactory;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
+import org.jboss.security.xacml.sunxacml.attr.BagAttribute;
+import org.jboss.security.xacml.sunxacml.attr.StandardAttributeFactory;
+import org.jboss.security.xacml.sunxacml.cond.EvaluationResult;
 
 public class RITriplesAttributeFinder
-        extends AttributeFinderModule {
+        extends DesignatorAttributeFinderModule {
 
     private static final Logger logger =
             LoggerFactory.getLogger(RITriplesAttributeFinder.class);
-    
-    private static final Set<String> EMPTY = Collections.emptySet();
 
-    private AttributeFactory m_attributeFactory = StandardAttributeFactory.getFactory();
+    private final AttributeFactory m_attributeFactory = StandardAttributeFactory.getFactory();
 
-    private Map<Integer,Set<String>> m_attributes = new HashMap<Integer,Set<String>>();
-    
-    private ResourceIndex m_resourceIndex;
-    
-    public RITriplesAttributeFinder(ResourceIndex resourceIndex) {        
+    private final ResourceIndex m_resourceIndex;
+
+    public RITriplesAttributeFinder(ResourceIndex resourceIndex) {
         m_resourceIndex = resourceIndex;
-    }
-    
-    public void setActionAttributes(Set<String> attributes){
-        m_attributes.put(AttributeDesignator.ACTION_TARGET,attributes);
-    }
-    
-    public void setEnvironmentAttributes(Set<String> attributes){
-        m_attributes.put(AttributeDesignator.ENVIRONMENT_TARGET,attributes);
-    }
-    
-    public void setResourceAttributes(Set<String> attributes){
-        m_attributes.put(AttributeDesignator.RESOURCE_TARGET,attributes);
-    }
-
-    public void setSubjectAttributes(Set<String> attributes){
-        m_attributes.put(AttributeDesignator.SUBJECT_TARGET,attributes);
-    }
-
-    private boolean emptyAttributeMap() {
-        return m_attributes.size() == 0;
     }
 
     public void init() throws AttributeFinderException {
@@ -88,7 +47,7 @@ public class RITriplesAttributeFinder
         if (logger.isDebugEnabled()) {
             logger.debug("registering the following attributes: ");
             for (int desNum : m_attributes.keySet()) {
-                for (String attrName : m_attributes.get(desNum)) {
+                for (String attrName : m_attributes.get(desNum).keySet()) {
                     logger.debug(desNum + ": " + attrName);
                 }
             }
@@ -144,7 +103,7 @@ public class RITriplesAttributeFinder
                                           int designatorType) {
 
         String resourceId = context.getResourceId().encode();
-        if (resourceId == null || resourceId.equals("")) {
+        if (resourceId == null || resourceId.isEmpty()) {
             String pid = PolicyFinderModule.getPid(context);
             if (pid != null) {
                 resourceId = "info:fedora/" + pid;
@@ -155,7 +114,7 @@ public class RITriplesAttributeFinder
                     + attributeId + ", rid=" + resourceId);
         }
 
-        if (resourceId == null || resourceId.equals("")) {
+        if (resourceId == null || resourceId.isEmpty()) {
             return new EvaluationResult(BagAttribute
                     .createEmptyBag(attributeType));
         }
@@ -179,7 +138,7 @@ public class RITriplesAttributeFinder
         }
 
         Set<String> allowedAttributes =
-            m_attributes.get(designatorType);
+            m_attributes.get(designatorType).keySet();
         if (!allowedAttributes.contains(attrName)) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Does not know about attribute: " + attrName);
@@ -280,21 +239,4 @@ public class RITriplesAttributeFinder
 
     }
 
-    @Override
-    protected boolean canHandleAdhoc() {
-                return false;
-    }
-
-    /**
-     * Will not be called in this implementation, since findAttribute is overridden
-     * {@inheritDoc}
-     */
-    @Override
-    protected Object getAttributeLocally(int designatorType,
-                                         String attributeId,
-                                         URI resourceCategory,
-                                         EvaluationCtx context) {
-                return null;
-            
-    }
 }

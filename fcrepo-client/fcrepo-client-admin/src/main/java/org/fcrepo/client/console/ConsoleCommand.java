@@ -43,7 +43,7 @@ public class ConsoleCommand {
         return m_method.getName();
     }
 
-    public Class[] getParameterTypes() {
+    public Class<?>[] getParameterTypes() {
         return m_method.getParameterTypes();
     }
 
@@ -59,7 +59,7 @@ public class ConsoleCommand {
         return m_methodDescription;
     }
 
-    public Class getReturnType() {
+    public Class<?> getReturnType() {
         return m_method.getReturnType();
     }
 
@@ -72,10 +72,10 @@ public class ConsoleCommand {
     public String toString() {
         StringBuffer ret = new StringBuffer();
         ret.append(getUnqualifiedName(m_method.getReturnType()));
-        ret.append(" ");
+        ret.append(' ');
         ret.append(m_method.getName());
-        ret.append("(");
-        Class[] types = m_method.getParameterTypes();
+        ret.append('(');
+        Class<?>[] types = m_method.getParameterTypes();
         for (int i = 0; i < types.length; i++) {
             if (i > 0) {
                 ret.append(", ");
@@ -84,11 +84,11 @@ public class ConsoleCommand {
             ret.append(' ');
             ret.append(m_paramNames[i]);
         }
-        ret.append(")");
+        ret.append(')');
         return ret.toString();
     }
 
-    public String getUnqualifiedName(Class cl) {
+    public String getUnqualifiedName(Class<?> cl) {
         if (cl == null) {
             return "void";
         }

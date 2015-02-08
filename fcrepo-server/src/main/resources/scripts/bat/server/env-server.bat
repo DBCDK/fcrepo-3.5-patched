@@ -12,6 +12,10 @@ REM                  classes required to run the utilities.
 REM   JAVA_HOME    : Optional.  Used to determine the location of java.
 REM                  If JAVA_HOME is unspecified, will use FEDORA_JAVA_HOME.
 REM                  If FEDORA_JAVA_HOME is unspecified, will use java in PATH.
+REM   FEDORA_WEBAPP_HOME:  Optional.  Used to determine the location of the
+REM                  Fedora web application.  If FEDORA_WEBAPP_HOME is
+REM                  unspecified, then will use 
+REM                  CATALINA_HOME\webapps\%WEBAPP_NAME%
 REM ---------------------------------------------------------------------------
 
 if not "%WEBAPP_NAME%" == "" goto gotWebappName
@@ -28,9 +32,14 @@ echo ERROR: The CATALINA_HOME environment variable is not defined.
 exit /B 1
 :gotCatalinaHome
 
-set WEBINF="%CATALINA_HOME%\webapps\%WEBAPP_NAME%\WEB-INF"
+if not "%FEDORA_WEBAPP_HOME%" == "" goto gotFedoraWebappHome
+set FEDORA_WEBAPP_HOME=%CATALINA_HOME%\webapps\%WEBAPP_NAME%
+:gotFedoraWebappHome
+set WEBINF=%FEDORA_WEBAPP_HOME%\WEB-INF
+
 if exist "%WEBINF%" goto webInfExists
-echo ERROR: Fedora could not be found in the specified path, please set the environment variable WEBAPP_NAME to the context Fedora is installed in.
+echo ERROR: Fedora could not be found in the specified path, please set the environment variable FEDORA_WEBAPP_HOME
+echo to the location of your Fedora web application directory, or set WEBAPP_NAME to the context Fedora is installed in.
 exit /B 1
 :webInfExists
 
@@ -46,7 +55,7 @@ set JAVA="%JAVA_HOME%\bin\java"
 :gotJava
 
 set COMMON="%CATALINA_HOME%\common"
-set CP="%FEDORA_HOME%\server\bin;%FEDORA_HOME%\server\bin\${fedora-cli-loader-jar};%WEBINF%\classes"
+set CP="%FEDORA_HOME%\server\bin;%WEBINF%\classes;%WEBINF%\lib/*"
 set OPTS=-Djava.endorsed.dirs="%COMMON%\endorsed;%COMMON%\lib"
 set OPTS=%OPTS% -Djavax.net.ssl.trustStore="%FEDORA_HOME%\server\truststore"
 set OPTS=%OPTS% -Djavax.net.ssl.trustStorePassword=tomcat
@@ -56,4 +65,4 @@ set OPTS=%OPTS% -Dcom.sun.xacml.PolicySchema="%FEDORA_HOME%\server\xsd\cs-xacml-
 set OPTS=%OPTS% -Dfedora.home="%FEDORA_HOME%"
 set OPTS=%OPTS% -Dfedora.web.inf.lib="%WEBINF%\lib%"
 
-%JAVA% -server -Xmn64m -Xms256m -Xmx256m -cp %CP% %OPTS% org.fcrepo.server.utilities.rebuild.cli.CLILoader %*
+%JAVA% -server -Xmn64m -Xms256m -Xmx256m -cp %CP% %OPTS% %*

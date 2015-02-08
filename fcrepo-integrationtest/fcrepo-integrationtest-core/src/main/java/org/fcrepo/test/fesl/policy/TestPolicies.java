@@ -1,23 +1,23 @@
 
 package org.fcrepo.test.fesl.policy;
 
+import static junit.framework.Assert.assertEquals;
+import static junit.framework.Assert.assertTrue;
+import static junit.framework.Assert.fail;
+
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.PropertyResourceBundle;
 import java.util.ResourceBundle;
-
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import junit.framework.JUnit4TestAdapter;
 
+import org.fcrepo.client.FedoraClient;
 import org.fcrepo.common.Constants;
-
 import org.fcrepo.test.FedoraServerTestCase;
 import org.fcrepo.test.fesl.util.AuthorizationDeniedException;
 import org.fcrepo.test.fesl.util.FedoraUtil;
@@ -25,6 +25,14 @@ import org.fcrepo.test.fesl.util.HttpUtils;
 import org.fcrepo.test.fesl.util.LoadDataset;
 import org.fcrepo.test.fesl.util.PolicyUtils;
 import org.fcrepo.test.fesl.util.RemoveDataset;
+import org.junit.After;
+import org.junit.AfterClass;
+import org.junit.Assume;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 public class TestPolicies extends FedoraServerTestCase implements Constants {
@@ -33,9 +41,13 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
             LoggerFactory.getLogger(TestPolicies.class);
 
     private static final String PROPERTIES = "fedora";
+    
+    private static FedoraClient s_client;
 
-    private static HttpUtils httpUtils = null;
-
+    private HttpUtils httpUtils = null;
+    
+    private static String ri_impl;
+    
     //private FedoraAPIM apim = null;
     private PolicyUtils policyUtils = null;
 
@@ -44,8 +56,19 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
     public static junit.framework.Test suite() {
         return new JUnit4TestAdapter(TestPolicies.class);
     }
+    
+    @BeforeClass
+    public static void bootStrap() throws Exception {
+        s_client = getFedoraClient();
+        ri_impl = getRIImplementation();
+    }
+    
+    @AfterClass
+    public static void cleanUp() {
+        s_client.shutdown();
+    }
 
-    @Override
+    @Before
     public void setUp() {
 
         PropertyResourceBundle prop =
@@ -62,7 +85,7 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
                 logger.debug("Setting up...");
             }
 
-            policyUtils = new PolicyUtils(getFedoraClient());
+            policyUtils = new PolicyUtils(s_client);
 
 
             //PolicyStoreFactory f = new PolicyStoreFactory();
@@ -84,11 +107,10 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
             policyUtils.delPolicy(policyId);
         } catch (Exception e) {
             logger.error(e.getMessage(), e);
-            Assert.fail(e.getMessage());
+            fail(e.getMessage());
         }
     }
 
-    @Override
     @After
     public void tearDown() {
         PropertyResourceBundle prop =
@@ -102,6 +124,7 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
             if (logger.isDebugEnabled()) {
                 logger.debug("Tearing down...");
             }
+            httpUtils.shutdown();
             //PolicyStoreFactory f = new PolicyStoreFactory();
             //polMan = f.newPolicyStore();
             //polMan = new PolicyStoreService();
@@ -113,9 +136,10 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
 
             // Now that objects are loaded, remove the policy
             policyUtils.delPolicy(policyId);
+            httpUtils.shutdown();
         } catch (Exception e) {
             logger.error(e.getMessage(), e);
-            Assert.fail(e.getMessage());
+            fail(e.getMessage());
         }
     }
 
@@ -126,7 +150,7 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
 
         String policyId = policyUtils.addPolicy("test-policy-00.xml");
 
-        // NOTE: PEP_NOCACHE environment variable MUST be set to true to disable policy evaluation results caching
+        // NOTE: system property fedora.fesl.pep_nocachevariable MUST be set to true to disable policy evaluation results caching
 
         try {
             // object
@@ -134,14 +158,14 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
                 String url = "/fedora/objects/test:1000007?format=xml";
                 String response = httpUtils.get(url);
                 logger.debug("http response:\n" + response);
-                Assert.fail("Access was permitted when it should have been denied:  " + url);
+                fail("Access was permitted when it should have been denied:  " + url);
             } catch (AuthorizationDeniedException e) { } // expected
             // list datastreams
             try {
                 String url = "/fedora/objects/test:1000007/datastreams";
                 String response = httpUtils.get(url);
                 logger.debug("http response:\n" + response);
-                Assert.fail("Access was permitted when it should have been denied:  " + url);
+                fail("Access was permitted when it should have been denied:  " + url);
             } catch (AuthorizationDeniedException e) { } // expected
 
             // datastream profile
@@ -149,7 +173,7 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
                 String url = "/fedora/objects/test:1000007/datastreams/DC";
                 String response = httpUtils.get(url);
                 logger.debug("http response:\n" + response);
-                Assert.fail("Access was permitted when it should have been denied:  " + url);
+                fail("Access was permitted when it should have been denied:  " + url);
             } catch (AuthorizationDeniedException e) { } // expected
 
             // datastream content
@@ -157,7 +181,7 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
                 String url = "/fedora/objects/test:1000007/datastreams/DC/content";
                 String response = httpUtils.get(url);
                 logger.debug("http response:\n" + response);
-                Assert.fail("Access was permitted when it should have been denied:  " + url);
+                fail("Access was permitted when it should have been denied:  " + url);
             } catch (AuthorizationDeniedException e) { } // expected
 
             // list methods
@@ -165,7 +189,7 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
                 String url = "/fedora/objects/test:1000007/methods";
                 String response = httpUtils.get(url);
                 logger.debug("http response:\n" + response);
-                Assert.fail("Access was permitted when it should have been denied:  " + url);
+                fail("Access was permitted when it should have been denied:  " + url);
             } catch (AuthorizationDeniedException e) { } // expected
 
             // get method content
@@ -173,7 +197,7 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
                 String url = "/fedora/objects/test:1000007/methods/fedora-system:3/viewDublinCore";
                 String response = httpUtils.get(url);
                 logger.debug("http response:\n" + response);
-                Assert.fail("Access was permitted when it should have been denied:  " + url);
+                fail("Access was permitted when it should have been denied:  " + url);
             } catch (AuthorizationDeniedException e) { } // expected
 
             // TODO: extend for all REST methods
@@ -198,10 +222,10 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
             }
 
             boolean check = response.contains("<objLabel>Dexter</objLabel>");
-            Assert.assertTrue("Expected object data not found", check);
+            assertTrue("Expected object data not found", check);
         } catch (AuthorizationDeniedException e) {
             // PEP caching must be disabled (previously cached results will invalidate test)
-            Assert.fail("Authorization denied.  (Check that PEP_NOCACHE env variable is set to true)");
+            fail("Authorization denied.  (Check that system property fedora.fesl.pep_nocache is set to true)");
         } catch (Exception e) {
             throw e;
         } finally {
@@ -244,11 +268,17 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
 
     @Test
     public void testRIAttributesTQL() throws Exception {
+        /* skip if MPTTriplestore implementation */
+        Assume.assumeTrue(! "localPostgresMPTTriplestore".equals(ri_impl));
+        
         doAttributesTest("test-policy-state-itql.xml", "test-policy-subject-itql.xml");
     }
 
     @Test
     public void testRIAttributesSPARQL() throws Exception {
+        /* skip if MPTTriplestore implementation */
+        Assume.assumeTrue(! "localPostgresMPTTriplestore".equals(ri_impl));
+        
         doAttributesTest("test-policy-state-sparql.xml", "test-policy-subject-sparql.xml");
     }
 
@@ -259,21 +289,37 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
 
     private void doAttributesTest(String statePolicy, String subjectPolicy) throws Exception {
 
-        String[] pidList;
 
         // A. object/datastream state
+        String [] pids = new String[]{
+                "test:1000000",
+                "test:1000001",
+                "test:1000002",
+                "test:1000003",
+                "test:1000004",
+                "test:1000005",
+                "test:1000006",
+                "test:1000007",
+                "test:1000008",
+                "test:1000009",
+                "test:1000010",
+                "test:1000011",
+                "test:1000012"
+        };
+        Perms allPids = new Perms();
+        allPids.addAll(Arrays.asList(pids));
 
         // check permissions before adding policy
         PermissionTest perms = new PermissionTest(1000000, 1000012, "test", "DC");
-        assertEquals("Allowed objects count (no policies)", perms.pidCount(), perms.object().allowed().size());
-        assertEquals("Allowed DC datastreams count (no policies)", perms.pidCount(), perms.datastream().allowed().size());
+        assertEquals("Allowed objects count (no policies)", 0, perms.object().allowed().mismatch(pids,true).length);
+        assertEquals("Allowed DC datastreams count (no policies)", 0, perms.datastream().allowed().mismatch(pids,true).length);
 
         // load policy
         String policyId = policyUtils.addPolicy(statePolicy);
         try {
             perms = new PermissionTest(1000000, 1000012, "test", "DC");
             // objects that should be denied access
-            pidList = new String[]{
+            String [] denied = new String[]{
                     "test:1000004",
                     "test:1000005",
                     "test:1000006",
@@ -281,16 +327,31 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
                     "test:1000008",
                     "test:1000009"
             };
-            assertEquals(statePolicy + ": Access denied for objects", "", perms.object().denied().mismatch(pidList));
+            String [] deniedVideos = new String[]{
+                    "test:1000000", // not a video
+                    "test:1000004",
+                    "test:1000005",
+                    "test:1000006",
+                    "test:1000007",
+                    "test:1000008",
+                    "test:1000009"
+            };
+            String [] allowed = allPids.mismatch(denied, false);
+            String [] mismatches = perms.object().denied().mismatch(denied, false);
+            assertEquals(getAccessErrorMessage(subjectPolicy, "objects", "denied", mismatches), 0, mismatches.length);
+            allowed = allPids.mismatch(deniedVideos, false);
+            mismatches = perms.object().listed().mismatch(allowed, true);
+            assertEquals(getAccessErrorMessage(subjectPolicy, "objects", "listed", mismatches), 0, mismatches.length);
             // datastreams that should be denied access
-            pidList = new String[]{
+            denied = new String[]{
                     "test:1000008",
                     "test:1000009",
                     "test:1000010",
                     "test:1000011",
                     "test:1000012"
             };
-            assertEquals(statePolicy + ": Access denied for datastreams", "", perms.datastream().denied().mismatch(pidList));
+            mismatches = perms.datastream().denied().mismatch(denied, true);
+            assertEquals(getAccessErrorMessage(subjectPolicy, "datastreams", "denied", mismatches), 0, mismatches.length);
         } finally {
             policyUtils.delPolicy(policyId);
         }
@@ -307,24 +368,34 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
         try {
             perms = new PermissionTest(1000000, 1000012, "test", "DC");
             // objects that should be allowed access (deny=if pid divisible by two and/or three by using dc:subject attrs that indicate this)
-            pidList = new String[]{
+            String [] allowed = new String[]{
                     "test:1000001",
                     "test:1000003",
                     "test:1000007",
                     "test:1000009"
             };
-            assertEquals(subjectPolicy + ": Access allowed for objects", "", perms.object().allowed().mismatch(pidList));
+            String [] mismatches = perms.object().allowed().mismatch(allowed, true);
+            assertEquals(getAccessErrorMessage(subjectPolicy, "objects", "allowed", mismatches), 0, mismatches.length);
+            mismatches = perms.object().listed().mismatch(allowed, true);
+            assertEquals(getAccessErrorMessage(subjectPolicy, "objects", "listed", mismatches), 0, mismatches.length);
             // same for datastream access, as subject attribute is retrieved for the object, not for the datastream
-            pidList = new String[]{
-                    "test:1000001",
-                    "test:1000003",
-                    "test:1000007",
-                    "test:1000009"
-            };
-            assertEquals(subjectPolicy + ": Access allowed for objects", "", perms.datastream().allowed().mismatch(pidList));
+            mismatches = perms.datastream().allowed().mismatch(allowed, true);
+            assertEquals(getAccessErrorMessage(subjectPolicy, "datastreams", "allowed", mismatches), 0, mismatches.length);
         } finally {
             policyUtils.delPolicy(policyId);
         }
+    }
+
+    private static String getAccessErrorMessage(String subjectPolicy, String type, String verb, String[] mismatches){
+        StringBuilder sb = new StringBuilder();
+        sb.append(subjectPolicy).append(": Access ").append(verb).append(" for ").append(type).append("[");
+        for (int i=0; i<mismatches.length; i++){
+            sb.append(mismatches[i]);
+            if (i < mismatches.length - 1) sb.append(',');
+        }
+        sb.append(']');
+        return sb.toString();
+
     }
 
 
@@ -350,7 +421,7 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
                 // test object access
                 String url = "/fedora/objects/" + pid + "?format=xml";
                 try {
-                    String response = httpUtils.get(url);
+                    httpUtils.get(url);
                     // if we got here, it was allowed, so...
                     m_object.allowed().add(pid);
                 } catch (AuthorizationDeniedException e) {
@@ -358,15 +429,22 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
                     m_object.denied().add(pid);
                 }
                 // test datastream access
-                if (!m_dsid.equals("")) {
+                if (!m_dsid.isEmpty()) {
                     url = "/fedora/objects/" + pid + "/datastreams/" + m_dsid + "?format=xml";
                     try {
-                        String response = httpUtils.get(url);
+                        httpUtils.get(url);
                         // if we got here, it was allowed, so...
                         m_datastream.allowed().add(pid);
                     } catch (AuthorizationDeniedException e) {
                         // access was denied
                         m_datastream.denied().add(pid);
+                    }
+                    // Now check that the datastreams are being filtered correctly from listing
+                    url = "/fedora/objects?resultFormat=xml&query=type%7Evideo";
+                    String response = httpUtils.get(url);
+                    Matcher matcher = Pattern.compile("<pid>(.*)<\\/pid>").matcher(response);
+                    while(matcher.find()){
+                        m_object.listed().add(matcher.group(1));
                     }
                 }
             }
@@ -375,7 +453,7 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
                 fail("Error in checking permissions - total of allowed and denied objects does not equal number of objects tested");
                 throw new RuntimeException("Should not happen");
             }
-            if (!m_dsid.equals("")) {
+            if (!m_dsid.isEmpty()) {
                 if (m_datastream.allowed().size() + m_datastream.denied().size() != pidCount()) {
                     fail("Error in checking permissions - total of allowed and denied datastreams does not equal number of object datastreams tested");
                     throw new RuntimeException("Also should not happen");
@@ -392,58 +470,66 @@ public class TestPolicies extends FedoraServerTestCase implements Constants {
         public int pidCount() {
             return m_last - m_first + 1;
         }
+    }
 
-        // holds two sets of pids, one for objects for which access was allowed, one for denied
-        class EntityPerms {
-            private final Perms m_allowed = new Perms();
-            private final Perms m_denied = new Perms();
+    // holds two sets of pids, one for objects for which access was allowed, one for denied
+    class EntityPerms {
+        private final Perms m_allowed = new Perms();
+        private final Perms m_denied = new Perms();
+        private final Perms m_listed = new Perms();
 
-            public Perms allowed() {
-                return m_allowed;
-            }
-            public Perms denied() {
-                return m_denied;
-            }
+        public Perms allowed() {
+            return m_allowed;
+        }
+        public Perms denied() {
+            return m_denied;
+        }
+        public Perms listed() {
+            return m_listed;
+        }
+    }
+    // holds a set of pids with utility method for comparing to string array
+    class Perms extends HashSet<String>{
+        private static final long serialVersionUID =
+                3747931619024146008L;
 
-            // holds a set of pids with utility method for comparing to string array
-            class Perms extends HashSet<String>{
-                private static final long serialVersionUID =
-                        3747931619024146008L;
+        public boolean containsAll(String[] items) {
+            return this.containsAll(Arrays.asList(items));
+        }
+        public boolean containsOnly(String[] items) {
+            return ((this.size() == items.length) && containsAll(items));
+        }
+        public boolean containsAny(String [] items) {
+            boolean result = false;
+            for (String item:items) { result |= contains(item);}
+            return result;
+        }
+        /*
+         * returns a string representation of difference between the set members and the supplied array.
+         * Return empty string "" if items match
+         */
+        public String[] mismatch(String[] items, boolean indicate) {
+            ArrayList<String> res = new ArrayList<String>();
+            if (containsOnly(items))
+                return res.toArray(new String[0]); // they match
 
-                public boolean containsAll(String[] items) {
-                    return this.containsAll(Arrays.asList(items));
-                }
-                public boolean containsOnly(String[] items) {
-                    return ((this.size() == items.length) && containsAll(items));
-                }
-                /*
-                 * returns a string representation of difference between the set members and the supplied array.
-                 * Return empty string "" if items match
-                 */
-                public String mismatch(String[] items) {
-                    String res = "";
-                    if (containsOnly(items))
-                        return res; // they match
-
-                    // expected items not present in this set
-                    res += "Expected permission not found for: [ ";
-                    for (String item : items) {
-                        if (!contains(item))
-                            res += item + " ";
-                    }
-                    res += "]. ";
-
-                    // items in set not present in supplied array
-                    res += "Permission found but not expected for: [ ";
-                    List<String> asList = Arrays.asList(items);
-                    for (String item : this) {
-                        if (!asList.contains(item))
-                            res += item + " ";
-                    }
-                    res += "].";
-                    return res;
+            // expected items not present in this set
+            for (String item : items) {
+                if (!contains(item)){
+                    if (indicate) res.add("-" + item);
+                    else res.add(item);
                 }
             }
+
+            // items in set not present in supplied array
+            List<String> asList = Arrays.asList(items);
+            for (String item : this) {
+                if (!asList.contains(item)){
+                    if (indicate) res.add("+" + item);
+                    else res.add(item);
+                }
+            }
+            return res.toArray(new String[0]);
         }
     }
 }

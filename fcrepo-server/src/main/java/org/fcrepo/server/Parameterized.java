@@ -60,7 +60,18 @@ public abstract class Parameterized implements Constants {
      *        The map from which to derive the name-value pairs.
      */
     protected final void setParameters(Map<String, String> parameters) {
-        setParameters(Parameterized.getParameterList(parameters));
+        if (parameters == null) {
+            m_parameters.clear();
+        }
+        else {
+            m_parameters.clear();
+            Parameter p;
+            for (String key:parameters.keySet()) {
+                p = new Parameter(key);
+                p.setValue(parameters.get(key));
+                m_parameters.put(key, p);
+            }
+        }
     }
 
     protected final void setParameters(List<Parameter> parameters) {
@@ -88,7 +99,7 @@ public abstract class Parameterized implements Constants {
      *        to FEDORA_HOME.
      * @return The value, null if undefined.
      */
-    public final String getParameter(String name, boolean asAbsolutePath) {
+    public String getParameter(String name, boolean asAbsolutePath) {
         if (!m_parameters.containsKey(name)) return null;
 
         String paramValue = m_parameters.get(name).getValue();
@@ -108,11 +119,11 @@ public abstract class Parameterized implements Constants {
      *        The parameter name.
      * @return String The value, null if undefined.
      */
-    public final String getParameter(String name) {
+    public String getParameter(String name) {
         return getParameter(name, false);
     }
 
-    public final Parameter getParameter(String name,Class<Parameter> type) {
+    public Parameter getParameter(String name,Class<Parameter> type) {
         return m_parameters.get(name);
     }
 

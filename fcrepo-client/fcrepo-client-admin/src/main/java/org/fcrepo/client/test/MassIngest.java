@@ -11,10 +11,13 @@ import java.io.FileReader;
 
 import org.fcrepo.client.FedoraClient;
 import org.fcrepo.client.utility.ingest.AutoIngestor;
+
 import org.fcrepo.common.Constants;
+
 import org.fcrepo.oai.sample.RandomDCMetadataFactory;
-import org.fcrepo.server.access.FedoraAPIA;
-import org.fcrepo.server.management.FedoraAPIM;
+
+import org.fcrepo.server.access.FedoraAPIAMTOM;
+import org.fcrepo.server.management.FedoraAPIMMTOM;
 
 
 
@@ -26,9 +29,9 @@ import org.fcrepo.server.management.FedoraAPIM;
  */
 public class MassIngest {
 
-    public static FedoraAPIA APIA = null;
+    public static FedoraAPIAMTOM APIA = null;
 
-    public static FedoraAPIM APIM = null;
+    public static FedoraAPIMMTOM APIM = null;
 
     public MassIngest(AutoIngestor ingestor,
                       File templateFile,
@@ -99,7 +102,7 @@ public class MassIngest {
                 File f = new File(args[4]);
                 String protocol = args[8];
                 String context = Constants.FEDORA_DEFAULT_APP_CONTEXT;
-                if (args.length == 10 && !args[9].equals("")){
+                if (args.length == 10 && !args[9].isEmpty()){
                     context = args[9];
                 }
 
@@ -110,8 +113,9 @@ public class MassIngest {
                         protocol + "://" + hostName + ":" + portNum + "/"
                                 + context;
                 FedoraClient fc = new FedoraClient(baseURL, username, password);
-                APIA = fc.getAPIA();
-                APIM = fc.getAPIM();
+                APIA = fc.getAPIAMTOM();
+                APIM = fc.getAPIMMTOM();
+                fc.shutdown();
                 //*******************************************
                 AutoIngestor autoIngestor = new AutoIngestor(APIA, APIM);
 

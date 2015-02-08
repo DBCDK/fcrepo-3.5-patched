@@ -13,8 +13,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.fcrepo.client.FedoraClient;
+
 import org.fcrepo.common.Constants;
-import org.fcrepo.server.management.FedoraAPIM;
+
+import org.fcrepo.server.management.FedoraAPIMMTOM;
+import org.fcrepo.server.utilities.TypeUtility;
 
 
 
@@ -28,7 +31,7 @@ import org.fcrepo.server.management.FedoraAPIM;
 public class ScalabilityTests
     implements Constants {
 
-    private FedoraAPIM apim;
+    private FedoraAPIMMTOM apim;
     private PrintStream out;
 
     private static String DEMO_FOXML_TEXT;
@@ -86,7 +89,8 @@ public class ScalabilityTests
 
         String baseURL =  "http://" + host + ":" + port + "/" + context;
         FedoraClient fedoraClient = new FedoraClient(baseURL, username, password);
-        apim = fedoraClient.getAPIM();
+        apim = fedoraClient.getAPIMMTOM();
+        fedoraClient.shutdown();
 
         try {
             batchSize = Integer.valueOf(batch);
@@ -172,8 +176,9 @@ public class ScalabilityTests
      * Runnable class to use within threads. Executes Fedora ingests.
      */
     private class IngestRunner implements Callable<Boolean> {
+        @Override
         public Boolean call() throws Exception {
-            apim.ingest(DEMO_FOXML_BYTES, FOXML1_1.uri, "Ingest Test");
+            apim.ingest(TypeUtility.convertBytesToDataHandler(DEMO_FOXML_BYTES), FOXML1_1.uri, "Ingest Test");
             return TRUE;
         }
     }
@@ -233,7 +238,7 @@ public class ScalabilityTests
         String output = args[7];
         String context = Constants.FEDORA_DEFAULT_APP_CONTEXT;
 
-        if (args.length == 9  && !args[8].equals("")){
+        if (args.length == 9  && !args[8].isEmpty()){
             context = args[8];
         }
 

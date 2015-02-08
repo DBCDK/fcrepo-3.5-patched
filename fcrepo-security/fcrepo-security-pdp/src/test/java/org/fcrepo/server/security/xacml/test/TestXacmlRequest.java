@@ -20,24 +20,24 @@ package org.fcrepo.server.security.xacml.test;
 
 import java.io.File;
 import java.io.FileInputStream;
-
 import java.net.URI;
 import java.net.URISyntaxException;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 
-import com.sun.xacml.attr.AnyURIAttribute;
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.StringAttribute;
-import com.sun.xacml.ctx.RequestCtx;
-
+import org.fcrepo.server.security.RequestCtx;
 import org.fcrepo.server.security.xacml.util.ContextUtil;
+import org.fcrepo.server.security.xacml.util.RIRelationshipResolver;
+import org.fcrepo.server.security.xacml.util.RelationshipResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.jboss.security.xacml.sunxacml.attr.AnyURIAttribute;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
+import org.jboss.security.xacml.sunxacml.attr.StringAttribute;
 
 /**
  * @author nishen@melcoe.mq.edu.au
@@ -51,9 +51,16 @@ public class TestXacmlRequest {
 
     private static ContextUtil contextUtil = null;
 
+    private static RelationshipResolver RELATIONSHIP_RESOLVER = null;
+    static {
+        try{
+            RELATIONSHIP_RESOLVER = new RIRelationshipResolver(null, new HashMap<String,String>());
+        } catch (Exception e) {}
+    }
+
     public static void main(String[] args) throws Exception {
-        contextHandler = ContextHandler.getInstance();
-        contextUtil = ContextUtil.getInstance();
+        contextHandler = new ContextHandler();
+        contextUtil = new ContextUtil();
         StringBuilder request = new StringBuilder();
         if (args.length > 0) {
             File reqFile = new File(args[0]);
@@ -65,6 +72,7 @@ public class TestXacmlRequest {
             while (scanner.hasNextLine()) {
                 request.append(scanner.nextLine());
             }
+            scanner.close();
 
             testRequest(request.toString());
         } else {
@@ -116,7 +124,7 @@ public class TestXacmlRequest {
         List<Map<URI, List<AttributeValue>>> subjects =
                 new ArrayList<Map<URI, List<AttributeValue>>>();
 
-        if (subject == null || subject.equals("")) {
+        if (subject == null || subject.isEmpty()) {
             return subjects;
         }
 
@@ -166,7 +174,7 @@ public class TestXacmlRequest {
                 new HashMap<URI, AttributeValue>();
 
         try {
-            if (pid != null && !pid.equals("")) {
+            if (pid != null && !pid.isEmpty()) {
                 resAttr
                         .put(new URI("urn:fedora:names:fedora:2.1:resource:object:pid"),
                              new StringAttribute(pid));
@@ -175,7 +183,7 @@ public class TestXacmlRequest {
                              new AnyURIAttribute(new URI(pid)));
             }
 
-            if (action != null && !action.equals("")) {
+            if (action != null && !action.isEmpty()) {
                 actionAttr
                         .put(new URI("urn:fedora:names:fedora:2.1:action:id"),
                              new StringAttribute(action));
@@ -192,7 +200,8 @@ public class TestXacmlRequest {
                     contextUtil.buildRequest(getSubjects(user),
                                              actionAttr,
                                              resAttr,
-                                             getEnvironment());
+                                             getEnvironment(),
+                                             RELATIONSHIP_RESOLVER);
         } catch (Exception e) {
             System.out.print(e.getMessage());
         }

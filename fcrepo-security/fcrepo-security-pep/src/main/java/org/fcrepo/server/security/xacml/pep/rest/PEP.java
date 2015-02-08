@@ -18,12 +18,7 @@
 
 package org.fcrepo.server.security.xacml.pep.rest;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -37,29 +32,20 @@ import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-
-import com.sun.xacml.ctx.RequestCtx;
-import com.sun.xacml.ctx.ResponseCtx;
-import com.sun.xacml.ctx.Result;
-
-import org.w3c.dom.Document;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.fcrepo.common.Constants;
-
+import org.fcrepo.server.security.RequestCtx;
 import org.fcrepo.server.security.xacml.pep.AuthzDeniedException;
 import org.fcrepo.server.security.xacml.pep.ContextHandler;
-import org.fcrepo.server.security.xacml.pep.ContextHandlerImpl;
 import org.fcrepo.server.security.xacml.pep.PEPException;
 import org.fcrepo.server.security.xacml.pep.rest.filters.DataResponseWrapper;
+import org.fcrepo.server.security.xacml.pep.rest.filters.ObjectsFilter;
+import org.fcrepo.server.security.xacml.pep.rest.filters.ObjectsRESTFilterMatcher;
 import org.fcrepo.server.security.xacml.pep.rest.filters.ParameterRequestWrapper;
 import org.fcrepo.server.security.xacml.pep.rest.filters.RESTFilter;
+import org.fcrepo.server.security.xacml.pep.rest.filters.ResponseHandlingRESTFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.jboss.security.xacml.sunxacml.ctx.ResponseCtx;
+import org.jboss.security.xacml.sunxacml.ctx.Result;
 
 
 /**
@@ -73,15 +59,22 @@ public final class PEP
     private static final Logger logger =
             LoggerFactory.getLogger(PEP.class);
 
-    private Map<String, RESTFilter> filters = null;
+    private Map<String, RESTFilter> m_filters;
+    private ObjectsRESTFilterMatcher m_objectsRESTFilterMatcher;
 
-    private ContextHandler ctxHandler = null;
+    private ContextHandler m_ctxHandler = null;
+
+    public PEP(ObjectsRESTFilterMatcher objectsRESTFilterMatcher, Map<String, RESTFilter> filters ) throws PEPException {
+        m_objectsRESTFilterMatcher = objectsRESTFilterMatcher;
+        m_filters = filters;
+    }
 
     /*
      * (non-Javadoc)
      * @see javax.servlet.Filter#doFilter(javax.servlet.ServletRequest,
      * javax.servlet.ServletResponse, javax.servlet.FilterChain)
      */
+    @Override
     public void doFilter(ServletRequest request,
                          ServletResponse response,
                          FilterChain chain) throws IOException,
@@ -107,7 +100,7 @@ public final class PEP
 
         ServletOutputStream out = null;
         ParameterRequestWrapper req = null;
-        DataResponseWrapper res = null;
+        HttpServletResponse res = (HttpServletResponse)response;
 
         // the request and response context
         RequestCtx reqCtx = null;
@@ -116,8 +109,8 @@ public final class PEP
         String uri = ((HttpServletRequest) request).getRequestURI();
         String servletPath = ((HttpServletRequest) request).getServletPath();
         if (logger.isDebugEnabled()) {
-            logger.debug("Incoming URI: " + uri);
-            logger.debug("Incoming servletPath: " + servletPath);
+            logger.debug("Incoming URI: {}", uri);
+            logger.debug("Incoming servletPath: {}", servletPath);
         }
 
         // Fix-up for direct web.xml servlet mappings for:
@@ -130,32 +123,42 @@ public final class PEP
 
 
         // get the filter (or null if no filter)
-        RESTFilter filter = getFilter(servletPath);
+        RESTFilter filter = m_filters.get(servletPath);
+
+        if (filter != null && logger.isDebugEnabled())
+            logger.debug("obtaining filter: {}", filter.getClass().getName());
+
+        if(ObjectsFilter.class.isInstance(filter)) { // go find the ObjectHandler
+            HttpServletRequest httpRequest = (HttpServletRequest)request;
+      	  filter = this.m_objectsRESTFilterMatcher.getObjectsHandler(httpRequest);
+      	  if (filter == null) {
+            logger.error("No FeSL REST objects handler found for \"{}\"", httpRequest.getPathInfo());
+            throw new ServletException(new PEPException("No FeSL REST objects handler found for " + servletPath));
+      	  }
+        }
         try {
             // handle the request if we have a filter
             if (filter != null) {
-                // get a handle for the original OutputStream
-                out = response.getOutputStream();
-
                 // substitute our own request object that manages parameters
                 try {
-                    req =
-                            new ParameterRequestWrapper((HttpServletRequest) request);
+                    req = new ParameterRequestWrapper((HttpServletRequest) request);
                 } catch (Exception e) {
                     throw new PEPException(e);
                 }
 
-                // substitute our own response object that captures the data
-                res = new DataResponseWrapper(((HttpServletResponse) response));
+                logger.debug("Filtering URI: [{}] with: [{}]" , req.getRequestURI(), filter.getClass().getName());
 
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Filtering URI: [" + req.getRequestURI()
-                            + "] with: [" + filter.getClass().getName() + "]");
+                if(ResponseHandlingRESTFilter.class.isInstance(filter)) {
+               	    // substitute our own response object that captures the data
+               	    res = new DataResponseWrapper(((HttpServletResponse) response));
+                    // get a handle for the original OutputStream
+                    out = response.getOutputStream();
+                    logger.debug("Filtering will include post-processing the response");
                 }
 
                 reqCtx = filter.handleRequest(req, res);
                 if (reqCtx != null) {
-                    resCtx = ctxHandler.evaluate(reqCtx);
+                    resCtx = m_ctxHandler.evaluate(reqCtx);
                     enforce(resCtx);
                 }
 
@@ -163,26 +166,26 @@ public final class PEP
                 chain.doFilter(req, res);
             } else {
                 // there must always be a filter, even if it is a NOOP
-                logger.error("No FeSL REST filter found for " + servletPath);
+                logger.error("No FeSL REST filter found for \"{}\"", servletPath);
                 throw new PEPException("No FeSL REST filter found for " + servletPath);
             }
 
-            // handle the response if we have a filter
-            if (filter != null) {
-                reqCtx = filter.handleResponse(req, res);
-                if (reqCtx != null) {
-                    resCtx = ctxHandler.evaluate(reqCtx);
-                    enforce(resCtx);
-                }
+            if(ResponseHandlingRESTFilter.class.isInstance(filter)) {
+            	// handle the response if we have a non-null response handling filter
+            	reqCtx = ((ResponseHandlingRESTFilter)filter).handleResponse(req, res);
+            	if (reqCtx != null) {
+            		resCtx = m_ctxHandler.evaluate(reqCtx);
+            		enforce(resCtx);
+            	}
 
-                out.write(res.getData());
-                out.flush();
-                out.close();
+            	out.write(((DataResponseWrapper)res).getData());
+            	out.flush();
+            	out.close();
             }
         } catch (AuthzDeniedException ae) {
             if (!res.isCommitted()
-                    && (req.getRemoteUser() == null || "".equals(req
-                            .getRemoteUser().trim()))) {
+                    && (req.getRemoteUser() == null || req
+                            .getRemoteUser().trim().isEmpty())) {
                 loginForm(res);
             } else {
                 denyAccess((HttpServletResponse) response, ae.getMessage());
@@ -197,18 +200,13 @@ public final class PEP
      * @see javax.servlet.Filter#init(javax.servlet.FilterConfig)
      */
     public void init() throws ServletException {
-        try {
-            ctxHandler = ContextHandlerImpl.getInstance();
-        } catch (PEPException pe) {
-            logger.error("Error obtaining ContextHandler", pe);
-            throw new ServletException("Error obtaining ContextHandler", pe);
+        logger.info("Initialising Servlet Filter: {}", PEP.class);
+        if (m_ctxHandler == null) {
+            throw new ServletException("Error obtaining ContextHandler");
         }
-
-        logger.info("Initialising Servlet Filter: " + PEP.class);
-
-        loadFilters();
     }
 
+    @Override
     public void init(FilterConfig cfg) throws ServletException {
         init();
     }
@@ -218,96 +216,16 @@ public final class PEP
      * (non-Javadoc)
      * @see javax.servlet.Filter#destroy()
      */
+    @Override
     public void destroy() {
-        logger.info("Destroying Servlet Filter: " + PEP.class);
-        filters = null;
-        ctxHandler = null;
+        logger.info("Destroying Servlet Filter: {}", PEP.class);
+        m_filters = null;
+        m_objectsRESTFilterMatcher = null;
+        m_ctxHandler = null;
     }
 
-    private void loadFilters() throws ServletException {
-        filters = new HashMap<String, RESTFilter>();
-
-        try {
-            // get the PEP configuration
-            File configPEPFile =
-                    new File(Constants.FEDORA_HOME,
-                             "server/config/config-melcoe-pep.xml");
-            InputStream is = new FileInputStream(configPEPFile);
-            if (is == null) {
-                throw new PEPException("Could not locate config file: config-melcoe-pep.xml");
-            }
-
-            DocumentBuilderFactory factory =
-                    DocumentBuilderFactory.newInstance();
-            DocumentBuilder docBuilder = factory.newDocumentBuilder();
-            Document doc = docBuilder.parse(is);
-
-            Node node = doc.getElementsByTagName("handlers-rest").item(0);
-            NodeList nodes = node.getChildNodes();
-            for (int x = 0; x < nodes.getLength(); x++) {
-                Node n = nodes.item(x);
-                if (n.getNodeType() == Node.ELEMENT_NODE
-                        && "handler".equals(n.getNodeName())) {
-                    String opn =
-                            n.getAttributes().getNamedItem("operation")
-                                    .getNodeValue();
-                    String cls =
-                            n.getAttributes().getNamedItem("class")
-                                    .getNodeValue();
-
-                    if (opn == null || "".equals(opn)) {
-                        throw new PEPException("Cannot have a missing or empty operation attribute");
-                    }
-
-                    if (cls == null || "".equals(cls)) {
-                        throw new PEPException("Cannot have a missing or empty class attribute");
-                    }
-
-                    try {
-                        Class<?> filterClass = Class.forName(cls);
-                        RESTFilter filter =
-                                (RESTFilter) filterClass.newInstance();
-                        filters.put(opn, filter);
-                        if (logger.isDebugEnabled()) {
-                            logger.debug("filter added to filter map: " + opn
-                                    + "/" + cls);
-                        }
-                    } catch (ClassNotFoundException e) {
-                        if (logger.isDebugEnabled()) {
-                            logger.debug("filterClass not found for: " + cls);
-                        }
-                    } catch (InstantiationException ie) {
-                        logger.error("Could not instantiate filter: " + cls);
-                        throw new ServletException(ie.getMessage(), ie);
-                    } catch (IllegalAccessException iae) {
-                        logger.error("Could not instantiate filter: " + cls);
-                        throw new ServletException(iae.getMessage(), iae);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            logger.error("Failed to initialse the PEP for REST", e);
-            throw new ServletException(e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Obtains a filter from the filter map. If the filter does not exist in the
-     * filter map, then an attempt to create the required filter is made and if
-     * successful it is added to the filter map.
-     *
-     * @param servletPath
-     *        the servletPath of incoming servlet request
-     * @return the filter to use
-     * @throws ServletException
-     */
-    private RESTFilter getFilter(String servletPath) throws ServletException {
-        RESTFilter filter = filters.get(servletPath);
-
-        if (filter != null && logger.isDebugEnabled())
-        	logger.debug("obtaining filter: " + filter.getClass().getName());
-
-        return filter;
+    public void setContextHandler(ContextHandler ctxHandler) {
+        m_ctxHandler = ctxHandler;
     }
 
     /**
@@ -348,7 +266,7 @@ public final class PEP
     private void denyAccess(HttpServletResponse response, String message)
             throws IOException {
         StringBuilder sb = new StringBuilder();
-        sb.append("Fedora: 403 " + message.toUpperCase());
+        sb.append("Fedora: 403 ").append(message.toUpperCase());
 
         response.reset();
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);

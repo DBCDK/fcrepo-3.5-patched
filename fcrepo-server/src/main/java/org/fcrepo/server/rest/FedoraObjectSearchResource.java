@@ -21,6 +21,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 import org.fcrepo.server.Context;
+import org.fcrepo.server.Server;
 import org.fcrepo.server.search.Condition;
 import org.fcrepo.server.search.FieldSearchQuery;
 import org.fcrepo.server.search.FieldSearchResult;
@@ -36,11 +37,16 @@ import org.fcrepo.server.search.FieldSearchResult;
  */
 @Path("/objects")
 public class FedoraObjectSearchResource extends BaseRestResource {
+
     static final String[] SEARCHABLE_FIELDS = { "pid", "label", "state", "ownerId",
             "cDate", "mDate", "dcmDate", "relObj", "relPredObj", "relSysPredObj", "title", "creator", "subject", "description",
             "publisher", "contributor", "date", "type", "format", "identifier",
             "source", "language", "relation", "coverage", "rights" };
 
+    public FedoraObjectSearchResource(Server server) {
+        super(server);
+    }
+    
     @GET
     @Produces( { HTML, XML })
     public Response searchObjects(
@@ -59,19 +65,19 @@ public class FedoraObjectSearchResource extends BaseRestResource {
 
         try {
             Context context = getContext();
-            String[] wantedFields = getWantedFields(servletRequest);
+            String[] wantedFields = getWantedFields(m_servletRequest);
             MediaType mime = RestHelper.getContentType(format);
 
             FieldSearchResult result = null;
 
             if (wantedFields.length > 0 || sessionToken != null) {
                 if (sessionToken != null) {
-                    result = apiAService.resumeFindObjects(context, sessionToken);
+                    result = m_access.resumeFindObjects(context, sessionToken);
                 } else {
                     if ((terms != null) && (terms.length() != 0)) {
-                        result = apiAService.findObjects(context, wantedFields, maxResults, new FieldSearchQuery(terms));
+                        result = m_access.findObjects(context, wantedFields, maxResults, new FieldSearchQuery(terms));
                     } else if ((query != null) && (query.length() != 0)) {
-                        result = apiAService.findObjects(context, wantedFields, maxResults, new FieldSearchQuery(Condition.getConditions(query)));
+                        result = m_access.findObjects(context, wantedFields, maxResults, new FieldSearchQuery(Condition.getConditions(query)));
                     }
                 }
             }
@@ -86,7 +92,7 @@ public class FedoraObjectSearchResource extends BaseRestResource {
 
             return Response.ok(output, mime).build();
         } catch (Exception ex) {
-            return handleException(ex);
+            return handleException(ex, false);
         }
     }
 
@@ -123,7 +129,7 @@ public class FedoraObjectSearchResource extends BaseRestResource {
 
         try {
             Context context = getContext();
-            String[] pidList = apiMService.getNextPID(context, numPIDS, namespace);
+            String[] pidList = m_management.getNextPID(context, numPIDS, namespace);
             MediaType mime = RestHelper.getContentType(format);
 
             if (pidList.length > 0) {
@@ -140,7 +146,7 @@ public class FedoraObjectSearchResource extends BaseRestResource {
                 return Response.noContent().build();
             }
         } catch (Exception ex) {
-            return handleException(ex);
+            return handleException(ex, false);
         }
     }
 

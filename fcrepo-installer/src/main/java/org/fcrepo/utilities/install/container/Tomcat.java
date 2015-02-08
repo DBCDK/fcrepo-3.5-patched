@@ -73,12 +73,10 @@ public abstract class Tomcat
         contextDir.mkdirs();
 
         try {
-            File fhome = new File(getOptions()
-                                             .getValue(InstallOptions.FEDORA_HOME));
             String content =
                     IOUtils.toString(this.getClass()
-                            .getResourceAsStream("/resources/context.xml"))
-                            .replace("_FEDORA_HOME_",
+                            .getResourceAsStream("/webapp-context/context.xml"))
+                            .replace("${fedora.home}",
                                      getOptions().getValue(InstallOptions.FEDORA_HOME));
 
             String name =

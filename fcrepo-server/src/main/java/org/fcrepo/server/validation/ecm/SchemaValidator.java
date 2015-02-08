@@ -1,12 +1,26 @@
 package org.fcrepo.server.validation.ecm;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Reader;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+
+import javax.xml.XMLConstants;
+import javax.xml.transform.Source;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamSource;
+import javax.xml.validation.Schema;
+import javax.xml.validation.SchemaFactory;
+import javax.xml.validation.Validator;
+
 import org.fcrepo.server.Context;
 import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.errors.StreamIOException;
 import org.fcrepo.server.storage.ContentManagerParams;
 import org.fcrepo.server.storage.DOReader;
 import org.fcrepo.server.storage.ExternalContentManager;
-import org.fcrepo.server.storage.RepositoryReader;
 import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.MIMETypedStream;
 import org.fcrepo.server.storage.types.Validation;
@@ -19,18 +33,6 @@ import org.xml.sax.ErrorHandler;
 import org.xml.sax.SAXException;
 import org.xml.sax.SAXParseException;
 
-import javax.xml.XMLConstants;
-import javax.xml.transform.Source;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamSource;
-import javax.xml.validation.Schema;
-import javax.xml.validation.SchemaFactory;
-import javax.xml.validation.Validator;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.Reader;
-import java.util.*;
-
 /**
  * Created by IntelliJ IDEA.
  * User: abr
@@ -39,12 +41,8 @@ import java.util.*;
  * To change this template use File | Settings | File Templates.
  */
 public class SchemaValidator {
-    private RepositoryReader doMgr;
 
-    public SchemaValidator(RepositoryReader doMgr) {
-
-        //To change body of created methods use File | Settings | File Templates.
-        this.doMgr = doMgr;
+    public SchemaValidator() {
     }
 
     void validate(Context context, DsTypeModel typeModel, Datastream objectDatastream, Validation validation,
@@ -116,7 +114,7 @@ public class SchemaValidator {
             }
 
             LSResourceResolver resourceResolver
-                    = new ResourceResolver(context, doMgr, contentmodelReader, asOfDateTime);
+                    = new ResourceResolver(contentmodelReader, asOfDateTime);
 
 
             Schema schema;
@@ -190,17 +188,11 @@ public class SchemaValidator {
 
 
     public static class ResourceResolver implements LSResourceResolver {
-        private Context context;
-        private RepositoryReader doMgr;
         private DOReader contentmodelReader;
         private Date asOfDateTime;
 
-        public ResourceResolver(Context context,
-                                RepositoryReader doMgr,
-                                DOReader contentmodelReader, Date asOfDateTime) {
+        public ResourceResolver(DOReader contentmodelReader, Date asOfDateTime) {
             //To change body of created methods use File | Settings | File Templates.
-            this.context = context;
-            this.doMgr = doMgr;
             this.contentmodelReader = contentmodelReader;
             this.asOfDateTime = asOfDateTime;
         }

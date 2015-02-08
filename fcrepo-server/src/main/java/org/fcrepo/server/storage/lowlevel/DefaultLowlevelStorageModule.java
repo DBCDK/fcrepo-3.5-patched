@@ -25,9 +25,9 @@ import org.fcrepo.server.storage.ConnectionPoolManager;
  */
 public class DefaultLowlevelStorageModule
         extends Module
-        implements ILowlevelStorage, IListable, ISizable {
+        implements ILowlevelStorage, IListable, ISizable, ICheckable {
 
-    private ILowlevelStorage m_llstore;
+    private DefaultLowlevelStorage m_llstore;
 
     public DefaultLowlevelStorageModule(Map<String, String> moduleParameters,
                                         Server server,
@@ -118,14 +118,14 @@ public class DefaultLowlevelStorageModule
         return parameterValue;
     }
 
-    public void addObject(String pid, InputStream content)
+    public void addObject(String pid, InputStream content, Map<String, String> hints)
             throws LowlevelStorageException {
-        m_llstore.addObject(pid, content);
+        m_llstore.addObject(pid, content, hints);
     }
 
-    public void replaceObject(String pid, InputStream content)
+    public void replaceObject(String pid, InputStream content, Map<String, String> hints)
             throws LowlevelStorageException {
-        m_llstore.replaceObject(pid, content);
+        m_llstore.replaceObject(pid, content, hints);
     }
 
     public InputStream retrieveObject(String pid)
@@ -145,14 +145,14 @@ public class DefaultLowlevelStorageModule
         m_llstore.auditObject();
     }
 
-    public long addDatastream(String pid, InputStream content)
+    public long addDatastream(String pid, InputStream content, Map<String, String> hints)
             throws LowlevelStorageException {
-        return m_llstore.addDatastream(pid, content);
+        return m_llstore.addDatastream(pid, content, hints);
     }
 
-    public long replaceDatastream(String pid, InputStream content)
+    public long replaceDatastream(String pid, InputStream content, Map<String, String> hints)
             throws LowlevelStorageException {
-        return m_llstore.replaceDatastream(pid, content);
+        return m_llstore.replaceDatastream(pid, content, hints);
     }
 
     public InputStream retrieveDatastream(String pid)
@@ -175,17 +175,24 @@ public class DefaultLowlevelStorageModule
     // IListable methods
 
     public Iterator<String> listObjects() {
-        return ((IListable) m_llstore).listObjects();
+        return m_llstore.listObjects();
     }
 
     public Iterator<String> listDatastreams() {
-        return ((IListable) m_llstore).listDatastreams();
+        return m_llstore.listDatastreams();
     }
 
     // ISizable methods
 
     @Override
     public long getDatastreamSize(String dsKey) throws LowlevelStorageException {
-        return ((ISizable) m_llstore).getDatastreamSize(dsKey);
+        return m_llstore.getDatastreamSize(dsKey);
     }
-}
+    
+    // ICheckable methods
+    @Override
+    public boolean objectExists(String objectKey) {
+        return m_llstore.objectExists(objectKey);
+    }
+
+ }

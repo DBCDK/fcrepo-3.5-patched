@@ -5,12 +5,13 @@
 
 package org.fcrepo.server.utilities;
 
-import java.util.Iterator;
 import java.util.Map;
-import java.util.Set;
+import java.util.Map.Entry;
 
 import org.jrdf.graph.Triple;
 
+import org.trippi.Alias;
+import org.trippi.AliasManager;
 import org.trippi.TripleIterator;
 import org.trippi.TrippiException;
 
@@ -104,8 +105,8 @@ public class FilteredTripleIterator
                 .toString())
                 && partMatches(next.getPredicate().toString(), filter
                         .getPredicate().toString())
-                && partMatches(next.getObject().toString(), filter.getObject()
-                        .toString());
+                && (filter.getObject() == null || partMatches(next.getObject().toString(), filter.getObject()
+                        .toString()));
 
     }
 
@@ -113,17 +114,10 @@ public class FilteredTripleIterator
         if (next.equals(filter)) {
             return true;
         }
-        Map<String, String> map = getAliasMap();
-        Set<String> keys = map.keySet();
-        Iterator<String> iter = keys.iterator();
-        while (iter.hasNext()) {
-            String key = iter.next();
-            if (next.startsWith(key + ":")) {
-                next = next.replaceFirst(key + ":", map.get(key));
-            }
-            if (filter.startsWith(key + ":")) {
-                filter = filter.replaceFirst(key + ":", map.get(key));
-            }
+        AliasManager map = getAliases();
+        for (Entry<String, Alias> entry: map.getAliases().entrySet()) {
+            next = entry.getValue().replaceSimplePrefix(next);
+            filter = entry.getValue().replaceSimplePrefix(filter);
             if (next.equals(filter)) {
                 return true;
             }

@@ -4,6 +4,7 @@
  */
 package org.fcrepo.server.management;
 
+import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -11,46 +12,29 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
-
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.io.SequenceInputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
-
+import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
-
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.regex.Pattern;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-
-import com.sun.org.apache.xml.internal.serialize.OutputFormat;
-import com.sun.org.apache.xml.internal.serialize.XMLSerializer;
-
 import org.apache.commons.betwixt.XMLUtils;
-
-import org.apache.commons.io.IOUtils;
-
-import org.jrdf.graph.URIReference;
-
-import org.w3c.dom.Document;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.PID;
 import org.fcrepo.common.rdf.SimpleURIReference;
-
 import org.fcrepo.server.Context;
 import org.fcrepo.server.RecoveryContext;
 import org.fcrepo.server.Server;
@@ -73,7 +57,6 @@ import org.fcrepo.server.storage.DOManager;
 import org.fcrepo.server.storage.DOReader;
 import org.fcrepo.server.storage.DOWriter;
 import org.fcrepo.server.storage.ExternalContentManager;
-import org.fcrepo.server.storage.types.AuditRecord;
 import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.DatastreamManagedContent;
 import org.fcrepo.server.storage.types.DatastreamReferencedContent;
@@ -88,6 +71,13 @@ import org.fcrepo.server.validation.ValidationConstants;
 import org.fcrepo.server.validation.ValidationUtility;
 import org.fcrepo.server.validation.ecm.EcmValidator;
 import org.fcrepo.utilities.DateUtility;
+import org.fcrepo.utilities.ReadableByteArrayOutputStream;
+import org.fcrepo.utilities.XmlTransformUtility;
+import org.fcrepo.utilities.xml.XercesXmlSerializers;
+import org.jrdf.graph.URIReference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
 
 /**
  * Implements API-M without regard to the transport/messaging protocol.
@@ -121,7 +111,8 @@ public class DefaultManagement
     private final EcmValidator ecmValidator;
 
     // FCREPO-765: move to Admin module
-    private static final String xmlHeader = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    private static final byte[] xmlHeader = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            .getBytes(Charset.forName("UTF-8"));
 
     /**
      * @param purgeDelayInMillis milliseconds to delay before removing
@@ -148,6 +139,7 @@ public class DefaultManagement
         ecmValidator = new EcmValidator(doMgr,m_contentManager); //TODO, this should be controllable with the fcfg
     }
 
+    @Override
     public String ingest(Context context,
                          InputStream serialization,
                          String logMessage,
@@ -169,7 +161,7 @@ public class DefaultManagement
             m_authz.enforceIngest(context, objPid, format, encoding);
 
             // Only create an audit record if there is a log message to capture
-            if (logMessage != null && !logMessage.equals("")) {
+            if (logMessage != null && !logMessage.isEmpty()) {
                 Date nowUTC = Server.getCurrentDate(context);
                 addAuditRecord(context, w, "ingest", "", logMessage, nowUTC);
             }
@@ -206,6 +198,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public Date modifyObject(Context context,
                              String pid,
                              String state,
@@ -239,7 +232,7 @@ public class DefaultManagement
                 }
             }
 
-            if (state != null && !state.equals("")) {
+            if (state != null && !state.isEmpty()) {
                 if (!state.equals("A") && !state.equals("D")
                     && !state.equals("I")) {
                     throw new InvalidStateException("The object state of \""
@@ -271,7 +264,7 @@ public class DefaultManagement
                 logMsg.append("pid: ").append(pid);
                 logMsg.append(", state: ").append(state);
                 logMsg.append(", label: ").append(label);
-                logMsg.append(", ownderId: ").append(ownerId);
+                logMsg.append(", ownerId: ").append(ownerId);
                 logMsg.append(", logMessage: ").append(logMessage);
                 logMsg.append(")");
                 logger.info(logMsg.toString());
@@ -281,6 +274,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public InputStream getObjectXML(Context context, String pid, String encoding)
             throws ServerException {
         try {
@@ -309,6 +303,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public InputStream export(Context context,
                               String pid,
                               String format,
@@ -346,6 +341,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public Date purgeObject(Context context,
                             String pid,
                             String logMessage) throws ServerException {
@@ -381,6 +377,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public String addDatastream(Context context,
                                 String pid,
                                 String dsID,
@@ -407,7 +404,7 @@ public class DefaultManagement
         // empty altIDs are allowed. assume they meant String[0] if they provide
         // it as null.
         if (altIDs == null) {
-            altIDs = new String[0];
+            altIDs = EMPTY_STRING_ARRAY;
         }
 
         // If the datastream ID is not specified directly, see
@@ -416,7 +413,7 @@ public class DefaultManagement
             RecoveryContext rContext = (RecoveryContext) context;
             dsID =
                     rContext
-                            .getRecoveryValue(Constants.RECOVERY.DATASTREAM_ID.uri);
+                            .getRecoveryValue(Constants.RECOVERY.DATASTREAM_ID.attributeId);
             if (dsID != null) {
                 logger.debug("Using new dsID from recovery context");
             }
@@ -474,6 +471,7 @@ public class DefaultManagement
                     // set and validate the content
                     DatastreamXMLMetadata dsm = (DatastreamXMLMetadata) ds;
                     dsm.xmlContent = getEmbeddableXML(in);
+                    dsm.DSSize = dsm.xmlContent.length;
                     ValidationUtility.validateReservedDatastream(PID.getInstance(pid),
                                                                  dsID,
                                                                  dsm);
@@ -493,9 +491,11 @@ public class DefaultManagement
             } else if (controlGroup.equals("M")) {
                 ds = new DatastreamManagedContent();
                 ds.DSInfoType = "DATA";
+                ds.DSLocationType = Datastream.DS_LOCATION_TYPE_URL;
             } else if (controlGroup.equals("R") || controlGroup.equals("E")) {
                 ds = new DatastreamReferencedContent();
                 ds.DSInfoType = "DATA";
+                ds.DSLocationType = Datastream.DS_LOCATION_TYPE_URL;
             } else {
                 throw new GeneralException("Invalid control group: "
                                            + controlGroup);
@@ -515,13 +515,13 @@ public class DefaultManagement
             if (dsID == null || dsID.length() == 0) {
                 ds.DatastreamID = w.newDatastreamID();
             } else {
-                if (dsID.indexOf(" ") != -1) {
+                if (dsID.indexOf(' ') != -1) {
                     throw new GeneralException("Datastream ids cannot contain spaces.");
                 }
-                if (dsID.indexOf("+") != -1) {
+                if (dsID.indexOf('+') != -1) {
                     throw new GeneralException("Datastream ids cannot contain plusses.");
                 }
-                if (dsID.indexOf(":") != -1) {
+                if (dsID.indexOf(':') != -1) {
                     throw new GeneralException("Datastream ids cannot contain colons.");
                 }
                 if (w.GetDatastream(dsID, null) != null) {
@@ -599,6 +599,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public Date modifyDatastreamByReference(Context context,
                                             String pid,
                                             String datastreamId,
@@ -646,7 +647,10 @@ public class DefaultManagement
             w = m_manager.getWriter(Server.USE_DEFINITIVE_STORE, context, pid);
             org.fcrepo.server.storage.types.Datastream orig =
                     w.GetDatastream(datastreamId, null);
-
+            if (orig == null) {
+                throw new DatastreamNotFoundException("Object " + pid + " has no datastream "
+                                                      + datastreamId + " to modify");
+            }
             // if provided, check request lastModifiedDate against the datastream,
             // rejecting the request if the datastream's mod date is more recent.
             if (lastModifiedDate != null) {
@@ -694,7 +698,7 @@ public class DefaultManagement
 
             // In cases where an empty attribute value is not allowed, then
             // NULL or EMPTY PARM means no change to ds attribute...
-            if (dsLocation == null || dsLocation.equals("")) {
+            if (dsLocation == null || dsLocation.isEmpty()) {
                 if (orig.DSControlGrp.equals("M")) {
                     // if managed content location is unspecified,
                     // cause a copy of the prior content to be made at
@@ -746,13 +750,16 @@ public class DefaultManagement
             newds.DSCreateDT = nowUTC;
             // newds.DSSize will be computed later
             newds.DSLocation = dsLocation;
+            newds.DSLocationType = Datastream.DS_LOCATION_TYPE_URL;
             newds.DSChecksumType = checksumType;
 
-            // validate reserved datastreams (type M and X)
-            ValidationUtility.validateReservedDatastream(PID.getInstance(pid),
+            // validate reserved datastreams (type M and X) unless unchanged:
+            if (!newds.DSLocation.startsWith(DatastreamManagedContent.COPY_SCHEME) &&
+            		!newds.DSLocation.equals(orig.DSLocation)) {
+            	ValidationUtility.validateReservedDatastream(PID.getInstance(pid),
                                                          datastreamId,
                                                          newds);
-
+            }
 
             // next, add the datastream via the object writer
             w.addDatastream(newds, orig.DSVersionable);
@@ -813,6 +820,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public Date modifyDatastreamByValue(Context context,
                                         String pid,
                                         String datastreamId,
@@ -856,6 +864,11 @@ public class DefaultManagement
             w = m_manager.getWriter(Server.USE_DEFINITIVE_STORE, context, pid);
             Datastream orig =
                     w.GetDatastream(datastreamId, null);
+            if (orig == null) {
+                throw new DatastreamNotFoundException("Object " + pid + " has no datastream "
+                                                      + datastreamId + " to modify");
+            }
+
             XMLDatastreamProcessor origxml = new XMLDatastreamProcessor(orig);
 
             // if provided, check request lastModifiedDate against the datastream,
@@ -902,12 +915,18 @@ public class DefaultManagement
             } else {
                 checksumType = Datastream.validateChecksumType(checksumType);
             }
-            if ("DC".equals(datastreamId)){
+            if (dsContent != null && "DC".equals(datastreamId)){
                 DCFields audited = new DCFields(dsContent);
                 try {
-                    dsContent = new ByteArrayInputStream(audited.getAsXML(pid).getBytes("UTF-8"));
-                } catch (UnsupportedEncodingException uee) {
-                    // safely ignore... we know UTF-8 works
+                    ReadableByteArrayOutputStream bytes =
+                            new ReadableByteArrayOutputStream(512);
+                    PrintWriter out = new PrintWriter(
+                            new OutputStreamWriter(bytes, Charset.forName("UTF-8")));
+                    audited.getAsXML(pid, out);
+                    out.close();
+                    dsContent = bytes.toInputStream();
+                } catch (IOException ioe) {
+                    // safely ignore... we know byte arrays works
                 }
             }
 
@@ -996,6 +1015,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public Date[] purgeDatastream(Context context,
                                   String pid,
                                   String datastreamID,
@@ -1022,38 +1042,29 @@ public class DefaultManagement
                     w.removeDatastream(datastreamID, startDT, endDT);
             // check if there's at least one version with this id...
             if (w.GetDatastream(datastreamID, null) == null) {
-                // if deleting would result in no versions remaining,
-                // only continue if there are no disseminators that use
-                // this datastream.
-                // to do this, we must look through all versions of every
-                // disseminator, regardless of state
-                ArrayList<String> usedList = new ArrayList<String>();
+                // if deleting would result in no versions of the DC
+                // datastream remaining, do not continue
                 if (datastreamID.equals("DC")) {
-                    usedList.add("The default disseminator");
-                }
-                if (usedList.size() > 0) {
-                    StringBuffer msg = new StringBuffer();
+                    StringBuilder msg = new StringBuilder();
                     msg.append("Cannot purge entire datastream because it\n");
                     msg.append("is used by the following disseminators:");
-                    for (int i = 0; i < usedList.size(); i++) {
-                        msg.append("\n - " + usedList.get(i));
-                    }
+                    msg.append("\n - The default disseminator");
                     throw new GeneralException(msg.toString());
                 }
             }
             // add an explanation of what happened to the user-supplied message.
-            if (logMessage == null) {
-                logMessage = "";
-            } else {
-                logMessage += " . . . ";
+            StringBuilder logMsgBuilder = (logMessage == null) ? new StringBuilder() :
+                new StringBuilder(logMessage);
+            if (logMessage != null) {
+                logMsgBuilder.append(" . . . ");
             }
-            logMessage +=
-                    getPurgeLogMessage("datastream",
+            getPurgeLogMessage("datastream",
                                        datastreamID,
                                        startDT,
                                        endDT,
-                                       deletedDates);
-
+                                       deletedDates,
+                                       logMsgBuilder);
+            logMessage = logMsgBuilder.toString();
             // Update audit trail
             Date nowUTC = Server.getCurrentDate(context);
             addAuditRecord(context,
@@ -1085,14 +1096,14 @@ public class DefaultManagement
         }
     }
 
-    private String getPurgeLogMessage(String kindaThing,
+    private void getPurgeLogMessage(String kindaThing,
                                       String id,
                                       Date start,
                                       Date end,
-                                      Date[] deletedDates) {
+                                      Date[] deletedDates,
+                                      StringBuilder buf) {
         SimpleDateFormat formatter =
                 new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
-        StringBuffer buf = new StringBuffer();
         buf.append("Purged ");
         buf.append(kindaThing);
         buf.append(" (ID=");
@@ -1110,7 +1121,7 @@ public class DefaultManagement
             buf.append(formatter.format(end));
         }
         buf.append(".  This resulted in the permanent removal of ");
-        buf.append(deletedDates.length + " ");
+        buf.append(deletedDates.length).append(' ');
         buf.append(kindaThing);
         buf.append(" version(s) (");
         for (int i = 0; i < deletedDates.length; i++) {
@@ -1120,9 +1131,9 @@ public class DefaultManagement
             buf.append(formatter.format(deletedDates[i]));
         }
         buf.append(") and all associated audit records.");
-        return buf.toString();
     }
 
+    @Override
     public Datastream getDatastream(Context context,
                                     String pid,
                                     String datastreamID,
@@ -1147,7 +1158,7 @@ public class DefaultManagement
                 logMsg.append("pid: ").append(pid);
                 logMsg.append(", datastreamID: ").append(datastreamID);
                 logMsg.append(", asOfDateTime: ").append(asOfDateTime);
-                logMsg.append(")");
+                logMsg.append(')');
                 logger.info(logMsg.toString());
             }
 
@@ -1155,6 +1166,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public Datastream[] getDatastreams(Context context,
                                        String pid,
                                        Date asOfDateTime,
@@ -1187,6 +1199,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public Datastream[] getDatastreamHistory(Context context,
                                              String pid,
                                              String datastreamID)
@@ -1201,19 +1214,15 @@ public class DefaultManagement
             DOReader r =
                     m_manager.getReader(Server.GLOBAL_CHOICE, context, pid);
             Date[] versionDates = r.getDatastreamVersions(datastreamID);
+            // sort the dates in their natural order
+            Arrays.sort(versionDates);
+            // then copy the Datastreams in the reverse date order (most recent first)
             Datastream[] versions = new Datastream[versionDates.length];
+            final int v = versionDates.length - 1;
             for (int i = 0; i < versionDates.length; i++) {
-                versions[i] = r.GetDatastream(datastreamID, versionDates[i]);
+                versions[v - i] = r.GetDatastream(datastreamID, versionDates[i]);
             }
-            // sort, ascending
-            Arrays.sort(versions, new DatastreamDateComparator());
-            // reverse it (make it descend, so most recent date is element 0)
-            Datastream[] out = new Datastream[versions.length];
-            for (int i = 0; i < versions.length; i++) {
-                out[i] = versions[versions.length - 1 - i];
-            }
-
-            return out;
+            return versions;
         } finally {
             // Logger completion
             if (logger.isInfoEnabled()) {
@@ -1229,22 +1238,7 @@ public class DefaultManagement
         }
     }
 
-    public class DatastreamDateComparator
-            implements Comparator<Object> {
-
-        public int compare(Object o1, Object o2) {
-            long ms1 = ((Datastream) o1).DSCreateDT.getTime();
-            long ms2 = ((Datastream) o1).DSCreateDT.getTime();
-            if (ms1 < ms2) {
-                return -1;
-            }
-            if (ms1 > ms2) {
-                return 1;
-            }
-            return 0;
-        }
-    }
-
+    @Override
     public String[] getNextPID(Context context, int numPIDs, String namespace)
             throws ServerException {
         try {
@@ -1259,7 +1253,7 @@ public class DefaultManagement
                 RecoveryContext rContext = (RecoveryContext) context;
                 pidList =
                         rContext
-                                .getRecoveryValues(Constants.RECOVERY.PID_LIST.uri);
+                                .getRecoveryValues(Constants.RECOVERY.PID_LIST.attributeId);
                 if (pidList != null && pidList.length > 0) {
                     logger.debug("Reserving and returning PID_LIST "
                                  + "from recovery context");
@@ -1288,13 +1282,14 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public String putTempStream(Context context, InputStream in)
             throws StreamWriteException, AuthzException {
         m_authz.enforceUpload(context);
         // first clean up after old stuff
         purgeUploadedFiles();
         // then generate an id
-        int id = getNextTempId(context);
+        String id = Integer.toString(getNextTempId(context));
         // and attempt to save the stream
         File outFile = new File(m_tempDir, "" + id);
         FileOutputStream out = null;
@@ -1314,7 +1309,7 @@ public class DefaultManagement
         // if we got this far w/o an exception, add to hash with current time
         // and return the identifier-that-looks-like-a-url
         long now = System.currentTimeMillis();
-        m_uploadStartTime.put("" + id, new Long(now));
+        m_uploadStartTime.put(id, new Long(now));
         return DatastreamManagedContent.UPLOADED_SCHEME + id;
     }
 
@@ -1326,7 +1321,7 @@ public class DefaultManagement
         if (context instanceof RecoveryContext) {
             RecoveryContext rContext = (RecoveryContext) context;
             String uploadURL =
-                    rContext.getRecoveryValue(Constants.RECOVERY.UPLOAD_ID.uri);
+                    rContext.getRecoveryValue(Constants.RECOVERY.UPLOAD_ID.attributeId);
             if (uploadURL != null) {
                 try {
                     String n = uploadURL.substring(11);
@@ -1345,6 +1340,7 @@ public class DefaultManagement
         return m_lastId;
     }
 
+    @Override
     public InputStream getTempStream(String id) throws StreamReadException {
         // it should come in starting with "uploaded://"
         if (id.startsWith(DatastreamManagedContent.UPLOADED_SCHEME) || id.length() < 12) {
@@ -1365,6 +1361,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public Date setDatastreamState(Context context,
                                    String pid,
                                    String datastreamID,
@@ -1418,6 +1415,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public Date setDatastreamVersionable(Context context,
                                          String pid,
                                          String datastreamID,
@@ -1465,6 +1463,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public String compareDatastreamChecksum(Context context,
                                             String pid,
                                             String datastreamID,
@@ -1481,12 +1480,11 @@ public class DefaultManagement
 
             logger.debug("Getting Reader");
             r = m_manager.getReader(Server.USE_DEFINITIVE_STORE, context, pid);
-            logger.debug("Getting datastream:" + datastreamID + "date: "
-                         + versionDate);
+            logger.debug("Getting datastream:{} date:{}", datastreamID, versionDate);
             Datastream ds = r.GetDatastream(datastreamID, versionDate);
             logger.debug("Got Datastream, comparing checksum");
             boolean check = ds.compareChecksum();
-            logger.debug("compared checksum = " + check);
+            logger.debug("compared checksum = {}", check);
 
             return check ? ds.getChecksum() : "Checksum validation error";
         } finally {
@@ -1526,23 +1524,24 @@ public class DefaultManagement
     }
 
     private byte[] getXML(InputStream in, boolean includeXMLDeclaration) throws GeneralException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream(2048);
+        getXML(in, out, includeXMLDeclaration);
+        return out.toByteArray();
+    }
+    
+    private void getXML(InputStream in, OutputStream outStream, boolean includeXMLDeclaration) throws GeneralException {
         // parse with xerces and re-serialize the fixed xml to a byte array
         try {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            OutputFormat fmt = new OutputFormat("XML", "UTF-8", false);
-//            fmt.setIndent(2);
-//            fmt.setLineWidth(120);
-            fmt.setPreserveSpace(false);
-            fmt.setOmitXMLDeclaration(!includeXMLDeclaration);
-            fmt.setOmitDocumentType(true);
-            XMLSerializer ser = new XMLSerializer(out, fmt);
-            DocumentBuilderFactory factory =
-                    DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(true);
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            Document doc = builder.parse(in);
-            ser.serialize(doc);
-            return out.toByteArray();
+            BufferedWriter out = new BufferedWriter(
+                    new OutputStreamWriter(outStream, Charset.forName("UTF-8")));
+            Document doc =
+                XmlTransformUtility.parseNamespaceAware(in);
+            if (includeXMLDeclaration) {
+                XercesXmlSerializers.writeMgmtWithDecl(doc, out);
+            } else {
+                XercesXmlSerializers.writeMgmtNoDecl(doc, out);
+            }
+            out.flush();
         } catch (Exception e) {
             String message = e.getMessage();
             if (message == null) {
@@ -1634,6 +1633,7 @@ public class DefaultManagement
     }
 
 
+    @Override
     public RelationshipTuple[] getRelationships(Context context,
                                                 String subject,
                                                 String relationship)
@@ -1650,8 +1650,8 @@ public class DefaultManagement
                                             relationship);
 
             r = m_manager.getReader(Server.USE_DEFINITIVE_STORE, context, pid);
-            logger.debug("Getting Relationships:  pid = " + pid + " predicate = "
-                         + relationship);
+            logger.debug("Getting Relationships:  pid = {} predicate = {}",
+                         pid, relationship);
             try {
                 URIReference pred = null;
                 if (relationship != null) {
@@ -1682,6 +1682,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public boolean addRelationship(Context context,
                                    String subject,
                                    String relationship,
@@ -1733,6 +1734,7 @@ public class DefaultManagement
         }
     }
 
+    @Override
     public boolean purgeRelationship(Context context,
                                      String subject,
                                      String relationship,
@@ -1792,6 +1794,7 @@ public class DefaultManagement
      * @return The result of the validation
      * @see org.fcrepo.server.validation.ecm.EcmValidator
      */
+    @Override
     public Validation validate(Context context,
                                String pid,
                                Date asOfDateTime) throws ServerException {
@@ -1883,7 +1886,7 @@ public class DefaultManagement
             // List files to purge and remove filename to map
             // This operation is synchronized to be thread-safe
             // ------------------------------------------------
-            List<String> removeList = new ArrayList<String>();
+            final List<String> removeList = new ArrayList<String>();
             synchronized (this.m_uploadStartTime) {
                 for (Entry<String, Long> entry :
                         m_uploadStartTime.entrySet()) {
@@ -1907,8 +1910,7 @@ public class DefaultManagement
                 File file = new File(this.m_tempDir, id);
                 if (file.exists()) {
                     if (file.delete()) {
-                        logger.info("Removed uploaded file '" + id
-                                    + "' because it expired.");
+                        logger.info("Removed uploaded file '{}' because it expired.", id);
                     } else {
                         logger.warn("Could not remove expired uploaded file '"
                                     + id + "'. Check permissions in " + m_tempDir.getPath() + " directory.");
@@ -1977,7 +1979,7 @@ public class DefaultManagement
 
                 // take a copy of the existing datastream versions
                 Date[] versions = w.getDatastreamVersions(dsID);
-                Map<Date, Datastream> copyDS = new HashMap<Date, Datastream>();
+                Map<Date, Datastream> copyDS = new HashMap<Date, Datastream>(versions.length);
                 for (Date version: versions) {
                     Datastream d = w.GetDatastream(dsID, version);
                     copyDS.put(version, d.copy());
@@ -2005,62 +2007,56 @@ public class DefaultManagement
 
                     // add character encoding to mime type (will always be UTF-8 as it has come from X datastream in FOXML)
                     if (setMIMETypeCharset) {
-                        if (newDS.DSMIME != null && !newDS.DSMIME.equals("") & !newDS.DSMIME.contains("charset=")) {
+                        if (newDS.DSMIME != null && !newDS.DSMIME.isEmpty() & !newDS.DSMIME.contains("charset=")) {
                             newDS.DSMIME = newDS.DSMIME + "; charset=UTF-8";
                         } else {
                             newDS.DSMIME = "text/xml; charset=UTF-8";
                         }
                     }
 
-                    byte[] byteContent;
+                    InputStream byteContent;
+                    long byteLength;
 
                     // Note: use getContentStream() rather than getting bytes directly, as this is how
                     // X datastreams are disseminated (we want the M content to be identical on
                     // dissemination)
                     if (reformat) {
-                        byteContent = this.getXML(existing.getContentStream(), addXMLHeader);
+                        ReadableByteArrayOutputStream out = new ReadableByteArrayOutputStream(2048);
+                        this.getXML(existing.getContentStream(), out, addXMLHeader);
+                        out.close();
+                        byteContent = out.toInputStream();
+                        byteLength = out.length();
                     } else {
                         // add just the XML header declaring encoding, if requested
                         if (addXMLHeader) {
-                            byte[] header;
-                            try {
-                                header = xmlHeader.getBytes("UTF-8");
-                            } catch (UnsupportedEncodingException e) {
-                                // should never happen
-                                throw new RuntimeException(e);
-                            }
-                            byte[] existingContent;
-                            try {
-                                existingContent = IOUtils.toByteArray(existing.getContentStream());
-                            } catch (IOException e) {
-                                throw new GeneralException("Error reading existing content from X datastream", e);
-                            }
-                            byteContent = Arrays.copyOf(header, header.length + existingContent.length);
-                            System.arraycopy(existing.xmlContent, 0, byteContent, header.length, existingContent.length);
+                            byteContent = new SequenceInputStream(
+                                    new ByteArrayInputStream(xmlHeader),
+                                    existing.getContentStream());
+                            byteLength = xmlHeader.length + existing.DSSize;
                         } else {
-                            try {
-                                byteContent = IOUtils.toByteArray(existing.getContentStream());
-                            } catch (IOException e) {
-                                throw new GeneralException("Error reading existing content from X datastream", e);
-                            }
+                            byteContent = existing.getContentStream();
+                            byteLength = existing.DSSize;
                         }
                     }
 
                     // add the content stream
-                    MIMETypedStream content = new MIMETypedStream(null, new ByteArrayInputStream(byteContent), null, byteContent.length);
+                    MIMETypedStream content = new MIMETypedStream(null, byteContent, null, byteLength);
                     newDS.putContentStream(content);
 
                     // checksum only needs recalc if we added a header
                     // note getChecksum() caters for checksum type set to disabled
                     if (addXMLHeader) {
-                        logger.debug("Recalculating checksum.  Type=" + newDS.DSChecksumType + " Existing checksum: " + newDS.DSChecksum != null ? newDS.DSChecksum : "none");
+                        logger.debug("Recalculating checksum.  Type={} Existing checksum: {}",
+                                newDS.DSChecksumType, newDS.DSChecksum != null ? newDS.DSChecksum : "none");
 
                         // forces computation rather than return existing
                         newDS.DSChecksum = Datastream.CHECKSUM_NONE;
                         newDS.DSChecksum = newDS.getChecksum();
 
-                        logger.debug("New checksum: " + newDS.DSChecksum);
-                        logger.debug("Testing new checksum, response is {}", newDS.compareChecksum());
+                        if (logger.isDebugEnabled()) {
+                            logger.debug("New checksum: {}", newDS.DSChecksum);
+                            logger.debug("Testing new checksum, response is {}", newDS.compareChecksum());
+                        }
                     }
 
                     w.addDatastream(newDS, true);

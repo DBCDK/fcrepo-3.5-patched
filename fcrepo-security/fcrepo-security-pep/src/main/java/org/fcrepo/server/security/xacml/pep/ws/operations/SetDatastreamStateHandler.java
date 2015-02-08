@@ -19,27 +19,24 @@
 package org.fcrepo.server.security.xacml.pep.ws.operations;
 
 import java.net.URI;
-
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
-import com.sun.xacml.attr.AnyURIAttribute;
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.StringAttribute;
-import com.sun.xacml.ctx.RequestCtx;
+import javax.xml.ws.handler.soap.SOAPMessageContext;
 
-import org.apache.axis.AxisFault;
-import org.apache.axis.MessageContext;
-
+import org.apache.cxf.binding.soap.SoapFault;
+import org.fcrepo.common.Constants;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.pdp.data.FedoraPolicyStore;
+import org.fcrepo.server.security.xacml.pep.ContextHandler;
+import org.fcrepo.server.security.xacml.pep.PEPException;
+import org.fcrepo.server.security.xacml.pep.ResourceAttributes;
+import org.fcrepo.server.security.xacml.util.LogUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.fcrepo.common.Constants;
-
-import org.fcrepo.server.security.xacml.pdp.data.FedoraPolicyStore;
-import org.fcrepo.server.security.xacml.pep.PEPException;
-import org.fcrepo.server.security.xacml.util.LogUtil;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
+import org.jboss.security.xacml.sunxacml.attr.StringAttribute;
 
 
 /**
@@ -51,42 +48,42 @@ public class SetDatastreamStateHandler
     private static final Logger logger =
             LoggerFactory.getLogger(SetDatastreamStateHandler.class);
 
-    public SetDatastreamStateHandler()
+    public SetDatastreamStateHandler(ContextHandler contextHandler)
             throws PEPException {
-        super();
+        super(contextHandler);
     }
 
-    public RequestCtx handleResponse(MessageContext context)
+    @Override
+    public RequestCtx handleResponse(SOAPMessageContext context)
             throws OperationHandlerException {
         return null;
     }
 
-    public RequestCtx handleRequest(MessageContext context)
+    @Override
+    public RequestCtx handleRequest(SOAPMessageContext context)
             throws OperationHandlerException {
         logger.debug("SetDatastreamStateHandler/handleRequest!");
 
         RequestCtx req = null;
-        List<Object> oMap = null;
+        Object oMap = null;
 
         String pid = null;
         String dsID = null;
         String dsState = null;
-        // String logMessage = null;
 
         try {
             oMap = getSOAPRequestObjects(context);
             logger.debug("Retrieved SOAP Request Objects");
-        } catch (AxisFault af) {
+        } catch (SoapFault af) {
             logger.error("Error obtaining SOAP Request Objects", af);
             throw new OperationHandlerException("Error obtaining SOAP Request Objects",
                                                 af);
         }
 
         try {
-            pid = (String) oMap.get(0);
-            dsID = (String) oMap.get(1);
-            dsState = (String) oMap.get(2);
-            // logMessage = (String) oMap.get(3);
+            pid = (String) callGetter("getPid",oMap);
+            dsID = (String) callGetter("getDsID", oMap);
+            dsState = (String) callGetter("getDsState", oMap);
         } catch (Exception e) {
             logger.error("Error obtaining parameters", e);
             throw new OperationHandlerException("Error obtaining parameters.",
@@ -96,37 +93,29 @@ public class SetDatastreamStateHandler
         logger.debug("Extracted SOAP Request Objects");
 
         Map<URI, AttributeValue> actions = new HashMap<URI, AttributeValue>();
-        Map<URI, AttributeValue> resAttr = new HashMap<URI, AttributeValue>();
+        Map<URI, AttributeValue> resAttr;
 
         try {
-            if (pid != null && !"".equals(pid)) {
-                resAttr.put(Constants.OBJECT.PID.getURI(),
-                            new StringAttribute(pid));
-            }
-            if (pid != null && !"".equals(pid)) {
-                resAttr.put(new URI(XACML_RESOURCE_ID),
-                            new AnyURIAttribute(new URI(pid)));
-            }
-            if (dsID != null && !"".equals(dsID)) {
+            resAttr = ResourceAttributes.getResources(pid);
+            if (dsID != null && !dsID.isEmpty()) {
                 resAttr.put(Constants.DATASTREAM.ID.getURI(),
                             new StringAttribute(dsID));
             }
-            if (dsState != null && !"".equals(dsState)) {
+            if (dsState != null && !dsState.isEmpty()) {
                 resAttr.put(Constants.DATASTREAM.NEW_STATE.getURI(),
                             new StringAttribute(dsState));
             }
 
             actions
                     .put(Constants.ACTION.ID.getURI(),
-                         new StringAttribute(Constants.ACTION.SET_DATASTREAM_STATE
-                                 .getURI().toASCIIString()));
+                         Constants.ACTION.SET_DATASTREAM_STATE
+                                 .getStringAttribute());
             actions.put(Constants.ACTION.API.getURI(),
-                        new StringAttribute(Constants.ACTION.APIM.getURI()
-                                .toASCIIString()));
+                        Constants.ACTION.APIM.getStringAttribute());
             // modifying the FeSL policy datastream requires policy management permissions
             if (dsID != null && dsID.equals(FedoraPolicyStore.FESL_POLICY_DATASTREAM)) {
                 actions.put(Constants.ACTION.ID.getURI(),
-                            new StringAttribute(Constants.ACTION.MANAGE_POLICIES.getURI().toASCIIString()));
+                            Constants.ACTION.MANAGE_POLICIES.getStringAttribute());
             }
 
 
@@ -136,9 +125,8 @@ public class SetDatastreamStateHandler
                                                      resAttr,
                                                      getEnvironment(context));
 
-            LogUtil.statLog(context.getUsername(),
-                            Constants.ACTION.SET_DATASTREAM_STATE.getURI()
-                                    .toASCIIString(),
+            LogUtil.statLog(getUser(context),
+                            Constants.ACTION.SET_DATASTREAM_STATE.uri,
                             pid,
                             dsID);
         } catch (Exception e) {

@@ -1,41 +1,52 @@
 <project name="tomcat-run">
-
-  <target name="tomcat-start">
-    <echo>Starting Fedora</echo>
-    <parallel>
-      <java jar="${mvn.tomcat.home}/bin/bootstrap.jar" fork="yes" dir="${mvn.tomcat.home}" spawn="true">
-        <jvmarg value="-Djava.io.tmpdir=${mvn.tomcat.home}/temp" />
-        <jvmarg value="-XX:MaxPermSize=512M" />
-        <jvmarg value="-Xmx512M" />
-        <env key="FEDORA_HOME" value="${mvn.fedora.home}" />
-        <env key="PEP_NOCACHE" value="true"/>
-        <arg line="start" />
-      </java>
-      <sequential>
-        <waitfor maxwait="60" maxwaitunit="second" checkevery="2" timeoutproperty="timeout">
-          <socket server="127.0.0.1" port="${mvn.fedora.port}"/>
-        </waitfor>
-        <fail if="timeout">Fedora did not start in time</fail>
-        <echo>Fedora started</echo>
-      </sequential>
-    </parallel>
+  <target name="wait-until-port">
+    <sequential>
+      <waitfor maxwait="60" maxwaitunit="second" checkevery="2" timeoutproperty="timeout">
+        <socket server="127.0.0.1" port="${mvn.fedora.port}"/>
+      </waitfor>
+      <fail if="timeout">Fedora did not start in time</fail>
+    </sequential>
   </target>
-
-  <target name="tomcat-stop">
-    <parallel>
-    <java jar="${mvn.tomcat.home}/bin/bootstrap.jar" fork="yes" dir="${mvn.tomcat.home}" spawn="true">
-      <jvmarg value="-Djava.io.tmpdir=${mvn.tomcat.home}/temp" />
-      <env key="FEDORA_HOME" value="${mvn.fedora.home}" />
-      <arg line="stop" />
-    </java>
+  <target name="wait-on-port">
     <sequential>
       <waitfor maxwait="60" maxwaitunit="second" checkevery="2" timeoutproperty="timeout">
         <not>
           <socket server="127.0.0.1" port="${mvn.fedora.port}"/>
         </not>
       </waitfor>
+      <fail if="timeout">Fedora did not stop in time</fail>
     </sequential>
-    </parallel>
+  </target>
+  <target name="tomcat-start">
+    <echo>Starting Fedora</echo>
+    <sequential>
+      <java classname="org.apache.catalina.startup.Bootstrap" fork="yes" dir="${mvn.tomcat.home}" spawn="true">
+      	<classpath path="${mvn.tomcat.home}/bin/bootstrap.jar:${mvn.tomcat.home}/bin/tomcat-juli.jar" />
+        <jvmarg value="-Djava.io.tmpdir=${mvn.tomcat.home}/temp" />
+      	<!-- disable FeSL PEP caching or cached results will cause test failures -->
+      	<jvmarg value="-Dfedora.fesl.pep_nocache=true"/>
+        <jvmarg value="-Dcatalina.base=${mvn.tomcat.home}" />
+      	<jvmarg value="-Djava.util.logging.config.file=${mvn.tomcat.home}/conf/logging.properties" />
+        <jvmarg value="-Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager" />
+      	<jvmarg value="-XX:MaxPermSize=512M" />
+        <jvmarg value="-Xmx512M" />
+        <env key="FEDORA_HOME" value="${mvn.fedora.home}" />
+        <arg line="start" />
+      </java>
+      <antcall target="wait-until-port" />
+    </sequential>
+  </target>
+
+  <target name="tomcat-stop">
+    <sequential>
+      <java classname="org.apache.catalina.startup.Bootstrap" fork="yes" dir="${mvn.tomcat.home}" spawn="true">
+        <classpath path="${mvn.tomcat.home}/bin/bootstrap.jar:${mvn.tomcat.home}/bin/tomcat-juli.jar" />
+        <jvmarg value="-Djava.io.tmpdir=${mvn.tomcat.home}/temp" />
+        <env key="FEDORA_HOME" value="${mvn.fedora.home}" />
+        <arg line="stop" />
+      </java>
+      <antcall target="wait-on-port" />
+    </sequential>
   </target>
 
 </project>

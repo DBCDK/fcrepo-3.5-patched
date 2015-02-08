@@ -4,19 +4,21 @@
  */
 package org.fcrepo.utilities.install;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-
-import java.util.HashMap;
-import java.util.Map;
-
+import org.apache.commons.io.IOUtils;
 import org.fcrepo.utilities.FileUtils;
 import org.fcrepo.utilities.LogConfig;
+import org.fcrepo.utilities.Zip;
 import org.fcrepo.utilities.install.container.Container;
 import org.fcrepo.utilities.install.container.ContainerFactory;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.HashMap;
+import java.util.Map;
 
 
 public class Installer {
@@ -100,30 +102,62 @@ public class Installer {
     private File buildWAR() throws InstallationFailedException {
         String fedoraWarName = _opts.getValue(InstallOptions.FEDORA_APP_SERVER_CONTEXT) ;
         System.out.println("Preparing " + fedoraWarName + ".war...");
-        // build a staging area in FEDORA_HOME
         try {
-
-            File fedoraWar = new File(installDir, fedoraWarName + ".war");
-            FileOutputStream out = new FileOutputStream(fedoraWar);
-
-            FileUtils.copy(_dist.get(Distribution.FEDORA_WAR), out);
-            return fedoraWar;
-
-        } catch (FileNotFoundException e) {
-            throw new InstallationFailedException(e.getMessage(), e);
+            File outputFile = new File(installDir, fedoraWarName + ".war");
+            String driver = _opts.getValue(InstallOptions.DATABASE_DRIVER);
+            File stagingDir = stage(_dist.get(Distribution.FEDORA_WAR));
+            if (!driver.equals(InstallOptions.INCLUDED)) {
+                addLibrary(stagingDir, driver, outputFile);
+            }
+            addContext(stagingDir);
+            repackage(stagingDir, outputFile);
+            return outputFile;
         } catch (IOException e) {
             throw new InstallationFailedException(e.getMessage(), e);
 		}
     }
 
+    private File stage(InputStream inputStream) throws IOException {
+        File stagingDir = new File(installDir, "fedorawar");
+        stagingDir.mkdirs();
+        Zip.unzip(inputStream, stagingDir);
+        return stagingDir;
+    }
+    private File repackage(File stagingDir, File outputFile) throws IOException {
+        Zip.zip(outputFile, stagingDir.listFiles());
+        FileUtils.delete(stagingDir);
+        return outputFile;
+    }
+    private void addLibrary(File stagingDir, String libraryPath,
+            File outputFile) throws IOException {
+        // unzip, add file, re-zip, and remove staging dir
+        File sourceFile = new File(libraryPath);
+        File destFile = new File(stagingDir, "WEB-INF/lib/" + sourceFile.getName());
+        FileUtils.copy(sourceFile, destFile);
+    }
+    private void addContext(File stagingDir) throws IOException {
+        File metaInf = new File(stagingDir, "META-INF");
+        metaInf.mkdirs();
+        File contextFile = new File(metaInf, "context.xml");
+        String content =
+                IOUtils.toString(this.getClass()
+                        .getResourceAsStream("/webapp-context/context.xml"))
+                        .replace("${fedora.home}",
+                                 _opts.getValue(InstallOptions.FEDORA_HOME));
+        FileWriter writer = new FileWriter(contextFile);
+        IOUtils.write(content, writer);
+        writer.close();
+    }
     private void deployLocalService(Container container, String filename)
             throws InstallationFailedException {
         try {
             File war = new File(installDir, filename);
-            if (!FileUtils.copy(_dist.get(filename), new FileOutputStream(war))) {
+            FileOutputStream out = new FileOutputStream(war);
+            if (!FileUtils.copy(_dist.get(filename), out)) {
                 throw new InstallationFailedException("Copy to "
                         + war.getAbsolutePath() + " failed.");
             }
+            out.close();
             container.deploy(war);
         } catch (IOException e) {
             throw new InstallationFailedException(e.getMessage(), e);

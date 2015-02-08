@@ -192,12 +192,10 @@ class WSDLParser
     }
 
     public void skippedEntity(String name) throws SAXException {
-        StringBuffer sb = new StringBuffer();
-        sb.append('&');
-        sb.append(name);
-        sb.append(';');
-        char[] text = new char[sb.length()];
-        sb.getChars(0, sb.length(), text, 0);
+        char[] text = new char[name.length() + 2];
+        text[0] = '&';
+        text[text.length - 1] = ';';
+        name.getChars(0, name.length(), text, 1);
         characters(text, 0, text.length);
     }
 
@@ -336,6 +334,7 @@ class WSDLParser
                 wsdlPort = new Port();
                 wsdlPort.portName = attrs.getValue("name");
                 tmp_portBindingName = attrs.getValue("binding");
+                @SuppressWarnings("unused")
                 String nsprefix = null;
                 tmp_portBindingLocalName = null;
                 StringTokenizer st =
@@ -366,6 +365,7 @@ class WSDLParser
             StringTokenizer st =
                     new StringTokenizer(tmp_bindingPortTypeName, ":");
             if (st.hasMoreTokens()) {
+                @SuppressWarnings("unused")
                 String nsprefix = st.nextToken();
                 tmp_bindingPortTypeLocalName = st.nextToken();
             } else {

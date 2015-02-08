@@ -5,20 +5,15 @@
 package org.fcrepo.server.security.xacml.util;
 
 import java.io.File;
-
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.MalformedPIDException;
 import org.fcrepo.common.PID;
-
 import org.fcrepo.server.Context;
 import org.fcrepo.server.ReadOnlyContext;
 import org.fcrepo.server.Server;
@@ -27,6 +22,8 @@ import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.management.Management;
 import org.fcrepo.server.security.xacml.MelcoeXacmlException;
 import org.fcrepo.server.storage.types.RelationshipTuple;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -155,13 +152,11 @@ public class RELSRelationshipResolver extends RelationshipResolverBase
     }
 
     protected Set<String> getParents(String pid) throws MelcoeXacmlException {
-        if (logger.isDebugEnabled()) {
-            logger.debug("Obtaining parents for: " + pid);
-        }
+        logger.debug("Obtaining parents for: {}", pid);
 
         Set<String> parentPIDs = new HashSet<String>();
         // repository "object" has no parents
-        if (pid.equalsIgnoreCase(REPOSITORY)) {
+        if (pid.equalsIgnoreCase(Constants.FEDORA_REPOSITORY_PID.uri)) {
             return parentPIDs;
         }
 
@@ -194,7 +189,7 @@ public class RELSRelationshipResolver extends RelationshipResolverBase
                         }
                         } catch (MalformedPIDException e) {
                             // target of relationship isn't a PID
-                            logger.warn("Triple " + pid + " " + rel + " " + parent + " does not have a digital object as its target");
+                            logger.warn("Triple {} {} {} does not have a digital object as its target", pid, rel, parent);
 
                         }
                     }

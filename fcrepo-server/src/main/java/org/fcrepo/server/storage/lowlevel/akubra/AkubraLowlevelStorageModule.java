@@ -13,6 +13,7 @@ import org.fcrepo.server.Module;
 import org.fcrepo.server.Server;
 import org.fcrepo.server.errors.LowlevelStorageException;
 import org.fcrepo.server.errors.ModuleInitializationException;
+import org.fcrepo.server.storage.lowlevel.ICheckable;
 import org.fcrepo.server.storage.lowlevel.IListable;
 import org.fcrepo.server.storage.lowlevel.ILowlevelStorage;
 import org.fcrepo.server.storage.lowlevel.ISizable;
@@ -37,13 +38,13 @@ import org.springframework.beans.factory.annotation.Required;
  */
 public class AkubraLowlevelStorageModule
         extends Module
-        implements ILowlevelStorage, IListable, ISizable {
+        implements ILowlevelStorage, IListable, ISizable, ICheckable {
 
-    private ILowlevelStorage m_impl;
+    private AkubraLowlevelStorage m_impl;
 
     @Required
     public void setImpl(ILowlevelStorage store) {
-        m_impl = store;
+        setLLStoreImpl((AkubraLowlevelStorage)store);
     }
 
     public AkubraLowlevelStorageModule(Map<String, String> moduleParameters,
@@ -53,7 +54,7 @@ public class AkubraLowlevelStorageModule
         super(moduleParameters, server, role);
     }
     
-    public void setLLStoreImpl(ILowlevelStorage impl) {
+    public void setLLStoreImpl(AkubraLowlevelStorage impl) {
     	m_impl = impl;
     }
 
@@ -65,16 +66,18 @@ public class AkubraLowlevelStorageModule
         }
     }
 
-    public void addObject(String pid, InputStream content)
+    @Override
+    public void addObject(String pid, InputStream content, Map<String, String> hints)
             throws LowlevelStorageException {
-        m_impl.addObject(pid, content);
+        m_impl.addObject(pid, content, hints);
     }
-
-    public void replaceObject(String pid, InputStream content)
+    
+    @Override
+    public void replaceObject(String pid, InputStream content, Map<String, String> hints)
             throws LowlevelStorageException {
-        m_impl.replaceObject(pid, content);
+        m_impl.replaceObject(pid, content, hints);
     }
-
+    
     public InputStream retrieveObject(String pid)
             throws LowlevelStorageException {
         return m_impl.retrieveObject(pid);
@@ -92,16 +95,18 @@ public class AkubraLowlevelStorageModule
         m_impl.auditObject();
     }
 
-    public long addDatastream(String pid, InputStream content)
+    @Override
+    public long addDatastream(String pid, InputStream content, Map<String, String> hints)
             throws LowlevelStorageException {
-        return m_impl.addDatastream(pid, content);
+        return m_impl.addDatastream(pid, content, hints);
     }
-
-    public long replaceDatastream(String pid, InputStream content)
+    
+    @Override
+    public long replaceDatastream(String pid, InputStream content, Map<String, String> hints)
             throws LowlevelStorageException {
-        return m_impl.replaceDatastream(pid, content);
+        return m_impl.replaceDatastream(pid, content, hints);
     }
-
+    
     public InputStream retrieveDatastream(String pid)
             throws LowlevelStorageException {
         return m_impl.retrieveDatastream(pid);
@@ -122,16 +127,24 @@ public class AkubraLowlevelStorageModule
     // IListable methods
 
     public Iterator<String> listObjects() {
-        return ((IListable) m_impl).listObjects();
+        return m_impl.listObjects();
     }
 
     public Iterator<String> listDatastreams() {
-        return ((IListable) m_impl).listDatastreams();
+        return m_impl.listDatastreams();
     }
 
     // ISizable methods
 
     public long getDatastreamSize(String dsKey) throws LowlevelStorageException {
-        return ((ISizable) m_impl).getDatastreamSize(dsKey);
+        return m_impl.getDatastreamSize(dsKey);
     }
+
+    // ICheckable methods
+    @Override
+    public boolean objectExists(String objectKey)
+            throws LowlevelStorageException {
+        return m_impl.objectExists(objectKey);
+    }
+
 }

@@ -18,92 +18,84 @@
 
 package org.fcrepo.server.security.xacml.pep.ws.operations;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
-import javax.xml.namespace.QName;
+import javax.xml.ws.handler.soap.SOAPMessageContext;
 
-import org.apache.axis.AxisFault;
-import org.apache.axis.Constants;
-import org.apache.axis.MessageContext;
-import org.apache.axis.message.RPCParam;
-import org.apache.axis.types.NonNegativeInteger;
+import org.apache.cxf.binding.soap.SoapFault;
+import org.fcrepo.common.Constants;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.pep.ContextHandler;
+import org.fcrepo.server.security.xacml.pep.PEPException;
+import org.fcrepo.server.security.xacml.util.LogUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.fcrepo.server.security.xacml.pep.PEPException;
-import org.fcrepo.server.security.xacml.util.LogUtil;
-import org.fcrepo.server.types.gen.FieldSearchQuery;
-
-import com.sun.xacml.ctx.RequestCtx;
 
 /**
  * @author nishen@melcoe.mq.edu.au
  */
 public class FindObjectsHandler
-        extends AbstractOperationHandler {
+        extends FieldSearchResultHandler {
 
     private static final Logger logger =
             LoggerFactory.getLogger(FindObjectsHandler.class);
 
-    private FieldSearchResultHandler resultHandler = null;
-
-    public FindObjectsHandler()
+    public FindObjectsHandler(ContextHandler contextHandler)
             throws PEPException {
-        super();
-        resultHandler = new FieldSearchResultHandler();
+        super(contextHandler);
     }
 
-    public RequestCtx handleResponse(MessageContext context)
+    @Override
+    public RequestCtx handleResponse(SOAPMessageContext context)
             throws OperationHandlerException {
         logger.debug("FindObjectsHandler/handleResponse!");
-        return resultHandler.handleResponse(context);
+        return super.handleResponse(context);
     }
 
-    public RequestCtx handleRequest(MessageContext context)
+    @Override
+    public RequestCtx handleRequest(SOAPMessageContext context)
             throws OperationHandlerException {
         logger.debug("FindObjectsHandler/handleRequest!");
 
         // Ensuring that there is always a PID present in a request.
-        List<Object> oMap = null;
+        Object oMap = null;
 
         try {
             oMap = getSOAPRequestObjects(context);
-            String[] resultFields = (String[]) oMap.get(0);
-            NonNegativeInteger maxResults = (NonNegativeInteger) oMap.get(1);
-            FieldSearchQuery fieldSearchQuery = (FieldSearchQuery) oMap.get(2);
+            org.fcrepo.server.types.gen.ArrayOfString resultFields =
+                (org.fcrepo.server.types.gen.ArrayOfString) callGetter("getResultFields",oMap);
 
             List<String> resultFieldsList =
-                    new ArrayList<String>(Arrays.asList(resultFields));
+                    resultFields.getItem();
 
             if (!resultFieldsList.contains("pid")) {
                 resultFieldsList.add("pid");
             }
-            String[] newResultFields =
-                    resultFieldsList
-                            .toArray(new String[resultFieldsList.size()]);
+            // todo: fix
+            // barmintor: How? Why would we set defaults here rather than in the actual module?
 
-            List<RPCParam> params = new ArrayList<RPCParam>();
-            params
-                    .add(new RPCParam(new QName("http://www.fedora.info/definitions/1/0/types/#FieldSearchResult"),
-                                      newResultFields));
-            params.add(new RPCParam(Constants.XSD_NONNEGATIVEINTEGER,
-                                    maxResults));
-            params
-                    .add(new RPCParam(new QName("http://www.fedora.info/definitions/1/0/types/#FieldSearchQuery"),
-                                      fieldSearchQuery));
-            setSOAPRequestObjects(context, params);
+//            List<RPCParam> params = new ArrayList<RPCParam>();
+//            params
+//                    .add(new RPCParam(new QName("http://www.fedora.info/definitions/1/0/types/#FieldSearchResult"),
+//                                      newResultFields));
+//            params.add(new RPCParam(Constants.XSD_NONNEGATIVEINTEGER,
+//                                    maxResults));
+//            params
+//                    .add(new RPCParam(new QName("http://www.fedora.info/definitions/1/0/types/#FieldSearchQuery"),
+//                                      fieldSearchQuery));
+//            setSOAPRequestObjects(context, params);
 
-            LogUtil.statLog(context.getUsername(),
-                            org.fcrepo.common.Constants.ACTION.FIND_OBJECTS
-                                    .getURI().toASCIIString(),
-                            "FedoraRepository",
+            LogUtil.statLog(getUser(context),
+                            Constants.ACTION.FIND_OBJECTS.uri,
+                            Constants.FEDORA_REPOSITORY_PID.uri,
                             null);
-        } catch (AxisFault af) {
+        } catch (SoapFault af) {
             throw new OperationHandlerException("Error filtering objects.", af);
+        } catch (Throwable t) {
+            throw new OperationHandlerException("Error filtering objects.", t);
         }
 
-        return resultHandler.handleRequest(context);
+        return super.handleRequest(context);
     }
 }

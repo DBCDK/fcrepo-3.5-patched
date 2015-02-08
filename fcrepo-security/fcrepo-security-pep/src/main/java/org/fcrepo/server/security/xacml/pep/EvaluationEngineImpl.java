@@ -21,15 +21,13 @@ package org.fcrepo.server.security.xacml.pep;
 import java.util.HashSet;
 import java.util.Set;
 
-import com.sun.xacml.ctx.RequestCtx;
-import com.sun.xacml.ctx.ResponseCtx;
-import com.sun.xacml.ctx.Result;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import org.fcrepo.server.security.RequestCtx;
 import org.fcrepo.server.security.xacml.MelcoeXacmlException;
 import org.fcrepo.server.security.xacml.util.ContextUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.jboss.security.xacml.sunxacml.ctx.ResponseCtx;
+import org.jboss.security.xacml.sunxacml.ctx.Result;
 
 /**
  * @author nishen@melcoe.mq.edu.au
@@ -40,7 +38,7 @@ public class EvaluationEngineImpl
     private static final Logger logger =
             LoggerFactory.getLogger(EvaluationEngineImpl.class);
 
-    private final ContextUtil contextUtil = ContextUtil.getInstance();
+    private ContextUtil m_contextUtil = null;
 
     private PDPClient client = null;
 
@@ -49,28 +47,20 @@ public class EvaluationEngineImpl
     /*
      * (non-Javadoc)
      * @see
-     * org.fcrepo.server.security.xacml.pep.EvaluationEngine#evaluate(com.sun.xacml.ctx.RequestCtx)
+     * org.fcrepo.server.security.xacml.pep.EvaluationEngine#evaluate(org.jboss.security.xacml.sunxacml.ctx.RequestCtx)
      */
+    @Override
     public ResponseCtx evaluate(RequestCtx reqCtx) throws PEPException {
-        if (logger.isDebugEnabled()) {
-            logger.debug("evaluating RequestCtx request");
-        }
+        logger.debug("evaluating RequestCtx request");
 
-        String request = contextUtil.makeRequestCtx(reqCtx);
-        String response = evaluate(request);
-        ResponseCtx resCtx;
-        try {
-            resCtx = contextUtil.makeResponseCtx(response);
-        } catch (MelcoeXacmlException e) {
-            throw new PEPException(e);
-        }
-        return resCtx;
+        return evaluate(new RequestCtx[]{reqCtx});
     }
 
     /*
      * (non-Javadoc)
      * @see org.fcrepo.server.security.xacml.pep.EvaluationEngine#evaluate(java.lang.String)
      */
+    @Override
     public String evaluate(String request) throws PEPException {
         if (logger.isDebugEnabled()) {
             logger.debug("evaluating String request");
@@ -84,52 +74,46 @@ public class EvaluationEngineImpl
      * (non-Javadoc)
      * @see org.fcrepo.server.security.xacml.pep.EvaluationEngine#evaluate(java.lang.String[])
      */
+    @Override
     public String evaluate(String[] requests) throws PEPException {
-        if (logger.isDebugEnabled()) {
-            logger.debug("evaluating array of String requests");
-        }
+        logger.debug("evaluating array of String requests");
 
         long a, b;
 
         Set<Result> finalResults = new HashSet<Result>();
-
-        for (String r : requests) {
-            String response = null;
+        for (int i = 0; i < requests.length; i++) {
+            String r = requests[i];
+            if (r == null) continue;
+            ResponseCtx resCtx = null;
 
             a = System.currentTimeMillis();
 
             if (responseCache != null) {
-                response = responseCache.getCacheItem(r);
+                resCtx = responseCache.getCacheItem(r);
             }
 
-            if (response == null) {
+            if (resCtx == null) {
                 logger.debug("No item found in cache. Sending to PDP for evaluation.");
 
-                response = client.evaluate(r);
+                org.fcrepo.server.security.RequestCtx req = null;
+                try {
+                    req = m_contextUtil.makeRequestCtx(r);
+                } catch (MelcoeXacmlException e) {
+                    throw new PEPException(e);
+                }
+                resCtx = client.evaluate(req);
 
                 // Add this new result to the cache if caching is enabled
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Adding PDP evaluation results to cache");
-                }
+                logger.debug("Adding PDP evaluation results to cache");
                 if (responseCache != null) {
-                    responseCache.addCacheItem(r, response);
+                    responseCache.addCacheItem(r, resCtx);
                 }
-            } else if (logger.isDebugEnabled()) {
+            } else {
                 logger.debug("Item found in cache");
-
             }
 
             b = System.currentTimeMillis();
-            if (logger.isDebugEnabled()) {
-                logger.debug("Time taken for XACML Evaluation: " + (b - a) + "ms");
-            }
-
-            ResponseCtx resCtx;
-            try {
-                resCtx = contextUtil.makeResponseCtx(response);
-            } catch (MelcoeXacmlException e) {
-                throw new PEPException(e);
-            }
+            logger.debug("Time taken for XACML Evaluation: {}ms", (b - a));
 
             @SuppressWarnings("unchecked")
             Set<Result> results = resCtx.getResults();
@@ -139,13 +123,62 @@ public class EvaluationEngineImpl
 
         ResponseCtx resultCtx = new ResponseCtx(finalResults);
 
-        return contextUtil.makeResponseCtx(resultCtx);
+        return m_contextUtil.makeResponseCtx(resultCtx);
+    }
+
+    @Override
+    public ResponseCtx evaluate(RequestCtx[] requests) throws PEPException {
+        logger.debug("evaluating array of requests");
+
+        long a, b;
+
+        Set<Result> finalResults = new HashSet<Result>();
+
+        for (RequestCtx r : requests) {
+            if (r == null) continue;
+
+            ResponseCtx resCtx = null;
+
+            a = System.currentTimeMillis();
+
+            String rKey = m_contextUtil.makeRequestCtx(r);
+            if (responseCache != null) {
+                resCtx = responseCache.getCacheItem(rKey);
+            }
+
+            if (resCtx == null) {
+                logger.debug("No item found in cache. Sending to PDP for evaluation.");
+
+                resCtx = client.evaluate(r);
+
+                // Add this new result to the cache if caching is enabled
+                logger.debug("Adding PDP evaluation results to cache");
+                if (responseCache != null) {
+                    responseCache.addCacheItem(rKey, resCtx);
+                }
+            } else {
+                logger.debug("Item found in cache");
+            }
+
+            b = System.currentTimeMillis();
+            logger.debug("Time taken for XACML Evaluation: {}ms", (b - a));
+
+            @SuppressWarnings("unchecked")
+            Set<Result> results = resCtx.getResults();
+
+            finalResults.addAll(results);
+        }
+
+        ResponseCtx resultCtx = new ResponseCtx(finalResults);
+
+        return (resultCtx);
     }
 
     /*
      * (non-Javadoc)
      * @see org.fcrepo.server.security.xacml.pep.EvaluationEngine#getClient()
      */
+    @Override
     public PDPClient getClient() {
         return client;
     }
@@ -155,6 +188,7 @@ public class EvaluationEngineImpl
      * @see
      * org.fcrepo.server.security.xacml.pep.EvaluationEngine#setClient(org.fcrepo.server.security.xacml.pep.PEPClient)
      */
+    @Override
     public void setClient(PDPClient client) {
         this.client = client;
     }
@@ -163,6 +197,7 @@ public class EvaluationEngineImpl
      * (non-Javadoc)
      * @see org.fcrepo.server.security.xacml.pep.EvaluationEngine#getResponseCache()
      */
+    @Override
     public ResponseCache getResponseCache() {
         return responseCache;
     }
@@ -173,7 +208,12 @@ public class EvaluationEngineImpl
      * org.fcrepo.server.security.xacml.pep.EvaluationEngine#setResponseCache(org.fcrepo.server.security.xacml.pep
      * .ResponseCache)
      */
+    @Override
     public void setResponseCache(ResponseCache responseCache) {
         this.responseCache = responseCache;
+    }
+
+    public void setContextUtil(ContextUtil contextUtil) {
+        m_contextUtil = contextUtil;
     }
 }

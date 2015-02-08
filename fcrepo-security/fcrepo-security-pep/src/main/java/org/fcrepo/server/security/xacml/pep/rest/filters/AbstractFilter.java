@@ -19,8 +19,6 @@
 package org.fcrepo.server.security.xacml.pep.rest.filters;
 
 import java.net.URI;
-import java.net.URISyntaxException;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,15 +28,12 @@ import java.util.Set;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.StringAttribute;
-
 import org.fcrepo.common.Constants;
 import org.fcrepo.server.security.xacml.pep.ContextHandler;
-import org.fcrepo.server.security.xacml.pep.ContextHandlerImpl;
 import org.fcrepo.server.security.xacml.pep.PEPException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
+import org.jboss.security.xacml.sunxacml.attr.StringAttribute;
 
 
 /**
@@ -48,21 +43,10 @@ import org.slf4j.LoggerFactory;
  * @author nishen@melcoe.mq.edu.au
  */
 public abstract class AbstractFilter
-        implements RESTFilter {
+implements RESTFilter {
 
-    private static final Logger logger =
-            LoggerFactory.getLogger(AbstractFilter.class);
-
-    private static ContextHandler contextHandlerImpl;
-
-    protected static final String XACML_RESOURCE_ID =
-            "urn:oasis:names:tc:xacml:1.0:resource:resource-id";
-
-    protected static final String SUBJECT_ID =
-            "urn:oasis:names:tc:xacml:1.0:subject:subject-id";
-
-    protected static final String FEDORA_ROLE =
-            "urn:fedora:names:fedora:2.1:subject:role";
+    private static final String[] EMPTY = new String[0];
+    private ContextHandler m_contextHandler;
 
     /**
      * Default constructor obtains an instance of the Context Handler.
@@ -71,14 +55,17 @@ public abstract class AbstractFilter
      */
     public AbstractFilter()
             throws PEPException {
-        contextHandlerImpl = ContextHandlerImpl.getInstance();
+    }
+
+    public void setContextHandler(ContextHandler contextHandler) {
+        m_contextHandler = contextHandler;
     }
 
     /**
      * @return the ContextHandler instance
      */
     public ContextHandler getContextHandler() {
-        return contextHandlerImpl;
+        return m_contextHandler;
     }
 
     /**
@@ -94,8 +81,8 @@ public abstract class AbstractFilter
             throws ServletException {
         @SuppressWarnings("unchecked")
         Map<String, Set<String>> reqAttr =
-                (Map<String, Set<String>>) request
-                        .getAttribute("FEDORA_AUX_SUBJECT_ATTRIBUTES");
+        (Map<String, Set<String>>) request
+        .getAttribute("FEDORA_AUX_SUBJECT_ATTRIBUTES");
 
         Set<String> fedoraRoles = null;
         if (reqAttr != null) {
@@ -111,61 +98,56 @@ public abstract class AbstractFilter
                 new ArrayList<Map<URI, List<AttributeValue>>>();
         String user = request.getRemoteUser();
 
-        if (user == null || "".equals(user)) {
+        if (user == null || user.isEmpty()) {
             user = "anonymous";
         }
 
         // setup the id and value for the requesting subject
-        try {
-            Map<URI, List<AttributeValue>> subAttr =
-                    new HashMap<URI, List<AttributeValue>>();
-            List<AttributeValue> attrList = new ArrayList<AttributeValue>();
-            attrList.add(new StringAttribute(user));
-            subAttr.put(Constants.SUBJECT.LOGIN_ID.getURI(), attrList);
-            if (fedoraRole != null && fedoraRole.length > 0) {
-                attrList = new ArrayList<AttributeValue>();
-                for (String f : fedoraRole) {
-                    attrList.add(new StringAttribute(f));
-                }
-                subAttr.put(new URI(FEDORA_ROLE), attrList);
-            }
-            subjects.add(subAttr);
-
-            subAttr = new HashMap<URI, List<AttributeValue>>();
+        Map<URI, List<AttributeValue>> subAttr =
+                new HashMap<URI, List<AttributeValue>>();
+        List<AttributeValue> attrList = new ArrayList<AttributeValue>();
+        attrList.add(new StringAttribute(user));
+        subAttr.put(Constants.SUBJECT.LOGIN_ID.getURI(), attrList);
+        if (fedoraRole != null && fedoraRole.length > 0) {
             attrList = new ArrayList<AttributeValue>();
-            attrList.add(new StringAttribute(user));
-            subAttr.put(Constants.SUBJECT.USER_REPRESENTED.getURI(), attrList);
-            if (fedoraRole != null && fedoraRole.length > 0) {
-                attrList = new ArrayList<AttributeValue>();
-                for (String f : fedoraRole) {
-                    attrList.add(new StringAttribute(f));
-                }
-                subAttr.put(new URI(FEDORA_ROLE), attrList);
+            for (String f : fedoraRole) {
+                attrList.add(new StringAttribute(f));
             }
-            subjects.add(subAttr);
-
-            subAttr = new HashMap<URI, List<AttributeValue>>();
-            attrList = new ArrayList<AttributeValue>();
-            attrList.add(new StringAttribute(user));
-            subAttr.put(new URI(SUBJECT_ID), attrList);
-            if (fedoraRole != null && fedoraRole.length > 0) {
-                attrList = new ArrayList<AttributeValue>();
-                for (String f : fedoraRole) {
-                    attrList.add(new StringAttribute(f));
-                }
-                subAttr.put(new URI(FEDORA_ROLE), attrList);
-            }
-            subjects.add(subAttr);
-        } catch (URISyntaxException use) {
-            logger.error(use.getMessage(), use);
-            throw new ServletException(use);
+            subAttr.put(Constants.SUBJECT.ROLE.getURI(), attrList);
         }
+        subjects.add(subAttr);
+
+        subAttr = new HashMap<URI, List<AttributeValue>>();
+        attrList = new ArrayList<AttributeValue>();
+        attrList.add(new StringAttribute(user));
+        subAttr.put(Constants.SUBJECT.USER_REPRESENTED.getURI(), attrList);
+        if (fedoraRole != null && fedoraRole.length > 0) {
+            attrList = new ArrayList<AttributeValue>();
+            for (String f : fedoraRole) {
+                attrList.add(new StringAttribute(f));
+            }
+            subAttr.put(Constants.SUBJECT.ROLE.getURI(), attrList);
+        }
+        subjects.add(subAttr);
+
+        subAttr = new HashMap<URI, List<AttributeValue>>();
+        attrList = new ArrayList<AttributeValue>();
+        attrList.add(new StringAttribute(user));
+        subAttr.put(Constants.SUBJECT.ROLE.getURI(), attrList);
+        if (fedoraRole != null && fedoraRole.length > 0) {
+            attrList = new ArrayList<AttributeValue>();
+            for (String f : fedoraRole) {
+                attrList.add(new StringAttribute(f));
+            }
+            subAttr.put(Constants.SUBJECT.ROLE.getURI(), attrList);
+        }
+        subjects.add(subAttr);
 
         return subjects;
     }
 
     /**
-     * Returns a list of environment attributes.
+     * Returns a map of environment attributes.
      *
      * @param request
      *        the servlet request from which to obtain the attributes
@@ -175,9 +157,9 @@ public abstract class AbstractFilter
         Map<URI, AttributeValue> envAttr = new HashMap<URI, AttributeValue>();
         String ip = request.getRemoteAddr();
 
-        if (ip != null && !"".equals(ip)) {
+        if (ip != null && !ip.isEmpty()) {
             envAttr.put(Constants.HTTP_REQUEST.CLIENT_IP_ADDRESS.getURI(),
-                        new StringAttribute(ip));
+                    new StringAttribute(ip));
         }
 
         return envAttr;
@@ -241,5 +223,10 @@ public abstract class AbstractFilter
         }
 
         return false;
+    }
+    
+    protected static String[] getPathParts(HttpServletRequest request) {
+        String path = request.getPathInfo();
+        return (path != null) ? path.split("/") : EMPTY;
     }
 }

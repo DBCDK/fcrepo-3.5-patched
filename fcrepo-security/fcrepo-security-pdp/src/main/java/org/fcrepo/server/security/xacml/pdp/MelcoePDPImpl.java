@@ -20,26 +20,21 @@ package org.fcrepo.server.security.xacml.pdp;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-
 import java.util.HashSet;
 import java.util.Set;
 
-import com.sun.xacml.ConfigurationStore;
-import com.sun.xacml.Indenter;
-import com.sun.xacml.PDP;
-import com.sun.xacml.ParsingException;
-import com.sun.xacml.ctx.RequestCtx;
-import com.sun.xacml.ctx.ResponseCtx;
-import com.sun.xacml.ctx.Result;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import org.fcrepo.server.security.xacml.pdp.data.PolicyStore;
-import org.fcrepo.server.security.xacml.pdp.data.PolicyStoreException;
-import org.fcrepo.server.security.xacml.pdp.data.PolicyStoreFactory;
-import org.fcrepo.server.security.xacml.util.PopulatePolicyDatabase;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.impl.BasicEvaluationCtx;
+import org.fcrepo.server.security.impl.BasicRequestCtx;
+import org.jboss.security.xacml.sunxacml.Indenter;
+import org.jboss.security.xacml.sunxacml.PDP;
+import org.jboss.security.xacml.sunxacml.PDPConfig;
+import org.jboss.security.xacml.sunxacml.ParsingException;
+import org.jboss.security.xacml.sunxacml.ctx.ResponseCtx;
+import org.jboss.security.xacml.sunxacml.ctx.Result;
+import org.jboss.security.xacml.sunxacml.finder.AttributeFinder;
 
 /**
  * This is an implementation of the MelcoePDP interface. It provides for the
@@ -53,61 +48,22 @@ public class MelcoePDPImpl
     private static final Logger logger =
             LoggerFactory.getLogger(MelcoePDPImpl.class);
 
-    private static PolicyStore policyStore;
+    private final PDP m_pdp;
 
-    private PDP pdp;
+    private final AttributeFinder m_finder;
 
-    /**
-     * The default constructor. This reads in the configuration file and
-     * instantiates a PDP based on it.
-     *
-     * @throws MelcoePDPException
-     */
-    public MelcoePDPImpl()
+    public MelcoePDPImpl(PDPConfig pdpConfig)
             throws MelcoePDPException {
-        ConfigurationStore config = null;
-        try {
-            String home = PDP_HOME.getAbsolutePath();
-            File f = null;
-            String filename = null;
-
-            // Loads the policies in PDP_HOME/policies
-            // Does not monitor the directory for changes, nor will
-            // subsequently deleted policies be removed from the policy store
-            try {
-                PopulatePolicyDatabase.addDocuments(getPolicyStore());
-            } catch (Exception e) {
-                logger.error("Error loading bootstrap FeSL policies: " + e.getMessage(), e);
-                throw new MelcoePDPException("Error loading bootstrap FeSL policies", e);
-            }
-            //
-
-            // Ensure we have the configuration file.
-            filename = home + "/conf/config-pdp.xml";
-            f = new File(filename);
-            if (!f.exists()) {
-                throw new MelcoePDPException("Could not locate config file: "
-                                             + f.getAbsolutePath());
-            }
-
-            logger.info("Loading config file: " + f.getAbsolutePath());
-
-            config = new ConfigurationStore(f);
-            pdp = new PDP(config.getDefaultPDPConfig());
-
-            logger.info("PDP Instantiated and initialised!");
-        } catch (Exception e) {
-            logger.error("Could not initialise PDP: " + e.getMessage(), e);
-            throw new MelcoePDPException("Could not initialise PDP: "
-                                         + e.getMessage(), e);
-        }
+        m_pdp = new PDP(pdpConfig);
+        m_finder = pdpConfig.getAttributeFinder();
+        logger.info("PDP Instantiated and initialised!");
     }
-
 
     /*
      * (non-Javadoc)
      * @see org.fcrepo.server.security.xacml.pdp.MelcoePDP#evaluate(java.lang.String)
      */
+    @Override
     public String evaluate(String request) throws EvaluationException {
         logger.debug("evaluating request: {}", request);
 
@@ -115,63 +71,77 @@ public class MelcoePDPImpl
         ByteArrayInputStream is = new ByteArrayInputStream(request.getBytes());
 
         try {
-            req = RequestCtx.getInstance(is);
+            req = BasicRequestCtx.getInstance(is);
         } catch (ParsingException pe) {
             logger.error("Error parsing request:\n" + request, pe);
             throw new EvaluationException("Error parsing request:\n" + request);
         }
 
-        ResponseCtx res = pdp.evaluate(req);
+        ResponseCtx res = evaluate(req);
         ByteArrayOutputStream os = new ByteArrayOutputStream();
         res.encode(os, new Indenter());
 
-        logger.debug("response is: {}", os.toString());
-
+        if (logger.isDebugEnabled()) {
+            logger.debug("response is: {}", os.toString());
+        }
         return os.toString();
     }
 
+    @Override
+    public ResponseCtx evaluate(RequestCtx request) throws EvaluationException {
+        try {
+            BasicEvaluationCtx evalCtx = new BasicEvaluationCtx(request, m_finder);
+            // not necessary with local EvaluationCtx impl
+            /**for (Object obj:req.getResourceAsList()) {
+               Attribute att = (Attribute)obj;
+               if (att.getId().equals(Constants.XACML1_RESOURCE.ID.attributeId)){
+                   evalCtx.setResourceId(att.getValue());
+               }
+            }**/
+            return m_pdp.evaluate(evalCtx);
+        } catch (ParsingException pe) {
+            logger.error("Error parsing request:\n" + request, pe);
+            throw new EvaluationException("Error parsing request:\n" + request);
+        }
+    }
     /*
      * (non-Javadoc)
      * @see org.fcrepo.server.security.xacml.pdp.MelcoePDP#evaluateBatch(java.lang.String[])
      */
+    @Override
     public String evaluateBatch(String[] requests) throws EvaluationException {
-            logger.debug("evaluating request batch");
+        logger.debug("evaluating string request batch");
 
-        Set<Result> results = new HashSet<Result>();
+        RequestCtx[] requestCtxs = new RequestCtx[requests.length];
+        for (int i=0; i< requests.length; i++) {
+            String request = requests[i];
+            ByteArrayInputStream is = new ByteArrayInputStream(request.getBytes());
 
-        for (String req : requests) {
-            ResponseCtx resCtx = null;
-            String response = evaluate(req);
-            ByteArrayInputStream is =
-                    new ByteArrayInputStream(response.getBytes());
             try {
-                resCtx = ResponseCtx.getInstance(is);
+                requestCtxs[i] =  BasicRequestCtx.getInstance(is);
             } catch (ParsingException pe) {
-                logger.error("Error parsing response:\n" + response, pe);
-                throw new EvaluationException("Error parsing response:\n"
-                        + response);
+                logger.error("Error parsing request:\n" + request, pe);
+                throw new EvaluationException("Error parsing request:\n" + request);
             }
-
-            @SuppressWarnings("unchecked")
-            Set<Result> r = resCtx.getResults();
-            results.addAll(r);
         }
 
-        ResponseCtx combinedResponse = new ResponseCtx(results);
+        ResponseCtx combinedResponse = evaluateBatch(requestCtxs);
         ByteArrayOutputStream os = new ByteArrayOutputStream();
         combinedResponse.encode(os, new Indenter());
 
         return os.toString();
     }
 
-    // FIXME: once integrated with module architecture this init stuff will go away
-
-    private synchronized PolicyStore getPolicyStore() throws PolicyStoreException {
-        if (policyStore != null) {
-            return policyStore;
+    @Override
+    public ResponseCtx evaluateBatch(RequestCtx[] requests) throws EvaluationException {
+        logger.debug("evaluating request batch");
+        Set<Result> results = new HashSet<Result>();
+        for (RequestCtx request: requests) {
+            ResponseCtx response = evaluate(request);
+            @SuppressWarnings("unchecked")
+            Set<Result> r = response.getResults();
+            results.addAll(r);
         }
-        PolicyStoreFactory f = new PolicyStoreFactory();
-        policyStore = f.newPolicyStore();
-        return policyStore;
+        return new ResponseCtx(results);
     }
 }

@@ -6,29 +6,20 @@
 package org.fcrepo.server.validation;
 
 import java.io.InputStream;
-
 import java.net.URI;
-
 import java.text.ParseException;
-import java.text.SimpleDateFormat;
 
-import java.util.TimeZone;
-
-import javax.xml.parsers.SAXParser;
-import javax.xml.parsers.SAXParserFactory;
-
-import org.apache.axis.types.NCName;
-
+import org.apache.xerces.util.XMLChar;
+import org.fcrepo.common.Constants;
+import org.fcrepo.common.PID;
+import org.fcrepo.server.errors.ValidationException;
+import org.fcrepo.utilities.DateUtility;
+import org.fcrepo.utilities.XmlTransformUtility;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.xml.sax.Attributes;
 import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
-
-import org.fcrepo.common.Constants;
-import org.fcrepo.common.FaultException;
-import org.fcrepo.common.PID;
-import org.fcrepo.server.errors.ValidationException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 
@@ -132,23 +123,13 @@ public class RelsValidator
 
     private String m_literalType;
 
-    private StringBuffer m_literalValue;
-
-    // SAX parser
-    private final SAXParser m_parser;
+    private StringBuilder m_literalValue;
 
     private static final String RELS_EXT = "RELS-EXT";
 
     private static final String RELS_INT = "RELS-INT";
 
     public RelsValidator() {
-        try {
-            SAXParserFactory spf = SAXParserFactory.newInstance();
-            spf.setNamespaceAware(true);
-            m_parser = spf.newSAXParser();
-        } catch (Exception wontHappen) {
-            throw new FaultException(wontHappen);
-        }
     }
 
     public void validate(PID pid, String dsId, InputStream content)
@@ -164,7 +145,7 @@ public class RelsValidator
                         + dsId + ")");
             }
             m_dsId = dsId;
-            m_parser.parse(content, this);
+            XmlTransformUtility.parseWithoutValidating(content, this);
         } catch (Exception e) {
             throw new ValidationException(dsId + " validation failed: "
                     + e.getMessage(), e);
@@ -231,7 +212,7 @@ public class RelsValidator
                     } else {
                         m_literalType = datatypeURI;
                     }
-                    m_literalValue = new StringBuffer();
+                    m_literalValue = new StringBuilder();
                 }
             } else {
                 throw new SAXException("RelsExtValidator:"
@@ -390,7 +371,10 @@ public class RelsValidator
                         + m_doURI + ").");
             }
         } else if (m_dsId.equals(RELS_INT)) {
-            if (!aboutURI.startsWith(m_doURI + "/")) {
+            int doLength = m_doURI.length();
+            if (!(aboutURI.startsWith(m_doURI) &&
+                  aboutURI.length() > doLength &&
+                  (aboutURI.charAt(doLength) == '/'))) {
                 throw new SAXException("RelsExtValidator:"
                         + " The RELS-INT datastream refers to"
                         + " an improper URI in the 'about' attribute of the"
@@ -400,10 +384,10 @@ public class RelsValidator
                         + m_doURI + ", " + aboutURI + ").");
 
             }
-            String dsId = aboutURI.replace(m_doURI + "/", "");
-            // datastream ID must be an XML NCName, implemented using axis NCName class
+            String dsId = aboutURI.substring(doLength + 1);
+            // datastream ID must be an XML NCName, implemented using NCName class
             if (dsId.length() > ValidationConstants.DATASTREAM_ID_MAXLEN
-                    || dsId.length() < 1 || !NCName.isValid(dsId)) {
+                    || dsId.length() < 1 || !isValid(dsId)) {
                 throw new SAXException("RelsExtValidator:"
                         + " The RELS-INT datastream refers to"
                         + " an improper URI in the 'about' attribute of the"
@@ -411,8 +395,28 @@ public class RelsValidator
                         + " is not a valid datastream ID");
 
             }
-
         }
+    }
+
+    /**
+     * validate the value against the xsd definition
+     * <p/>
+     * NCName ::=  (Letter | '_') (NCNameChar)* NCNameChar ::=  Letter | Digit | '.' | '-' | '_' |
+     * CombiningChar | Extender
+     */
+    private static boolean isValid(String stValue) {
+        int scan;
+        boolean bValid = true;
+
+        for (scan = 0; scan < stValue.length(); scan++) {
+            if (scan == 0)
+                bValid = XMLChar.isNCNameStart(stValue.charAt(scan));
+            else
+                bValid = XMLChar.isNCName(stValue.charAt(scan));
+            if (!bValid)
+                break;
+        }
+        return bValid;
     }
 
     /**
@@ -520,42 +524,8 @@ public class RelsValidator
      * dateTime value. Passing this test will ensure successful indexing later.
      */
     private static boolean isValidDateTime(String lex) {
-        SimpleDateFormat format = new SimpleDateFormat();
-
-        format.setTimeZone(TimeZone.getTimeZone("UTC"));
-        int length = lex.length();
-        if (lex.startsWith("-")) {
-            length--;
-        }
-        if (lex.endsWith("Z")) {
-            if (length == 20) {
-                format.applyPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
-            } else if (length == 22) {
-                format.applyPattern("yyyy-MM-dd'T'HH:mm:ss.S'Z'");
-            } else if (length == 23) {
-                format.applyPattern("yyyy-MM-dd'T'HH:mm:ss.SS'Z'");
-            } else if (length == 24) {
-                format.applyPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
-            } else {
-                logger.warn("Not a valid dateTime: " + lex);
-                return false;
-            }
-        } else {
-            if (length == 19) {
-                format.applyPattern("yyyy-MM-dd'T'HH:mm:ss");
-            } else if (length == 21) {
-                format.applyPattern("yyyy-MM-dd'T'HH:mm:ss.S");
-            } else if (length == 22) {
-                format.applyPattern("yyyy-MM-dd'T'HH:mm:ss.SS");
-            } else if (length == 23) {
-                format.applyPattern("yyyy-MM-dd'T'HH:mm:ss.SSS");
-            } else {
-                logger.warn("Not a valid dateTime: " + lex);
-                return false;
-            }
-        }
         try {
-            format.parse(lex);
+            DateUtility.parseDateStrict(lex);
             if (logger.isTraceEnabled()) {
                 logger.trace("Validated dateTime: " + lex);
             }

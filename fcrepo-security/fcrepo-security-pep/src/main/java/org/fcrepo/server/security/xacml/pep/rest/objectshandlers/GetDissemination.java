@@ -5,9 +5,7 @@
 package org.fcrepo.server.security.xacml.pep.rest.objectshandlers;
 
 import java.io.IOException;
-
 import java.net.URI;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -15,20 +13,18 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import com.sun.xacml.attr.AnyURIAttribute;
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.DateTimeAttribute;
-import com.sun.xacml.attr.StringAttribute;
-import com.sun.xacml.ctx.RequestCtx;
-
+import org.fcrepo.common.Constants;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.pep.PEPException;
+import org.fcrepo.server.security.xacml.pep.ResourceAttributes;
+import org.fcrepo.server.security.xacml.pep.rest.filters.AbstractFilter;
+import org.fcrepo.server.security.xacml.util.LogUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.fcrepo.common.Constants;
-
-import org.fcrepo.server.security.xacml.pep.PEPException;
-import org.fcrepo.server.security.xacml.pep.rest.filters.AbstractFilter;
-import org.fcrepo.server.security.xacml.util.LogUtil;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
+import org.jboss.security.xacml.sunxacml.attr.DateTimeAttribute;
+import org.jboss.security.xacml.sunxacml.attr.StringAttribute;
 
 /**
 * Handles REST API method getDissemination
@@ -47,22 +43,22 @@ public class GetDissemination
         super();
     }
 
+        @SuppressWarnings("deprecation")
         @Override
         public RequestCtx handleRequest(HttpServletRequest request,
                                         HttpServletResponse response)
                 throws IOException, ServletException {
             if (logger.isDebugEnabled()) {
-                logger.debug(this.getClass().getName() + "/handleRequest!");
+                logger.debug("{}/handleRequest!", this.getClass().getName());
             }
 
-            String path = request.getPathInfo();
-            String[] parts = path.split("/");
-
-            // - /objects/[pid]/methods/[sdef]/[method]
-
+            String[] parts = getPathParts(request);
+            if (parts.length < 5) {
+                logger.error("Not enough path components on the URI: {}", request.getRequestURI());
+                throw new ServletException("Not enough path components on the URI: " + request.getRequestURI());
+            }
+            
             String pid = parts[1];
-            String sDefPid = parts[3];
-            String methodName = parts[4];
 
             String asOfDateTime = request.getParameter("asOfDateTime");
             if (!isDate(asOfDateTime)) {
@@ -71,35 +67,34 @@ public class GetDissemination
 
             RequestCtx req = null;
             Map<URI, AttributeValue> actions = new HashMap<URI, AttributeValue>();
-            Map<URI, AttributeValue> resAttr = new HashMap<URI, AttributeValue>();
+            Map<URI, AttributeValue> resAttr;
             try {
-                if (pid != null && !"".equals(pid)) {
-                    resAttr.put(Constants.OBJECT.PID.getURI(),
-                                new StringAttribute(pid));
-                }
-                if (pid != null && !"".equals(pid)) {
-                    resAttr.put(new URI(XACML_RESOURCE_ID),
-                                new AnyURIAttribute(new URI(pid)));
-                }
-                if (sDefPid != null && !"".equals(sDefPid)) {
-                    resAttr.put(Constants.SDEF.PID.getURI(),
+                resAttr = ResourceAttributes.getResources(pid);
+
+                // - /objects/[pid]/methods/[sdef]/[method]
+                if ("methods".equals(parts[2])) {
+                    String sDefPid = parts[3];
+                    String methodName = parts[4];
+                    if (sDefPid != null && !sDefPid.isEmpty()) {
+                        resAttr.put(Constants.SDEF.PID.getURI(),
                                 new StringAttribute(sDefPid));
-                }
-                if (methodName != null && !"".equals(methodName)) {
-                    resAttr.put(Constants.DISSEMINATOR.METHOD.getURI(),
+                    }
+                    if (methodName != null && !methodName.isEmpty()) {
+                        resAttr.put(Constants.DISSEMINATOR.METHOD.getURI(),
                                 new StringAttribute(methodName));
+                    }
                 }
-                if (asOfDateTime != null && !"".equals(asOfDateTime)) {
+
+                if (asOfDateTime != null && !asOfDateTime.isEmpty()) {
                     resAttr.put(Constants.DATASTREAM.AS_OF_DATETIME.getURI(),
                                 DateTimeAttribute.getInstance(asOfDateTime));
                 }
 
                 actions.put(Constants.ACTION.ID.getURI(),
-                            new StringAttribute(Constants.ACTION.GET_DISSEMINATION
-                                    .getURI().toASCIIString()));
+                            Constants.ACTION.GET_DISSEMINATION
+                                    .getStringAttribute());
                 actions.put(Constants.ACTION.API.getURI(),
-                            new StringAttribute(Constants.ACTION.APIA.getURI()
-                                    .toASCIIString()));
+                            Constants.ACTION.APIA.getStringAttribute());
 
                 req =
                         getContextHandler().buildRequest(getSubjects(request),
@@ -108,8 +103,7 @@ public class GetDissemination
                                                          getEnvironment(request));
 
                 LogUtil.statLog(request.getRemoteUser(),
-                                Constants.ACTION.GET_DISSEMINATION.getURI()
-                                        .toASCIIString(),
+                                Constants.ACTION.GET_DISSEMINATION.uri,
                                 pid,
                                 null);
             } catch (Exception e) {
@@ -119,13 +113,5 @@ public class GetDissemination
 
             return req;
         }
-
-        @Override
-        public RequestCtx handleResponse(HttpServletRequest request,
-                                         HttpServletResponse response)
-                throws IOException, ServletException {
-            return null;
-        }
-
 
 }

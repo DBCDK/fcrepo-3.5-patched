@@ -11,8 +11,6 @@ public class LoadDataset {
     private static final Logger logger =
             LoggerFactory.getLogger(LoadDataset.class);
 
-    private static final String PROPERTIES = "fedora";
-
     private static final String RESOURCEBASE =
         System.getProperty("fcrepo-integrationtest-core.classes") != null ? System
                 .getProperty("fcrepo-integrationtest-core.classes")
@@ -50,6 +48,10 @@ public class LoadDataset {
         } catch (Exception e) {
             // ignore exceptions, resource index might not be enabled
             System.out.println("Exception on flushing resource index (loading test fesl objects) " + e.getMessage());
+        }
+        
+        if (client != null) {
+            client.shutdown();
         }
 
     }

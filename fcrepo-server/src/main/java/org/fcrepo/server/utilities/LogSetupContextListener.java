@@ -2,19 +2,26 @@
  * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
+
 package org.fcrepo.server.utilities;
 
-import ch.qos.logback.classic.LoggerContext;
-import ch.qos.logback.classic.joran.JoranConfigurator;
-import ch.qos.logback.core.joran.spi.JoranException;
+import static java.lang.System.setProperty;
+import static java.util.logging.LogManager.getLogManager;
+import static org.fcrepo.common.Constants.FEDORA_HOME;
+import static org.slf4j.LoggerFactory.getILoggerFactory;
+import static org.slf4j.bridge.SLF4JBridgeHandler.install;
+
 import java.io.File;
 
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
 
-import org.fcrepo.common.Constants;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.bridge.SLF4JBridgeHandler;
+
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.joran.JoranConfigurator;
+import ch.qos.logback.core.joran.spi.JoranException;
 
 /**
  * Context listener for logging initialization.
@@ -26,23 +33,27 @@ import org.slf4j.bridge.SLF4JBridgeHandler;
  */
 public class LogSetupContextListener implements ServletContextListener {
 
+    final private static Logger logger = LoggerFactory
+            .getLogger(LogSetupContextListener.class);
+
     @Override
     public void contextInitialized(ServletContextEvent event) {
         // If fedora.home servlet context init param is defined, make sure
         // it is used for the value of Constants.FEDORA_HOME
-        String contextFH = event.getServletContext().getInitParameter("fedora.home");
-        if (contextFH != null && !contextFH.equals("")) {
-            System.setProperty("servlet.fedora.home", contextFH);
+        String contextFH =
+                event.getServletContext().getInitParameter("fedora.home");
+        if (contextFH != null && !contextFH.isEmpty()) {
+            setProperty("servlet.fedora.home", contextFH);
         }
 
         // Configure logging from file
-        System.setProperty("fedora.home", Constants.FEDORA_HOME);
-        LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
+        setProperty("fedora.home", FEDORA_HOME);
+        LoggerContext lc = (LoggerContext) getILoggerFactory();
         JoranConfigurator configurator = new JoranConfigurator();
         configurator.setContext(lc);
         lc.reset();
         final File logbackConfigFile =
-                new File(new File(Constants.FEDORA_HOME), "server/config/logback.xml");
+                new File(new File(FEDORA_HOME), "server/config/logback.xml");
         try {
             configurator.doConfigure(logbackConfigFile);
         } catch (JoranException e) {
@@ -50,16 +61,22 @@ public class LogSetupContextListener implements ServletContextListener {
                     "Could not configure Logback! Tried using configuration file: " +
                             logbackConfigFile.getAbsolutePath(), e);
         }
+        logger.info(
+                "Configured Fedora Logback system with config file from: {}",
+                logbackConfigFile.getAbsolutePath());
+        /*
+         * LogConfig.initFromFile(new File(new File(Constants.FEDORA_HOME),
+         * "server/config/logback.xml"));
+         */
 
         // Replace java.util.logging's default handlers with one that
         // redirects everything to SLF4J
-        java.util.logging.Logger rootLogger =
-                java.util.logging.LogManager.getLogManager().getLogger("");
+        java.util.logging.Logger rootLogger = getLogManager().getLogger("");
         java.util.logging.Handler[] handlers = rootLogger.getHandlers();
         for (int i = 0; i < handlers.length; i++) {
             rootLogger.removeHandler(handlers[i]);
         }
-        SLF4JBridgeHandler.install();
+        install();
     }
 
     @Override

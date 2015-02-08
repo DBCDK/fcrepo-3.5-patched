@@ -6,31 +6,31 @@ package org.fcrepo.server.storage.types;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.io.SequenceInputStream;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
 
 import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-
-import com.sun.org.apache.xml.internal.serialize.OutputFormat;
-import com.sun.org.apache.xml.internal.serialize.XMLSerializer;
 
 import org.fcrepo.server.Context;
-
+import org.fcrepo.server.errors.StreamIOException;
+import org.fcrepo.utilities.ReadableByteArrayOutputStream;
+import org.fcrepo.utilities.ReadableCharArrayWriter;
+import org.fcrepo.utilities.XmlTransformUtility;
+import org.fcrepo.utilities.xml.XercesXmlSerializers;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
-
-import org.xml.sax.SAXException;
 
 /**
  * @author Sandy Payette
  */
 public class DatastreamXMLMetadata
         extends Datastream {
-
+    private static final Logger logger = LoggerFactory.getLogger(DatastreamXMLMetadata.class);
     // techMD (technical metadata),
     // sourceMD (analog/digital source metadata),
     // rightsMD (intellectual property rights metadata),
@@ -77,9 +77,7 @@ public class DatastreamXMLMetadata
         copy(ds);
         if (xmlContent != null) {
             ds.xmlContent = new byte[xmlContent.length];
-            for (int i = 0; i < xmlContent.length; i++) {
-                ds.xmlContent[i] = xmlContent[i];
-            }
+            System.arraycopy(xmlContent, 0, ds.xmlContent, 0, xmlContent.length);
         }
         ds.DSMDClass = DSMDClass;
         return ds;
@@ -99,38 +97,33 @@ public class DatastreamXMLMetadata
     public InputStream getContentStreamForChecksum() {
         BufferedReader br;
         try {
-            ByteArrayOutputStream outStream = new ByteArrayOutputStream();
-            OutputFormat fmt = new OutputFormat("XML", "UTF-8", false);
-            fmt.setIndent(0);
-            fmt.setLineWidth(0);
-            fmt.setPreserveSpace(false);
-            XMLSerializer ser = new XMLSerializer(outStream, fmt);
-            DocumentBuilderFactory factory =
-                    DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(true);
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            Document doc = builder.parse(new ByteArrayInputStream(xmlContent));
-            ser.serialize(doc);
+            ReadableCharArrayWriter out =
+                new ReadableCharArrayWriter(xmlContent.length + (xmlContent.length /4));
+            DocumentBuilder builder = null;
+            try {
+                builder = XmlTransformUtility.borrowDocumentBuilder();
+                Document doc = builder.parse(new ByteArrayInputStream(xmlContent));
+                XercesXmlSerializers.writeXmlNoSpace(doc, m_encoding, out);
+                out.close();
+            } finally {
+                if (builder != null) XmlTransformUtility.returnDocumentBuilder(builder);
+            }
 
             br =
-                    new BufferedReader(new InputStreamReader(new ByteArrayInputStream(outStream
-                                                                     .toByteArray()),
-                                                             m_encoding));
+                    new BufferedReader(out.toReader());
             String line;
-            StringBuffer buf = new StringBuffer();
+            ReadableByteArrayOutputStream bytes =
+                    new ReadableByteArrayOutputStream(out.length());
+            PrintWriter outStream = new PrintWriter(
+                    new OutputStreamWriter(bytes, Charset.forName(m_encoding)));
             while ((line = br.readLine()) != null) {
                 line = line.trim();
-                buf = buf.append(line);
+                outStream.append(line);
             }
-            String bufStr = buf.toString();
-            return new ByteArrayInputStream(bufStr.getBytes(m_encoding));
-        } catch (UnsupportedEncodingException e) {
-            return getContentStream();
-        } catch (IOException e) {
-            return getContentStream();
-        } catch (ParserConfigurationException e) {
-            return getContentStream();
-        } catch (SAXException e) {
+            outStream.close();
+            return bytes.toInputStream();
+        } catch (Exception e) {
+            logger.warn(e.getMessage(),e);
             return getContentStream();
         }
     }
@@ -141,14 +134,17 @@ public class DatastreamXMLMetadata
         String firstLine =
                 "<?xml version=\"1.0\" encoding=\"" + m_encoding + "\" ?>\n";
         byte[] firstLineBytes = firstLine.getBytes(m_encoding);
-        byte[] out = new byte[xmlContent.length + firstLineBytes.length];
-        for (int i = 0; i < firstLineBytes.length; i++) {
-            out[i] = firstLineBytes[i];
-        }
-        for (int i = firstLineBytes.length; i < firstLineBytes.length
-                + xmlContent.length; i++) {
-            out[i] = xmlContent[i - firstLineBytes.length];
-        }
-        return new ByteArrayInputStream(out);
+        return new SequenceInputStream(new ByteArrayInputStream(firstLineBytes),
+                new ByteArrayInputStream(xmlContent));
+    }
+
+    @Override
+    public long getContentSize(Context ctx) throws StreamIOException {
+        return xmlContent.length;
+    }
+
+    @Override
+    public boolean isRepositoryManaged() {
+        return true;
     }
 }

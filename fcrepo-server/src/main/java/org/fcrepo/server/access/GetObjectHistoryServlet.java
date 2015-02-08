@@ -14,21 +14,17 @@ import java.util.Enumeration;
 import java.util.Hashtable;
 
 import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.xml.transform.Templates;
 import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
 
 import org.fcrepo.common.Constants;
 import org.fcrepo.server.Context;
 import org.fcrepo.server.ReadOnlyContext;
-import org.fcrepo.server.Server;
 import org.fcrepo.server.errors.GeneralException;
-import org.fcrepo.server.errors.InitializationException;
 import org.fcrepo.server.errors.ObjectNotFoundException;
 import org.fcrepo.server.errors.ObjectNotInLowlevelStorageException;
 import org.fcrepo.server.errors.ServerException;
@@ -74,7 +70,7 @@ import org.slf4j.LoggerFactory;
  * @version $Id$
  */
 public class GetObjectHistoryServlet
-        extends HttpServlet
+        extends SpringAccessServlet
         implements Constants {
 
     private static final Logger logger =
@@ -87,12 +83,6 @@ public class GetObjectHistoryServlet
 
     /** Content type for xml. */
     private static final String CONTENT_TYPE_XML = "text/xml; charset=UTF-8";
-
-    /** Instance of the Fedora server. */
-    private static Server s_server = null;
-
-    /** Instance of the access subsystem. */
-    private static Access s_access = null;
 
     public static final String ACTION_LABEL = "Get Object History";
 
@@ -123,11 +113,11 @@ public class GetObjectHistoryServlet
             throw new BadRequest400Exception(request,
                                              ACTION_LABEL,
                                              "",
-                                             new String[0]);
+                                             EMPTY_STRING_ARRAY);
         }
 
         PID = URIArray[5];
-        logger.debug("Servicing getObjectHistory request (PID=" + PID + ")");
+        logger.debug("Servicing getObjectHistory request (PID={})", PID);
 
         // Check for xml encoding parameter; ignore any other parameters
         Hashtable<String, String> h_userParms = new Hashtable<String, String>();
@@ -136,7 +126,7 @@ public class GetObjectHistoryServlet
             String value =
                     URLDecoder.decode(request.getParameter(name), "UTF-8");
             if (name.equalsIgnoreCase("xml")) {
-                xml = new Boolean(request.getParameter(name)).booleanValue();
+                xml = Boolean.parseBoolean(request.getParameter(name));
             }
             h_userParms.put(name, value);
         }
@@ -152,7 +142,7 @@ public class GetObjectHistoryServlet
             throw new NotFound404Exception(request,
                                            ACTION_LABEL,
                                            "",
-                                           new String[0]);
+                                           EMPTY_STRING_ARRAY);
         } catch (ObjectNotInLowlevelStorageException e) {
             logger.error("Object not found for request: "
                     + request.getRequestURI() + " (actionLabel=" + ACTION_LABEL
@@ -160,12 +150,12 @@ public class GetObjectHistoryServlet
             throw new NotFound404Exception(request,
                                            ACTION_LABEL,
                                            "",
-                                           new String[0]);
+                                           EMPTY_STRING_ARRAY);
         } catch (AuthzException ae) {
             throw RootException.getServletException(ae,
                                                     request,
                                                     ACTION_LABEL,
-                                                    new String[0]);
+                                                    EMPTY_STRING_ARRAY);
         } catch (Throwable th) {
             logger.error("Unexpected error servicing API-A request", th);
             throw new InternalError500Exception("",
@@ -173,7 +163,7 @@ public class GetObjectHistoryServlet
                                                 request,
                                                 ACTION_LABEL,
                                                 "",
-                                                new String[0]);
+                                                EMPTY_STRING_ARRAY);
         }
     }
 
@@ -184,14 +174,14 @@ public class GetObjectHistoryServlet
             throws ServerException {
 
         OutputStreamWriter out = null;
-        String[] objectHistory = new String[0];
+        String[] objectHistory = EMPTY_STRING_ARRAY;
         PipedWriter pw = null;
         PipedReader pr = null;
 
         try {
             pw = new PipedWriter();
             pr = new PipedReader(pw);
-            objectHistory = s_access.getObjectHistory(context, PID);
+            objectHistory = m_access.getObjectHistory(context, PID);
             if (objectHistory.length > 0) {
                 // Object history.
                 // Serialize the ObjectHistory object into XML
@@ -223,12 +213,10 @@ public class GetObjectHistoryServlet
                             new OutputStreamWriter(response.getOutputStream(),
                                                    "UTF-8");
                     File xslFile =
-                            new File(s_server.getHomeDir(),
+                            new File(m_server.getHomeDir(),
                                      "access/viewObjectHistory.xslt");
-                    TransformerFactory factory =
-                            XmlTransformUtility.getTransformerFactory();
                     Templates template =
-                            factory.newTemplates(new StreamSource(xslFile));
+                            XmlTransformUtility.getTemplates(xslFile);
                     Transformer transformer = template.newTransformer();
                     transformer.setParameter("fedora", context
                                              .getEnvironmentValue(FEDORA_APP_CONTEXT_NAME));
@@ -274,7 +262,7 @@ public class GetObjectHistoryServlet
 
         private PipedWriter pw = null;
 
-        private String[] objectHistory = new String[0];
+        private String[] objectHistory = EMPTY_STRING_ARRAY;
 
         private String PID = null;
 
@@ -298,9 +286,9 @@ public class GetObjectHistoryServlet
             this.objectHistory = objectHistory;
             this.PID = PID;
             if (HTTP_REQUEST.SECURE.uri.equals(context
-                    .getEnvironmentValue(HTTP_REQUEST.SECURITY.uri))) {
+                    .getEnvironmentValue(HTTP_REQUEST.SECURITY.attributeId))) {
             } else if (HTTP_REQUEST.INSECURE.uri.equals(context
-                    .getEnvironmentValue(HTTP_REQUEST.SECURITY.uri))) {
+                    .getEnvironmentValue(HTTP_REQUEST.SECURITY.attributeId))) {
             }
         }
 
@@ -361,26 +349,6 @@ public class GetObjectHistoryServlet
     public void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         doGet(request, response);
-    }
-
-    /**
-     * <p>
-     * Initialize servlet.
-     * </p>
-     *
-     * @throws ServletException
-     *         If the servet cannot be initialized.
-     */
-    @Override
-    public void init() throws ServletException {
-        try {
-            s_server = Server.getInstance(new File(FEDORA_HOME), false);
-            s_access =
-                    (Access) s_server.getModule("org.fcrepo.server.access.Access");
-        } catch (InitializationException ie) {
-            throw new ServletException("Unable to get Fedora Server instance."
-                    + ie.getMessage());
-        }
     }
 
 }

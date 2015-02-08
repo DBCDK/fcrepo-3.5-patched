@@ -52,6 +52,7 @@ import org.fcrepo.server.storage.lowlevel.ILowlevelStorage;
 import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.DigitalObject;
 import org.fcrepo.server.storage.types.RelationshipTuple;
+import org.fcrepo.server.utilities.SQLUtility;
 import org.fcrepo.server.utilities.TableSpec;
 
 /**
@@ -63,6 +64,15 @@ public class SQLRebuilder
     private static final Logger logger =
             LoggerFactory.getLogger(Rebuilder.class);
 
+    public static final String CREATE_REBUILD_STATUS =
+            "INSERT INTO fcrepoRebuildStatus (complete, rebuildDate) VALUES (?, ?)";
+
+    public static final String UPDATE_REBUILD_STATUS =
+            "UPDATE fcrepoRebuildStatus SET complete=? WHERE rebuildDate=?";
+
+    public static final String DBSPEC_LOCATION =
+            "org/fcrepo/server/storage/resources/DefaultDOManager.dbspec";
+
     private ServerConfiguration m_serverConfig;
 
     private Server m_server;
@@ -70,6 +80,8 @@ public class SQLRebuilder
     private ConnectionPool m_connectionPool;
 
     private Context m_context;
+    
+    private long m_now = -1;
 
     /**
      * Get a short phrase describing what the user can do with this rebuilder.
@@ -126,7 +138,6 @@ public class SQLRebuilder
         // (in particular the hash map held by PIDGenerator)
         // don't get out of sync with the database.
         blankExistingTables();
-
         try {
             m_server = Rebuild.getServer();
             // now get the connectionpool
@@ -138,9 +149,14 @@ public class SQLRebuilder
                                                         "ConnectionPoolManager");
             }
             m_connectionPool = cpm.getPool();
+            ensureFedoraTables();
+            // set m_now, which is both when we are starting this job and the flag
+            // that it was started
+            m_now = System.currentTimeMillis();
             m_context =
                     ReadOnlyContext.getContext("utility", "fedoraAdmin", "", /* null, */
                     ReadOnlyContext.DO_OP);
+
             ILowlevelStorage llstore =
                     (ILowlevelStorage) m_server
                             .getModule("org.fcrepo.server.storage.lowlevel.ILowlevelStorage");
@@ -157,7 +173,7 @@ public class SQLRebuilder
             throw ie;
         }
     }
-
+    
     public static List<String> getExistingTables(Connection conn)
             throws SQLException {
 
@@ -192,12 +208,11 @@ public class SQLRebuilder
         Connection connection = null;
         Statement s = null;
         try {
-            connection = getDefaultConnection();
+            connection = SQLUtility.getDefaultConnection(m_serverConfig);
             List<String> existingTables = getExistingTables(connection);
             List<String> fedoraTables = getFedoraTables();
             s = connection.createStatement();
-            for (int i = 0; i < existingTables.size(); i++) {
-                String origTableName = existingTables.get(i);
+            for (String origTableName: existingTables) {
                 String tableName = origTableName.toUpperCase();
                 if (fedoraTables.contains(tableName)
                         && !tableName.startsWith("RI")) {
@@ -225,6 +240,19 @@ public class SQLRebuilder
         }
     }
 
+    public void ensureFedoraTables() {
+        try {
+            InputStream specIn =
+                    getClass().getClassLoader()
+                            .getResourceAsStream(DBSPEC_LOCATION);
+            SQLUtility.createNonExistingTables(m_connectionPool, specIn);
+
+        } catch (Exception e) {
+            throw new RuntimeException("DB error while ensuring Fedora tables: "
+                                       + e.getMessage(),
+                                       e);
+        }
+    }
     /**
      * Get the names of all Fedora tables listed in the server's dbSpec file.
      * Names will be returned in ALL CAPS so that case-insensitive comparisons
@@ -232,15 +260,12 @@ public class SQLRebuilder
      */
     private List<String> getFedoraTables() {
         try {
-            String dbSpecLocation =
-                    "org/fcrepo/server/storage/resources/DefaultDOManager.dbspec";
             InputStream in =
                     getClass().getClassLoader()
-                            .getResourceAsStream(dbSpecLocation);
+                            .getResourceAsStream(DBSPEC_LOCATION);
             List<TableSpec> specs = TableSpec.getTableSpecs(in);
             ArrayList<String> names = new ArrayList<String>();
-            for (int i = 0; i < specs.size(); i++) {
-                TableSpec spec = specs.get(i);
+            for (TableSpec spec: specs) {
                 names.add(spec.getName().toUpperCase());
             }
             return names;
@@ -277,11 +302,11 @@ public class SQLRebuilder
         // SET OBJECT PROPERTIES:
         logger.debug("Rebuild: Setting object/component states and create dates if unset...");
         // set object state to "A" (Active) if not already set
-        if (obj.getState() == null || obj.getState().equals("")) {
+        if (obj.getState() == null || obj.getState().isEmpty()) {
             obj.setState("A");
         }
         // set object create date to UTC if not already set
-        if (obj.getCreateDate() == null || obj.getCreateDate().equals("")) {
+        if (obj.getCreateDate() == null) {
             obj.setCreateDate(nowUTC);
         }
         // set object last modified date to UTC
@@ -290,11 +315,11 @@ public class SQLRebuilder
         // SET OBJECT PROPERTIES:
         logger.debug("Rebuild: Setting object/component states and create dates if unset...");
         // set object state to "A" (Active) if not already set
-        if (obj.getState() == null || obj.getState().equals("")) {
+        if (obj.getState() == null || obj.getState().isEmpty()) {
             obj.setState("A");
         }
         // set object create date to UTC if not already set
-        if (obj.getCreateDate() == null || obj.getCreateDate().equals("")) {
+        if (obj.getCreateDate() == null) {
             obj.setCreateDate(nowUTC);
         }
         // set object last modified date to UTC
@@ -305,27 +330,15 @@ public class SQLRebuilder
         while (dsIter.hasNext()) {
             for (Datastream ds : obj.datastreams(dsIter.next())) {
                 // Set create date to UTC if not already set
-                if (ds.DSCreateDT == null || ds.DSCreateDT.equals("")) {
+                if (ds.DSCreateDT == null) {
                     ds.DSCreateDT = nowUTC;
                 }
                 // Set state to "A" (Active) if not already set
-                if (ds.DSState == null || ds.DSState.equals("")) {
+                if (ds.DSState == null || ds.DSState.isEmpty()) {
                     ds.DSState = "A";
                 }
             }
         }
-
-        // GET DIGITAL OBJECT WRITER:
-        // get an object writer configured with the DEFAULT export format
-        // barmintor: this appears to be unused code, commenting out with intent to delete
-        //logger.debug("INGEST: Instantiating a SimpleDOWriter...");
-        //try {
-        //    DOWriter w =
-        //            manager.getWriter(Server.USE_DEFINITIVE_STORE,
-        //                              m_context,
-        //                              obj.getPid());
-        //} catch (ServerException se) {
-        //}
 
         // PID GENERATION:
         // have the system generate a PID if one was not provided
@@ -344,10 +357,12 @@ public class SQLRebuilder
         try {
             registerObject(obj);
         } catch (StorageDeviceException e) {
+            // continue past individual errors
+            logger.error(e.getMessage());
         }
 
         try {
-            logger.info("COMMIT: Attempting replication: " + obj.getPid());
+            logger.info("COMMIT: Attempting replication: {}", obj.getPid());
             DOReader reader =
                     manager.getReader(Server.USE_DEFINITIVE_STORE,
                                       m_context,
@@ -379,7 +394,7 @@ public class SQLRebuilder
                 updateDeploymentMap(obj, conn);
             } catch (SQLException sqle) {
                 throw new StorageDeviceException("Unexpected error from SQL database while registering object: "
-                        + sqle.getMessage());
+                        + sqle.getMessage(), sqle);
             } finally {
                 if (conn != null) {
                     m_connectionPool.free(conn);
@@ -389,7 +404,7 @@ public class SQLRebuilder
     }
 
     /**
-     * Free up any system resources associated with rebuilding.
+     * Update the status table to indicate that we finished normally.
      */
     @Override
     public void finish() {

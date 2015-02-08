@@ -20,49 +20,33 @@ package org.fcrepo.server.security.xacml.util;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.InputStream;
-
-import java.lang.reflect.Constructor;
-
 import java.net.URI;
 import java.net.URISyntaxException;
-
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-
-import com.sun.xacml.Indenter;
-import com.sun.xacml.ParsingException;
-import com.sun.xacml.attr.AnyURIAttribute;
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.StringAttribute;
-import com.sun.xacml.ctx.Attribute;
-import com.sun.xacml.ctx.RequestCtx;
-import com.sun.xacml.ctx.ResponseCtx;
-import com.sun.xacml.ctx.Result;
-import com.sun.xacml.ctx.Subject;
-
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-
+import org.fcrepo.common.Constants;
+import org.fcrepo.server.security.Attribute;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.impl.BasicAttribute;
+import org.fcrepo.server.security.impl.BasicRequestCtx;
+import org.fcrepo.server.security.impl.SingletonAttribute;
+import org.fcrepo.server.security.xacml.MelcoeXacmlException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import org.fcrepo.common.Constants;
-
-import org.fcrepo.server.security.xacml.MelcoeXacmlException;
+import org.jboss.security.xacml.sunxacml.Indenter;
+import org.jboss.security.xacml.sunxacml.ParsingException;
+import org.jboss.security.xacml.sunxacml.attr.AnyURIAttribute;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
+import org.jboss.security.xacml.sunxacml.attr.StringAttribute;
+import org.jboss.security.xacml.sunxacml.ctx.ResponseCtx;
+import org.jboss.security.xacml.sunxacml.ctx.Result;
+import org.jboss.security.xacml.sunxacml.ctx.Subject;
 
 
 /**
@@ -80,183 +64,33 @@ public class ContextUtil {
     private static final Logger logger =
             LoggerFactory.getLogger(ContextUtil.class);
 
-    private static final URI XACML_RESOURCE_ID =
-            URI.create("urn:oasis:names:tc:xacml:1.0:resource:resource-id");
-
-    private static final Map<URI, URI> actionMap =
+    private final Map<URI, URI> actionMap =
             new ConcurrentHashMap<URI, URI>();
 
-    private static final Map<String, String> actionValueMap =
+    private final Map<String, String> actionValueMap =
             new ConcurrentHashMap<String, String>();
 
-    private RelationshipResolver relationshipResolver = null;
-
-    private static ContextUtil instance = null;
-
-    protected ContextUtil() {
-        initMappings();
-
+    public ContextUtil() {
+        logger.info("created");
     }
 
-    public static ContextUtil getInstance() {
-        if (instance == null) {
-            instance = new ContextUtil();
-        }
-        return instance;
-    }
-
-    private void initMappings() {
-        // get the mapping information
-        // get the PEP configuration
-        File configPEPFile =
-                new File(Constants.FEDORA_HOME,
-                         "server/config/config-melcoe-pep-mapping.xml");
-        InputStream is = null;
-        try {
-            is = new FileInputStream(configPEPFile);
-        } catch (FileNotFoundException e) {
-            logger.info("Mapping file, config-melcoe-pep-mapping.xml, not found.");
-        }
-
-        if (is != null) {
-            logger.info("Mapping file found (config-melcoe-pep-mapping.xml). Loading maps");
+    public void setActionMap(Map<String,String> actions) {
+        for (String from: actions.keySet()){
+            URI key;
+            String to = actions.get(from);
             try {
-                DocumentBuilderFactory factory =
-                        DocumentBuilderFactory.newInstance();
-                DocumentBuilder docBuilder = factory.newDocumentBuilder();
-                Document doc = docBuilder.parse(is);
-                NodeList nodes = null;
-
-                nodes = doc.getElementsByTagName("actionAttribute");
-                if (nodes != null && nodes.getLength() > 0) {
-
-                    for (int x = 0; x < nodes.getLength(); x++) {
-                        if (nodes.item(x).getNodeType() == Node.ELEMENT_NODE) {
-                            String from =
-                                    nodes.item(x).getAttributes()
-                                            .getNamedItem("from")
-                                            .getNodeValue();
-                            String to =
-                                    nodes.item(x).getAttributes()
-                                            .getNamedItem("to").getNodeValue();
-                            try {
-                                URI key = new URI(from);
-                                URI value = new URI(to);
-                                actionMap.put(key, value);
-                            } catch (URISyntaxException mue) {
-                                logger.warn("Mapping contained invalid URI: ["
-                                        + from + "] / [" + to + "]");
-                            }
-                        }
-                    }
-                }
-
-                nodes = doc.getElementsByTagName("actionAttributeValue");
-                if (nodes != null && nodes.getLength() > 0) {
-
-                    for (int x = 0; x < nodes.getLength(); x++) {
-                        if (nodes.item(x).getNodeType() == Node.ELEMENT_NODE) {
-                            String from =
-                                    nodes.item(x).getAttributes()
-                                            .getNamedItem("from")
-                                            .getNodeValue();
-                            String to =
-                                    nodes.item(x).getAttributes()
-                                            .getNamedItem("to").getNodeValue();
-                            actionValueMap.put(from, to);
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                logger.warn("Error occurred loading the mapping file. "
-                        + "Mappings will not be used.", e);
+                key = new URI(from);
+                URI value = new URI(actions.get(from));
+                actionMap.put(key, value);
+            } catch (URISyntaxException e) {
+                logger.warn("Mapping contained invalid URI: ["
+                        + from + "] / [" + to + "]");
             }
         }
     }
 
-    private RelationshipResolver initRelationshipResolver() {
-        RelationshipResolver rr;
-        String className = null;
-        Map<String, String> options = null;
-
-        try {
-            // get the PEP configuration
-            File configPEPFile =
-                    new File(Constants.FEDORA_HOME,
-                             "server/config/config-melcoe-pep.xml");
-            InputStream is = new FileInputStream(configPEPFile);
-            if (is == null) {
-                throw new MelcoeXacmlException("Could not locate config file: config-melcoe-pep.xml");
-            }
-
-            DocumentBuilderFactory factory =
-                    DocumentBuilderFactory.newInstance();
-            DocumentBuilder docBuilder;
-            Document doc;
-            docBuilder = factory.newDocumentBuilder();
-            doc = docBuilder.parse(is);
-
-            NodeList nodes = doc.getElementsByTagName("relationship-resolver");
-            if (nodes.getLength() != 1) {
-                throw new MelcoeXacmlException("Config file needs to contain exactly 1 'relationship-resolver' section.");
-            }
-
-            Element relationshipResolverElement = (Element) nodes.item(0);
-            className = relationshipResolverElement.getAttributes().getNamedItem("class").getNodeValue();
-
-            NodeList optionList =
-                    relationshipResolverElement.getElementsByTagName("option");
-
-            if (optionList != null && optionList.getLength() > 0) {
-                options = new HashMap<String, String>();
-                for (int x = 0; x < optionList.getLength(); x++) {
-                    Node n = optionList.item(x);
-                    String key =
-                            n.getAttributes().getNamedItem("name")
-                                    .getNodeValue();
-                    String value = n.getFirstChild().getNodeValue();
-                    options.put(key, value);
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("Node [name]: " + key + ": " + value);
-                    }
-                }
-            }
-
-            if (options == null) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("creating relationship resolver WITHOUT options");
-                }
-                    rr = (RelationshipResolver) Class.forName(className).newInstance();
-
-            } else {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("creating relationship resolver WITH options");
-                }
-
-                Constructor<?> c = Class.forName(className)
-                        .getConstructor(new Class[] {Map.class});
-                rr =
-                        (RelationshipResolver) c
-                                .newInstance(new Object[] {options});
-            }
-        } catch (Exception e) {
-            logger.error("Failed to get configured RelationshipResolver " + className + ", will try "
-                    + "fallback. " + e.getMessage());
-            logger.debug(e.getMessage());
-            if (options == null) {
-                rr = new RELSRelationshipResolver();
-            } else {
-                rr = new RELSRelationshipResolver(options);
-            }
-        }
-        return rr;
-    }
-
-    public RelationshipResolver getRelationshipResolver() {
-        if (relationshipResolver == null) {
-            relationshipResolver = initRelationshipResolver();
-        }
-        return relationshipResolver;
+    public void setActionValueMap(Map<String,String> values) {
+        actionValueMap.putAll(values);
     }
 
     /**
@@ -266,27 +100,25 @@ public class ContextUtil {
      *
      * @return a Set of Subject instances for inclusion in a Request
      */
-    public Set<Subject> setupSubjects(List<Map<URI, List<AttributeValue>>> subjs) {
-        Set<Subject> subjects = new HashSet<Subject>();
+    public List<Subject> setupSubjects(List<Map<URI, List<AttributeValue>>> subjs) {
 
         if (subjs == null || subjs.size() == 0) {
-            subjects.add(new Subject(new HashSet<Attribute>()));
-            return subjects;
+            return Collections.singletonList(new Subject(new ArrayList<Attribute>()));
         }
 
+        List<Subject> subjects = new ArrayList<Subject>(subjs.size());
         // Go through each of the subjects
         for (Map<URI, List<AttributeValue>> s : subjs) {
-            Set<Attribute> attributes = new HashSet<Attribute>();
+            List<Attribute> attributes = new ArrayList<Attribute>();
 
             // Extract and create the attributes for this subject and add them
             // to the set
             for (URI uri : s.keySet()) {
                 List<AttributeValue> attributeValues = s.get(uri);
-                for (AttributeValue attributeValue : attributeValues) {
-                    attributes.add(new Attribute(uri,
-                                                 null,
-                                                 null,
-                                                 attributeValue));
+                if (attributeValues != null && attributeValues.size() > 0) {
+                    attributes.add(
+                        new BasicAttribute(uri, attributeValues.get(0).getType(),
+                            null, null, attributeValues));
                 }
             }
 
@@ -302,32 +134,32 @@ public class ContextUtil {
      *
      * @return a Set of Attributes for inclusion in a Request
      */
-    public Set<Attribute> setupResources(Map<URI, AttributeValue> res)
+    public List<Attribute> setupResources(Map<URI, AttributeValue> res, RelationshipResolver relationshipResolver)
             throws MelcoeXacmlException {
-        Set<Attribute> attributes = new HashSet<Attribute>();
 
         if (res == null || res.size() == 0) {
-            return attributes;
+            return new ArrayList<Attribute>();
         }
 
+        List<Attribute> attributes = new ArrayList<Attribute>(res.size());
         try {
             String pid = null;
-            AttributeValue pidAttr = res.get(XACML_RESOURCE_ID);
+            AttributeValue pidAttr = res.get(Constants.XACML1_RESOURCE.ID.attributeId);
             if (pidAttr != null) {
                 pid = pidAttr.encode();
-                pid = getRelationshipResolver().buildRESTParentHierarchy(pid);
+                pid = relationshipResolver.buildRESTParentHierarchy(pid);
 
                 String dsid = null;
                 AttributeValue dsidAttr =
-                        res.get(Constants.DATASTREAM.ID.getURI());
+                        res.get(Constants.DATASTREAM.ID.attributeId);
                 if (dsidAttr != null) {
                     dsid = dsidAttr.encode();
-                    if (!dsid.equals("")) {
+                    if (!dsid.isEmpty()) {
                         pid += "/" + dsid;
                     }
                 }
 
-                res.put(XACML_RESOURCE_ID, new AnyURIAttribute(new URI(pid)));
+                res.put(Constants.XACML1_RESOURCE.ID.attributeId, new AnyURIAttribute(new URI(pid)));
             }
         } catch (Exception e) {
             logger.error("Error finding parents.", e);
@@ -335,7 +167,7 @@ public class ContextUtil {
         }
 
         for (URI uri : res.keySet()) {
-            attributes.add(new Attribute(uri, null, null, res.get(uri)));
+            attributes.add(new SingletonAttribute(uri, null, null, res.get(uri)));
         }
 
         return attributes;
@@ -346,13 +178,13 @@ public class ContextUtil {
      *
      * @return a Set of Attributes for inclusion in a Request
      */
-    public Set<Attribute> setupAction(Map<URI, AttributeValue> a) {
-        Set<Attribute> actions = new HashSet<Attribute>();
+    public List<Attribute> setupAction(Map<URI, AttributeValue> a) {
 
         if (a == null || a.size() == 0) {
-            return actions;
+            return Collections.emptyList();
         }
 
+        List<Attribute> actions = new ArrayList<Attribute>(a.size());
         Map<URI, AttributeValue> newActions =
                 new HashMap<URI, AttributeValue>();
         for (URI uri : a.keySet()) {
@@ -376,7 +208,7 @@ public class ContextUtil {
         }
 
         for (URI uri : newActions.keySet()) {
-            actions.add(new Attribute(uri, null, null, newActions.get(uri)));
+            actions.add(new SingletonAttribute(uri, null, null, newActions.get(uri)));
         }
 
         return actions;
@@ -387,15 +219,15 @@ public class ContextUtil {
      *
      * @return a Set of Attributes for inclusion in a Request
      */
-    public Set<Attribute> setupEnvironment(Map<URI, AttributeValue> e) {
-        Set<Attribute> environment = new HashSet<Attribute>();
+    public List<Attribute> setupEnvironment(Map<URI, AttributeValue> e) {
 
         if (e == null || e.size() == 0) {
-            return environment;
+            return Collections.emptyList();
         }
 
+        List<Attribute> environment = new ArrayList<Attribute>(e.size());
         for (URI uri : e.keySet()) {
-            environment.add(new Attribute(uri, null, null, e.get(uri)));
+            environment.add(new SingletonAttribute(uri, null, null, e.get(uri)));
         }
 
         return environment;
@@ -418,11 +250,10 @@ public class ContextUtil {
     public RequestCtx buildRequest(List<Map<URI, List<AttributeValue>>> subjects,
                                    Map<URI, AttributeValue> actions,
                                    Map<URI, AttributeValue> resources,
-                                   Map<URI, AttributeValue> environment)
+                                   Map<URI, AttributeValue> environment,
+                                   RelationshipResolver relationshipResolver)
             throws MelcoeXacmlException {
-        if (logger.isDebugEnabled()) {
-            logger.debug("Building request!");
-        }
+        logger.debug("Building request!");
 
         RequestCtx request = null;
 
@@ -431,8 +262,8 @@ public class ContextUtil {
         // if that Set is empty
         try {
             request =
-                    new RequestCtx(setupSubjects(subjects),
-                                   setupResources(resources),
+                    new BasicRequestCtx(setupSubjects(subjects),
+                                   setupResources(resources, relationshipResolver),
                                    setupAction(actions),
                                    setupEnvironment(environment));
         } catch (Exception e) {
@@ -455,12 +286,8 @@ public class ContextUtil {
             throws MelcoeXacmlException {
         ResponseCtx resCtx = null;
         try {
-            // sunxacml 1.2 bug. ResponseCtx.getInstance looks for
-            // ResourceId and creates ResourceID
-            String newResponse =
-                    response.replaceAll("ResourceID", "ResourceId");
             ByteArrayInputStream is =
-                    new ByteArrayInputStream(newResponse.getBytes());
+                    new ByteArrayInputStream(response.getBytes());
             resCtx = ResponseCtx.getInstance(is);
         } catch (ParsingException pe) {
             throw new MelcoeXacmlException("Error parsing response.", pe);
@@ -482,7 +309,7 @@ public class ContextUtil {
         try {
             ByteArrayInputStream is =
                     new ByteArrayInputStream(request.getBytes());
-            reqCtx = RequestCtx.getInstance(is);
+            reqCtx = BasicRequestCtx.getInstance(is);
         } catch (ParsingException pe) {
             throw new MelcoeXacmlException("Error parsing response.", pe);
         }

@@ -221,13 +221,13 @@ public class MockStatement
             "Java 1.6 JDBC methods are not supported");
     }
 
-    public void closeOnCompletion() throws SQLException {
+    public void closeOnCompletion() {
         throw new UnsupportedOperationException(
-        "Java 1.7 JDBC methods are not supported");
+            "Java 1.7 JDBC methods are not supported");
     }
 
-    public boolean isCloseOnCompletion() throws SQLException {
+    public boolean isCloseOnCompletion() {
         throw new UnsupportedOperationException(
-        "Java 1.7 JDBC methods are not supported");
+            "Java 1.7 JDBC methods are not supported");
     }
 }

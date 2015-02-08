@@ -13,9 +13,11 @@ import java.util.Vector;
 
 import org.fcrepo.client.FedoraClient;
 import org.fcrepo.client.utility.ingest.AutoIngestor;
+
 import org.fcrepo.common.Constants;
-import org.fcrepo.server.access.FedoraAPIA;
-import org.fcrepo.server.management.FedoraAPIM;
+
+import org.fcrepo.server.access.FedoraAPIAMTOM;
+import org.fcrepo.server.management.FedoraAPIMMTOM;
 
 
 
@@ -40,9 +42,9 @@ class BatchIngest
 
     String context = "fedora";
 
-    FedoraAPIA APIA;
+    FedoraAPIAMTOM APIA;
 
-    FedoraAPIM APIM;
+    FedoraAPIMMTOM APIM;
 
     //set by arguments to constructor
     String objectsPath = null;
@@ -108,8 +110,9 @@ class BatchIngest
         // NEW: use new client utility class for SOAP stubs
         String baseURL = protocol + "://" + host + ":" + port + "/" + context;
         FedoraClient fc = new FedoraClient(baseURL, username, password);
-        APIA = fc.getAPIA();
-        APIM = fc.getAPIM();
+        APIA = fc.getAPIAMTOM();
+        APIM = fc.getAPIMMTOM();
+        fc.shutdown();
         //*******************************************
 
     }
@@ -121,11 +124,11 @@ class BatchIngest
 
     private Vector<String> keys = null;
 
-    /* package */Hashtable getPidMaps() {
+    Hashtable<String, String> getPidMaps() {
         return pidMaps;
     }
 
-    /* package */Vector getKeys() {
+    Vector<String> getKeys() {
         return keys;
     }
 
@@ -180,7 +183,7 @@ class BatchIngest
                                         + "any objects which were already successfully ingested in this batch");
                         throw e;
                     }
-                    if (pid == null || pid.equals("")) {
+                    if (pid == null || pid.isEmpty()) {
                         failedIngestCount++;
                         System.err.println("ingest failed for: "
                                 + files[i].getName());

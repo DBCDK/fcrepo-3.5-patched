@@ -77,6 +77,11 @@ public class DerbyDDLConverterIntegrationTest {
     private final String DC_DATES_TABLE_SPEC =
             "CREATE TABLE dcDates (\n  " + "pid VARCHAR(64) NOT NULL,\n  "
             + "dcDate BIGINT NOT NULL)";
+    
+    private final String REBUILD_STATUS_TABLE_SPEC =
+            "CREATE TABLE fcrepoRebuildStatus (\n  "
+            + "rebuildDate BIGINT UNIQUE NOT NULL,\n  "
+            + "complete BOOLEAN NOT NULL)";
 
     private final String DO_FIELDS_INDEX =
             "CREATE INDEX doFields_pid ON doFields (pid)";
@@ -96,6 +101,7 @@ public class DerbyDDLConverterIntegrationTest {
         expectedStmts.add(MODEL_DEPLOYMENT_MAP_TABLE_SPEC);
         expectedStmts.add(DO_FIELDS_TABLE_SPEC);
         expectedStmts.add(DC_DATES_TABLE_SPEC);
+        expectedStmts.add(REBUILD_STATUS_TABLE_SPEC);
         expectedStmts.add(DO_FIELDS_INDEX);
         expectedStmts.add(DC_DATES_INDEX);
     }
@@ -126,7 +132,7 @@ public class DerbyDDLConverterIntegrationTest {
     private void verifyInputTableSpec(List<TableSpec> tableSpecs)
             throws InconsistentTableSpecException, IOException {
 
-        final int NUM_SPECS = 7;
+        final int NUM_SPECS = 8;
         int numTableSpecs = tableSpecs.size();
         assertTrue("There should be " + NUM_SPECS + " tableSpecs: "
                    + numTableSpecs, numTableSpecs == NUM_SPECS);

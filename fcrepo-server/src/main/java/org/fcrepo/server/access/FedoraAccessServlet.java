@@ -5,11 +5,9 @@
 
 package org.fcrepo.server.access;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PipedReader;
 import java.io.PipedWriter;
@@ -21,23 +19,21 @@ import java.util.Hashtable;
 
 import javax.servlet.ServletException;
 import javax.servlet.ServletOutputStream;
-import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.ws.rs.core.HttpHeaders;
 import javax.xml.transform.Templates;
 import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
 
+import org.apache.http.HttpStatus;
 import org.fcrepo.common.Constants;
 import org.fcrepo.server.Context;
 import org.fcrepo.server.ReadOnlyContext;
-import org.fcrepo.server.Server;
 import org.fcrepo.server.errors.DatastreamNotFoundException;
 import org.fcrepo.server.errors.DisseminationException;
 import org.fcrepo.server.errors.GeneralException;
-import org.fcrepo.server.errors.InitializationException;
 import org.fcrepo.server.errors.MethodNotFoundException;
 import org.fcrepo.server.errors.ObjectNotFoundException;
 import org.fcrepo.server.errors.ObjectNotInLowlevelStorageException;
@@ -136,7 +132,7 @@ import org.slf4j.LoggerFactory;
  * @author Ross Wayland
  */
 public class FedoraAccessServlet
-        extends HttpServlet
+        extends SpringAccessServlet
         implements Constants {
 
     private static final Logger logger =
@@ -149,12 +145,6 @@ public class FedoraAccessServlet
 
     /** Content type for xml. */
     private static final String CONTENT_TYPE_XML = "text/xml; charset=UTF-8";
-
-    /** Instance of the Fedora server. */
-    private static Server s_server = null;
-
-    /** Instance of the access subsystem. */
-    private static Access s_access = null;
 
     /** Portion of initial request URL from protocol up to query string */
     private String requestURI = null;
@@ -192,11 +182,10 @@ public class FedoraAccessServlet
         boolean isGetDatastreamDisseminationRequest = false;
         boolean xml = false;
 
-        requestURI =
-                request.getRequestURL().toString()
-                        + (request.getQueryString() != null ? "?"
-                                + request.getQueryString() : "");
-        logger.info("Got request: " + requestURI);
+        requestURI = request.getQueryString() != null ?
+                request.getRequestURL().toString() + "?" + request.getQueryString()
+                : request.getRequestURL().toString();
+        logger.info("Got request: {}", requestURI);
 
         // Parse servlet URL.
         // For the Fedora API-A-LITE "get" syntax, valid entries include:
@@ -215,7 +204,8 @@ public class FedoraAccessServlet
         // http://host:port/fedora/get/pid/dsID
         // http://host:port/fedora/get/pid/dsID/timestamp
         //
-        String[] URIArray = request.getRequestURL().toString().split("/");
+        // use substring to avoid an additional char array copy
+        String[] URIArray = requestURI.substring(0, request.getRequestURL().length()).split("/");
         if (URIArray.length == 6 || URIArray.length == 7) {
             // Request is either an ObjectProfile request or a datastream
             // request
@@ -390,7 +380,7 @@ public class FedoraAccessServlet
                 .hasMoreElements();) {
             String name = URLDecoder.decode((String) e.nextElement(), "UTF-8");
             if (isGetObjectProfileRequest && name.equalsIgnoreCase("xml")) {
-                xml = new Boolean(request.getParameter(name)).booleanValue();
+                xml = Boolean.parseBoolean(request.getParameter(name));
             } else {
                 String value =
                         URLDecoder.decode(request.getParameter(name), "UTF-8");
@@ -415,8 +405,7 @@ public class FedoraAccessServlet
 
         try {
             if (isGetObjectProfileRequest) {
-                logger.debug("Servicing getObjectProfile request " + "(PID="
-                        + PID + ", asOfDate=" + versDateTime + ")");
+                logger.debug("Servicing getObjectProfile request (PID={}, asOfDate={})", PID, versDateTime);
 
                 Context context =
                         ReadOnlyContext.getContext(HTTP_REQUEST.REST.uri,
@@ -431,9 +420,8 @@ public class FedoraAccessServlet
                 logger.debug("Finished servicing getObjectProfile request");
             } else if (isGetDisseminationRequest) {
                 sDefPID = URIArray[6];
-                logger.debug("Servicing getDissemination request (PID=" + PID
-                        + ", sDefPID=" + sDefPID + ", methodName=" + methodName
-                        + ", asOfDate=" + versDateTime + ")");
+                logger.debug("Servicing getDissemination request (PID={}, sDefPID={}, methodName={}, asOfDate={})",
+                        PID, sDefPID, methodName, versDateTime);
 
                 Context context =
                         ReadOnlyContext.getContext(HTTP_REQUEST.REST.uri,
@@ -450,8 +438,8 @@ public class FedoraAccessServlet
                 logger.debug("Finished servicing getDissemination request");
             } else if (isGetDatastreamDisseminationRequest) {
                 logger.debug("Servicing getDatastreamDissemination request "
-                        + "(PID=" + PID + ", dsID=" + dsID + ", asOfDate="
-                        + versDateTime + ")");
+                        + "(PID={}, dsID={}, asOfDate={})",
+                        PID, dsID, versDateTime);
 
                 Context context =
                         ReadOnlyContext.getContext(HTTP_REQUEST.REST.uri,
@@ -470,34 +458,34 @@ public class FedoraAccessServlet
             logger.error("Method not found for request: " + requestURI
                     + " (actionLabel=" + actionLabel + ")", e);
             throw new NotFound404Exception("", e, request, actionLabel, e
-                    .getMessage(), new String[0]);
+                    .getMessage(), EMPTY_STRING_ARRAY);
         } catch (DatastreamNotFoundException e) {
             logger.error("Datastream not found for request: " + requestURI
                     + " (actionLabel=" + actionLabel + ")", e);
             throw new NotFound404Exception("", e, request, actionLabel, e
-                    .getMessage(), new String[0]);
+                    .getMessage(), EMPTY_STRING_ARRAY);
         } catch (ObjectNotFoundException e) {
             logger.error("Object not found for request: " + requestURI
                     + " (actionLabel=" + actionLabel + ")", e);
             throw new NotFound404Exception("", e, request, actionLabel, e
-                    .getMessage(), new String[0]);
+                    .getMessage(), EMPTY_STRING_ARRAY);
         } catch (DisseminationException e) {
             logger.error("Dissemination failed: " + requestURI
                     + " (actionLabel=" + actionLabel + ")", e);
             throw new NotFound404Exception("", e, request, actionLabel, e
-                    .getMessage(), new String[0]);
+                    .getMessage(), EMPTY_STRING_ARRAY);
         } catch (ObjectNotInLowlevelStorageException e) {
             logger.error("Object or datastream not found for request: "
                     + requestURI + " (actionLabel=" + actionLabel + ")", e);
             throw new NotFound404Exception("", e, request, actionLabel, e
-                    .getMessage(), new String[0]);
+                    .getMessage(), EMPTY_STRING_ARRAY);
         } catch (AuthzException ae) {
             logger.error("Authorization failed for request: " + requestURI
                     + " (actionLabel=" + actionLabel + ")", ae);
             throw RootException.getServletException(ae,
                                                     request,
                                                     actionLabel,
-                                                    new String[0]);
+                                                    EMPTY_STRING_ARRAY);
         } catch (Throwable th) {
             logger.error("Unexpected error servicing API-A request", th);
             throw new InternalError500Exception("",
@@ -505,7 +493,7 @@ public class FedoraAccessServlet
                                                 request,
                                                 actionLabel,
                                                 "",
-                                                new String[0]);
+                                                EMPTY_STRING_ARRAY);
         }
     }
 
@@ -525,7 +513,7 @@ public class FedoraAccessServlet
         try {
             pw = new PipedWriter();
             pr = new PipedReader(pw);
-            objProfile = s_access.getObjectProfile(context, PID, asOfDateTime);
+            objProfile = m_access.getObjectProfile(context, PID, asOfDateTime);
             if (objProfile != null) {
                 // Object Profile found.
                 // Serialize the ObjectProfile object into XML
@@ -557,13 +545,10 @@ public class FedoraAccessServlet
                             new OutputStreamWriter(response.getOutputStream(),
                                                    "UTF-8");
                     File xslFile =
-                            new File(s_server.getHomeDir(),
+                            new File(m_server.getHomeDir(),
                                      "access/viewObjectProfile.xslt");
-                    TransformerFactory factory =
-                            XmlTransformUtility.getTransformerFactory();
-
                     Templates template =
-                            factory.newTemplates(new StreamSource(xslFile));
+                            XmlTransformUtility.getTemplates(xslFile);
                     Transformer transformer = template.newTransformer();
                     transformer.setParameter("fedora", context
                             .getEnvironmentValue(FEDORA_APP_CONTEXT_NAME));
@@ -607,7 +592,7 @@ public class FedoraAccessServlet
         ServletOutputStream out = null;
         MIMETypedStream dissemination = null;
         dissemination =
-                s_access.getDatastreamDissemination(context,
+                m_access.getDatastreamDissemination(context,
                                                     PID,
                                                     dsID,
                                                     asOfDateTime);
@@ -623,39 +608,29 @@ public class FedoraAccessServlet
                         sb.append((String) headerValues.nextElement());
                     }
                     String value = sb.toString();
-                    logger.debug("FEDORASERVLET REQUEST HEADER CONTAINED: "
-                            + name + " : " + value);
+                    logger.debug("FEDORASERVLET REQUEST HEADER CONTAINED: {} : {}",
+                            name, value);
                 }
             }
 
             // Dissemination was successful;
             // Return MIMETypedStream back to browser client
-            if (dissemination.MIMEType
-                    .equalsIgnoreCase("application/fedora-redirect")) {
-                // A MIME type of application/fedora-redirect signals that
-                // the MIMETypedStream returned from the dissemination is
-                // a special Fedora-specific MIME type. In this case, the
-                // Fedora server will not proxy the datastream, but
-                // instead perform a simple redirect to the URL contained
-                // within the body of the MIMETypedStream. This special
-                // MIME type is used primarily for streaming media where
-                // it is more efficient to stream the data directly
-                // between the streaming server and the browser client
-                // rather than proxy it through the Fedora server.
-
-                BufferedReader br =
-                        new BufferedReader(new InputStreamReader(dissemination
-                                .getStream()));
-                StringBuffer sb = new StringBuffer();
-                String line = null;
-                while ((line = br.readLine()) != null) {
-                    sb.append(line);
+            if (dissemination.getStatusCode() == HttpStatus.SC_MOVED_TEMPORARILY) {
+                String location = "";
+                for (Property prop: dissemination.header) {
+                    if (prop.name.equalsIgnoreCase(HttpHeaders.LOCATION)) {
+                        location = prop.value;
+                        break;
+                    }
                 }
 
-                response.sendRedirect(sb.toString());
+                response.sendRedirect(location);
             } else {
-
-                response.setContentType(dissemination.MIMEType);
+                int status = dissemination.getStatusCode();
+                response.setStatus(status);
+                if (status == HttpStatus.SC_OK) {
+                    response.setContentType(dissemination.getMIMEType());
+                }
                 Property[] headerArray = dissemination.header;
                 if (headerArray != null) {
                     for (int i = 0; i < headerArray.length; i++) {
@@ -666,10 +641,9 @@ public class FedoraAccessServlet
                                         .equalsIgnoreCase("content-type")) {
                             response.addHeader(headerArray[i].name,
                                                headerArray[i].value);
-                            logger.debug("THIS WAS ADDED TO FEDORASERVLET "
-                                    + "RESPONSE HEADER FROM ORIGINATING "
-                                    + "PROVIDER " + headerArray[i].name + " : "
-                                    + headerArray[i].value);
+                            logger.debug(
+                                    "THIS WAS ADDED TO FEDORASERVLET RESPONSE HEADER FROM ORIGINATING PROVIDER {} : {}",
+                                    headerArray[i].name, headerArray[i].value);
                         }
                     }
                 }
@@ -732,7 +706,7 @@ public class FedoraAccessServlet
         ServletOutputStream out = null;
         MIMETypedStream dissemination = null;
         dissemination =
-                s_access.getDissemination(context,
+                m_access.getDissemination(context,
                                           PID,
                                           sDefPID,
                                           methodName,
@@ -751,38 +725,25 @@ public class FedoraAccessServlet
                         sb.append((String) headerValues.nextElement());
                     }
                     String value = sb.toString();
-                    logger.debug("FEDORASERVLET REQUEST HEADER CONTAINED: "
-                            + name + " : " + value);
+                    logger.debug("FEDORASERVLET REQUEST HEADER CONTAINED: {} : {}",
+                            name, value);
                 }
             }
 
             // Dissemination was successful;
             // Return MIMETypedStream back to browser client
-            if (dissemination.MIMEType
-                    .equalsIgnoreCase("application/fedora-redirect")) {
-                // A MIME type of application/fedora-redirect signals that
-                // the MIMETypedStream returned from the dissemination is
-                // a special Fedora-specific MIME type. In this case, the
-                // Fedora server will not proxy the datastream, but
-                // instead perform a simple redirect to the URL contained
-                // within the body of the MIMETypedStream. This special
-                // MIME type is used primarily for streaming media where
-                // it is more efficient to stream the data directly between
-                // the streaming server and the browser client rather than
-                // proxy it through the Fedora server.
-
-                BufferedReader br =
-                        new BufferedReader(new InputStreamReader(dissemination
-                                .getStream()));
-                StringBuffer sb = new StringBuffer();
-                String line = null;
-                while ((line = br.readLine()) != null) {
-                    sb.append(line);
+            if (dissemination.getStatusCode() == HttpStatus.SC_MOVED_TEMPORARILY) {
+                String location = "";
+                for (Property prop: dissemination.header) {
+                    if (prop.name.equalsIgnoreCase(HttpHeaders.LOCATION)) {
+                        location = prop.value;
+                        break;
+                    }
                 }
 
-                response.sendRedirect(sb.toString());
+                response.sendRedirect(location);
             } else {
-                response.setContentType(dissemination.MIMEType);
+                response.setContentType(dissemination.getMIMEType());
                 Property[] headerArray = dissemination.header;
                 if (headerArray != null) {
                     for (int i = 0; i < headerArray.length; i++) {
@@ -793,10 +754,8 @@ public class FedoraAccessServlet
                                         .equalsIgnoreCase("content-type")) {
                             response.addHeader(headerArray[i].name,
                                                headerArray[i].value);
-                            logger.debug("THIS WAS ADDED TO FEDORASERVLET "
-                                    + "RESPONSE HEADER FROM ORIGINATING "
-                                    + "PROVIDER " + headerArray[i].name + " : "
-                                    + headerArray[i].value);
+                            logger.debug(
+                                    "THIS WAS ADDED TO FEDORASERVLET  RESPONSE HEADER FROM ORIGINATING  PROVIDER {} : {}", headerArray[i].name, headerArray[i].value);
                         }
                     }
                 }
@@ -870,8 +829,9 @@ public class FedoraAccessServlet
             if (pw != null) {
                 try {
                     pw.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-                    pw.write("<objectProfile");
-                    pw.write(" pid=\"" + StreamUtility.enc(PID) + "\"");
+                    pw.write("<objectProfile pid=\"");
+                    StreamUtility.enc(PID, pw);
+                    pw.write('"');
                     if (versDateTime != null) {
                         DateUtility.convertDateToString(versDateTime);
                         pw.write(" dateTime=\""
@@ -885,12 +845,12 @@ public class FedoraAccessServlet
                             + OBJ_PROFILE1_0.xsdLocation + "\">");
 
                     // PROFILE FIELDS SERIALIZATION
-                    pw.write("<objLabel>"
-                            + StreamUtility.enc(objProfile.objectLabel)
-                            + "</objLabel>");
-                    pw.write("<objOwnerId>"
-                            + StreamUtility.enc(objProfile.objectOwnerId)
-                            + "</objOwnerId>");
+                    pw.write("<objLabel>");
+                    StreamUtility.enc(objProfile.objectLabel, pw);
+                    pw.write("</objLabel>");
+                    pw.write("<objOwnerId>");
+                    StreamUtility.enc(objProfile.objectOwnerId, pw);
+                    pw.write("</objOwnerId>");
 
                     pw.write("<objModels>\n");
                     for (String model : objProfile.objectModels) {
@@ -907,12 +867,12 @@ public class FedoraAccessServlet
                                     .convertDateToString(objProfile.objectLastModDate);
                     pw.write("<objLastModDate>" + mDate + "</objLastModDate>");;
 
-                    pw.write("<objDissIndexViewURL>"
-                            + StreamUtility.enc(objProfile.dissIndexViewURL)
-                            + "</objDissIndexViewURL>");
-                    pw.write("<objItemIndexViewURL>"
-                            + StreamUtility.enc(objProfile.itemIndexViewURL)
-                            + "</objItemIndexViewURL>");
+                    pw.write("<objDissIndexViewURL>");
+                    StreamUtility.enc(objProfile.dissIndexViewURL, pw);
+                    pw.write("</objDissIndexViewURL>");
+                    pw.write("<objItemIndexViewURL>");
+                    StreamUtility.enc(objProfile.itemIndexViewURL, pw);
+                    pw.write("</objItemIndexViewURL>");
                     pw.write("</objectProfile>");
                     pw.flush();
                     pw.close();
@@ -949,27 +909,6 @@ public class FedoraAccessServlet
     public void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         doGet(request, response);
-    }
-
-    /**
-     * <p>
-     * Initialize servlet.
-     * </p>
-     *
-     * @throws ServletException
-     *         If the servet cannot be initialized.
-     */
-    @Override
-    public void init() throws ServletException {
-        try {
-            s_server = Server.getInstance(new File(FEDORA_HOME), false);
-            s_access =
-                    (Access) s_server
-                            .getModule("org.fcrepo.server.access.Access");
-        } catch (InitializationException ie) {
-            throw new ServletException("Unable to get Fedora Server instance."
-                    + ie.getMessage());
-        }
     }
 
 }

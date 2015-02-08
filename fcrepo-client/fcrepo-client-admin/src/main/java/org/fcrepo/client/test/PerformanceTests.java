@@ -7,30 +7,28 @@ package org.fcrepo.client.test;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
-import java.io.InputStream;
 import java.io.PrintStream;
-
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import java.math.BigDecimal;
-
-import org.apache.axis.types.NonNegativeInteger;
-
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.HttpMethod;
-import org.apache.commons.httpclient.UsernamePasswordCredentials;
-import org.apache.commons.httpclient.auth.AuthScope;
-import org.apache.commons.httpclient.methods.GetMethod;
-
+import org.apache.http.HttpHeaders;
+import org.apache.http.HttpResponse;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.util.EntityUtils;
 import org.fcrepo.client.FedoraClient;
-
 import org.fcrepo.common.Constants;
-
-import org.fcrepo.server.access.FedoraAPIA;
-import org.fcrepo.server.management.FedoraAPIM;
+import org.fcrepo.common.http.PreemptiveAuth;
+import org.fcrepo.server.access.FedoraAPIAMTOM;
+import org.fcrepo.server.management.FedoraAPIMMTOM;
+import org.fcrepo.server.utilities.TypeUtility;
 
 
 /**
@@ -42,8 +40,8 @@ import org.fcrepo.server.management.FedoraAPIM;
 public class PerformanceTests
         implements Constants {
 
-    private FedoraAPIM apim;
-    private FedoraAPIA apia;
+    private FedoraAPIMMTOM apim;
+    private FedoraAPIAMTOM apia;
 
     private static int iterations = 10;
     private static int threads = 10;
@@ -164,10 +162,11 @@ public class PerformanceTests
 
         String baseURL = "http://" + host + ":" + port + "/" + context;
         FedoraClient fedoraClient = new FedoraClient(baseURL, username, password);
-        apim = fedoraClient.getAPIM();
-        apia = fedoraClient.getAPIA();
+        apim = fedoraClient.getAPIMMTOM();
+        apia = fedoraClient.getAPIAMTOM();
+        fedoraClient.shutdown();
 
-        PIDS = apim.getNextPID(new NonNegativeInteger(Integer.valueOf(iterations).toString()), "demo");
+        PIDS = apim.getNextPID(new BigInteger(Integer.valueOf(iterations).toString()), "demo").toArray(new String[]{});
         FOXML = new byte[iterations][];
         for (int i = 0; i < iterations; i++) {
             FOXML[i] = DEMO_FOXML_TEXT.replaceAll(pid, PIDS[i]).getBytes("UTF-8");
@@ -175,7 +174,7 @@ public class PerformanceTests
     }
 
     private void runIngest(byte[] foxml) throws Exception {
-        apim.ingest(foxml, FOXML1_1.uri, "Ingest Test");
+        apim.ingest(TypeUtility.convertBytesToDataHandler(foxml), FOXML1_1.uri, "Ingest Test");
     }
 
     private void runAddDatastream(String pid, String dsId) throws Exception {
@@ -216,7 +215,7 @@ public class PerformanceTests
                                      "New Label",
                                      "text/xml",
                                      null,
-                                     dsContent.getBytes(),
+                                     TypeUtility.convertBytesToDataHandler(dsContent.getBytes()),
                                      null,
                                      null,
                                      "Modify Datastream Test",
@@ -236,14 +235,14 @@ public class PerformanceTests
     }
 
     private void runGetDatastreamRest(String pid) throws Exception {
-        HttpMethod httpMethod = getHttpMethod(pid);
+        HttpGet httpMethod = getHttpMethod(pid);
         HttpClient client = getHttpClient();
-        client.executeMethod(httpMethod);
-        InputStream in = httpMethod.getResponseBodyAsStream();
-        int input = in.read();
-        while (input > 0) {
-            input = in.read();
+        HttpResponse response =
+                client.execute(httpMethod);
+        if (response.getEntity() != null) {
+            EntityUtils.consumeQuietly(response.getEntity());
         }
+        httpMethod.releaseConnection();
     }
 
     /**
@@ -387,17 +386,15 @@ public class PerformanceTests
         long startTime = 0;
         long stopTime = 0;
         runIngest(FOXML[0]);
-        HttpMethod httpMethod = getHttpMethod(PIDS[0]);
+        HttpGet httpMethod = getHttpMethod(PIDS[0]);
         HttpClient client = getHttpClient();
         startTime = System.currentTimeMillis();
         for (int i = 0; i < iterations; i++) {
-            client.executeMethod(httpMethod);
-            InputStream in = httpMethod.getResponseBodyAsStream();
-            int input = in.read();
-            while (input > 0) {
-                input = in.read();
-            }
+            HttpResponse response =
+                client.execute(httpMethod);
+            EntityUtils.consumeQuietly(response.getEntity());
         }
+        httpMethod.releaseConnection();
         stopTime = System.currentTimeMillis();
         totalTime = (stopTime - startTime);
         runPurgeObject(PIDS[0]);
@@ -405,18 +402,16 @@ public class PerformanceTests
         return totalTime;
     }
 
-    private HttpMethod getHttpMethod(String pid) {
+    private HttpGet getHttpMethod(String pid) {
         String url = "http://" + host + ":" + port + "/" + context + "/get/" + pid + "/" + "MDS1";
-        HttpMethod httpMethod = new GetMethod(url);
-        httpMethod.setDoAuthentication(true);
-        httpMethod.getParams().setParameter("Connection", "Keep-Alive");
+        HttpGet httpMethod = new HttpGet(url);
+        httpMethod.setHeader(HttpHeaders.CONNECTION, "Keep-Alive");
         return httpMethod;
     }
 
     private HttpClient getHttpClient() {
-        HttpClient client = new HttpClient();
-        client.getParams().setAuthenticationPreemptive(true);
-        client.getState().setCredentials(
+        DefaultHttpClient client = new PreemptiveAuth();
+        client.getCredentialsProvider().setCredentials(
                 new AuthScope(host, Integer.valueOf(port), "realm"),
                 new UsernamePasswordCredentials(username, password));
         return client;
@@ -634,6 +629,7 @@ public class PerformanceTests
             this.index = index;
         }
 
+        @Override
         public Boolean call() throws Exception {
             if (methodType.equals(MethodType.INGEST)) {
                 runIngest(FOXML[index]);
@@ -719,7 +715,7 @@ public class PerformanceTests
         String name = args[7];
         String context = Constants.FEDORA_DEFAULT_APP_CONTEXT;
 
-        if (args.length == 9 && !args[8].equals("")) {
+        if (args.length == 9 && !args[8].isEmpty()) {
             context = args[8];
         }
 

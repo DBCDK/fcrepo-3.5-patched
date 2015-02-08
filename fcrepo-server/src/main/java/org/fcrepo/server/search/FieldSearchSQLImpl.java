@@ -5,21 +5,16 @@
 package org.fcrepo.server.search;
 
 import java.io.InputStream;
-
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
-
-
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import org.fcrepo.server.errors.MethodNotFoundException;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.fcrepo.server.errors.ObjectIntegrityException;
 import org.fcrepo.server.errors.RepositoryConfigurationException;
@@ -36,6 +31,8 @@ import org.fcrepo.server.utilities.DCField;
 import org.fcrepo.server.utilities.DCFields;
 import org.fcrepo.server.utilities.SQLUtility;
 import org.fcrepo.utilities.DateUtility;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A FieldSearch implementation that uses a relational database as a backend.
@@ -79,8 +76,8 @@ public class FieldSearchSQLImpl
             new boolean[] {false, false, false, false, true, true, true};
 
     // a hash of token-keyed FieldSearchResultSQLImpls
-    private final HashMap<String, FieldSearchResultSQLImpl> m_currentResults =
-            new HashMap<String, FieldSearchResultSQLImpl>();
+    private final Map<String, FieldSearchResultSQLImpl> m_currentResults =
+            new ConcurrentHashMap<String, FieldSearchResultSQLImpl>();
 
     /**
      * Construct a FieldSearchSQLImpl that indexes DC fields.
@@ -285,6 +282,7 @@ public class FieldSearchSQLImpl
             st = conn.prepareStatement("DELETE FROM doFields WHERE pid=?");
             st.setString(1, pid);
             st.executeUpdate();
+            st.close();
             st = conn.prepareStatement("DELETE FROM dcDates WHERE pid=?");
             st.setString(1, pid);
             st.executeUpdate();
@@ -365,18 +363,13 @@ public class FieldSearchSQLImpl
     private void closeAndForgetOldResults() {
         Iterator<FieldSearchResultSQLImpl> iter =
                 m_currentResults.values().iterator();
-        ArrayList<String> toRemove = new ArrayList<String>();
         while (iter.hasNext()) {
             FieldSearchResultSQLImpl r = iter.next();
             if (r.isExpired()) {
                 logger.debug("listSession " + r.getToken()
                         + " expired; will forget it.");
-                toRemove.add(r.getToken());
+                iter.remove();
             }
-        }
-        for (int i = 0; i < toRemove.size(); i++) {
-            String token = toRemove.get(i);
-            m_currentResults.remove(token);
         }
     }
 
@@ -393,31 +386,15 @@ public class FieldSearchSQLImpl
         if (dcFields.size() == 0) {
             return null;
         }
-        StringBuilder out = new StringBuilder();
+        StringBuilder out = new StringBuilder(64 * dcFields.size());
 
         for (DCField dcField : dcFields) {
-            out.append(" ");
+            out.append(' ');
             out.append(dcField.getValue().toLowerCase());
         }
         out.append(" .");
         return out.toString();
     }
-
-    // same as above, but for case sensitive repeating values
-    private static String getDbValueCaseSensitive(List<String> dcItem) {
-        if (dcItem.size() == 0) {
-            return null;
-        }
-        StringBuffer out = new StringBuffer();
-        for (int i = 0; i < dcItem.size(); i++) {
-            String val = dcItem.get(i);
-            out.append(" ");
-            out.append(val);
-        }
-        out.append(" .");
-        return out.toString();
-    }
-
     @Override
     public int findHighestID(String namespace) throws ServerException {
         throw new MethodNotFoundException("FieldSearchSQL does not implement findHighestID");

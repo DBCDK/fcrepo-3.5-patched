@@ -4,18 +4,18 @@
  */
 package org.fcrepo.server.storage;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.Map;
+import java.util.Properties;
+
 import org.apache.commons.dbcp.BasicDataSource;
 import org.apache.commons.dbcp.BasicDataSourceFactory;
 import org.fcrepo.server.utilities.DDLConverter;
 import org.fcrepo.server.utilities.TableCreatingConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-import java.util.Map;
-import java.util.Properties;
 
 
 /**
@@ -331,9 +331,13 @@ public class ConnectionPool {
      */
     public void free(Connection connection) {
         try {
-            // ensure connections returned to pool as read-only
-            setConnectionReadOnly(connection, true);
-            connection.close();
+            if (!connection.isClosed()){
+                // ensure connections returned to pool as read-only
+                setConnectionReadOnly(connection, true);
+                connection.close();
+            } else {
+                logger.debug("Ignoring attempt to close a previously closed connection");
+            }
         } catch (SQLException sqle) {
             logger.warn("Unable to close connection", sqle);
         } finally {
@@ -386,7 +390,7 @@ public class ConnectionPool {
             try {
                 connection.setReadOnly(readOnly);
             } catch (Throwable th) {
-                logger.info("Read-only connections not supported (" + th.getMessage() + ")");
+                logger.info("Read-only connections not supported ({})", th.getMessage());
                 supportsReadOnly = false;
             }
         }

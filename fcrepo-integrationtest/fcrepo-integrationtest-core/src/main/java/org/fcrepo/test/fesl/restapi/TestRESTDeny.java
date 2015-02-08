@@ -10,8 +10,10 @@ import java.util.regex.Pattern;
 
 import org.apache.http.client.ClientProtocolException;
 
+import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import org.slf4j.Logger;
@@ -32,30 +34,32 @@ public class TestRESTDeny {
 
     private static final String PROPERTIES = "fedora";
 
-    private HttpUtils httpUtils = null;
+    private static HttpUtils httpUtils = null;
 
     public static junit.framework.Test suite() {
         return new JUnit4TestAdapter(TestRESTDeny.class);
     }
-
-    @Before
-    public void setup() {
+    
+    @BeforeClass
+    public static void bootStrap() throws Exception {
         PropertyResourceBundle prop =
                 (PropertyResourceBundle) ResourceBundle.getBundle(PROPERTIES);
         String username = prop.getString("fedora.admin.username");
         String password = prop.getString("fedora.admin.password");
         String fedoraUrl = prop.getString("fedora.url");
+        logger.debug("Initialising HttpUtils...");
+        httpUtils = new HttpUtils(fedoraUrl, username, password);
+    }
+    
+    @AfterClass
+    public static void cleanUp() {
+        httpUtils.shutdown();
+    }
 
-        try {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Initialising HttpUtils...");
-            }
 
-            httpUtils = new HttpUtils(fedoraUrl, username, password);
-        } catch (Exception e) {
-            logger.error(e.getMessage());
-            Assert.fail(e.getMessage());
-        }
+
+    @Before
+    public void setup() {
     }
 
     @Test
@@ -71,7 +75,7 @@ public class TestRESTDeny {
 
             boolean check =
                     response
-                            .contains("<a href=\"objects/test:1000003\">test:1000003</a>");
+                            .contains("<a href=\"/fedora/objects/test:1000003\">test:1000003</a>");
             Assert.assertTrue("Expected object data not found", check);
         } catch (AuthorizationDeniedException ade) {
             if (logger.isDebugEnabled()) {
@@ -97,7 +101,7 @@ public class TestRESTDeny {
 
             boolean check =
                     response
-                            .contains("<a href=\"objects/test:1000003\">test:1000003</a>");
+                            .contains("<a href=\"/fedora/objects/test:1000003\">test:1000003</a>");
             Assert.assertTrue("Expected object data not found", check);
         } catch (AuthorizationDeniedException ade) {
             if (logger.isDebugEnabled()) {

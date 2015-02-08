@@ -5,19 +5,22 @@
 
 package org.fcrepo.server.storage.translation;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.InputStream;
 import java.util.Date;
 
+import org.apache.commons.codec.digest.DigestUtils;
 import org.custommonkey.xmlunit.XMLTestCase;
-
 import org.jrdf.graph.URIReference;
-
 import org.junit.Before;
-
-import org.fcrepo.common.Constants;
 import org.fcrepo.common.PID;
+import org.fcrepo.server.Context;
+import org.fcrepo.server.errors.StreamIOException;
 import org.fcrepo.server.storage.types.BasicDigitalObject;
 import org.fcrepo.server.storage.types.DSBinding;
 import org.fcrepo.server.storage.types.DSBindingMap;
+import org.fcrepo.server.storage.types.DatastreamManagedContent;
 import org.fcrepo.server.storage.types.DatastreamReferencedContent;
 import org.fcrepo.server.storage.types.DatastreamXMLMetadata;
 import org.fcrepo.server.storage.types.DigitalObject;
@@ -43,10 +46,20 @@ public abstract class TranslationTest
     @Override
     @Before
     public void setUp() {
-        // HACK: make DOTranslationUtility happy
-        System.setProperty("fedoraServerHost", "localhost");
-        System.setProperty("fedoraServerPort", "8080");
-        System.setProperty("fedoraAppServerContext", Constants.FEDORA_DEFAULT_APP_CONTEXT);
+        // HACK: make DOTranslationUtility happy; does this still do anything?
+        //System.setProperty("fedoraServerHost", "localhost");
+        //System.setProperty("fedoraServerPort", "8080");
+        //System.setProperty("fedoraAppServerContext", Constants.FEDORA_DEFAULT_APP_CONTEXT);
+        if (System.getProperty("fedora.hostname") == null) {
+            System.setProperty("fedora.hostname","localhost");
+        }
+        if (System.getProperty("fedora.port") == null) {
+            System.setProperty("fedora.port","1024");
+        }
+        if (System.getProperty("fedora.appServerContext") == null) {
+            System.setProperty("fedora.appServerContext","fedora");
+        }
+        DOTranslationUtility.init((File)null);
     }
 
     //---
@@ -99,6 +112,20 @@ public abstract class TranslationTest
         ds.DSControlGrp = "R";
         ds.DSLocation = url;
         return ds;
+    }
+    
+    protected static DatastreamManagedContent createMDatastream(String id, final byte [] content) {
+        DatastreamManagedContent dmc = new DatastreamManagedContent(){
+            public InputStream getContentStream(Context ctx) throws StreamIOException {
+                return new ByteArrayInputStream(content);
+            }
+        };
+        dmc.DatastreamID = id;
+        dmc.DSVersionID = id + ".0";
+        dmc.DSControlGrp = "M";
+        dmc.DSChecksumType = "MD5";
+        dmc.DSChecksum = DigestUtils.md5Hex(content);
+        return dmc;
     }
 
     protected static Disseminator createDisseminator(String id, int numBindings) {

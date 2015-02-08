@@ -18,13 +18,13 @@
 
 package org.fcrepo.server.security.xacml.pep;
 
-import java.util.Map;
+import java.util.List;
 
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.pdp.MelcoePDP;
+import org.jboss.security.xacml.sunxacml.ctx.ResponseCtx;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import org.fcrepo.server.security.xacml.pdp.MelcoePDP;
-import org.fcrepo.server.security.xacml.pdp.MelcoePDPImpl;
 
 /**
  * This is the Web Services based client for the MelcoePDP. It uses the classes
@@ -38,6 +38,8 @@ public class DirectPDPClient
     private static final Logger logger =
             LoggerFactory.getLogger(DirectPDPClient.class);
 
+    private static final String[] STRING_TYPE = new String[0];
+
     private MelcoePDP client = null;
 
     /**
@@ -47,23 +49,16 @@ public class DirectPDPClient
      *        a Map of options for this class
      * @throws PEPException
      */
-    public DirectPDPClient(Map<String, String> options)
+    public DirectPDPClient(MelcoePDP pdp)
             throws PEPException {
-        // FIXME: this constructor is not required - no options - but is called by pep ContextHandlerImpl
-        /*
-        try {
-            client = new MelcoePDPImpl();
-        } catch (Exception e) {
-            logger.error("Could not initialise the PEP Client.");
-            throw new PEPException("Could not initialise the PEP Client.", e);
-        }
-        */
+        this.client = pdp;
     }
 
     /*
      * (non-Javadoc)
      * @see org.fcrepo.server.security.xacml.pep.PEPClient#evaluate(java.lang.String)
      */
+    @Override
     public String evaluate(String request) throws PEPException {
         if (logger.isDebugEnabled()) {
             logger.debug("Resolving String request:\n" + request);
@@ -71,7 +66,7 @@ public class DirectPDPClient
 
         String response = null;
         try {
-            response = getClient().evaluate(request);
+            response = this.client.evaluate(request);
         } catch (Exception e) {
             logger.error("Error evaluating request.", e);
             throw new PEPException("Error evaluating request", e);
@@ -80,38 +75,36 @@ public class DirectPDPClient
         return response;
     }
 
+    @Override
+    public ResponseCtx evaluate(RequestCtx request) throws PEPException {
+        try {
+            return this.client.evaluate(request);
+        } catch (Exception e) {
+            logger.error("Error evaluating request.", e);
+            throw new PEPException("Error evaluating request", e);
+        }
+    }
     /*
      * (non-Javadoc)
      * @see org.fcrepo.server.security.xacml.pep.PEPClient#evaluateBatch(java.lang.String[])
      */
-    public String evaluateBatch(String[] request) throws PEPException {
+    @Override
+    public String evaluateBatch(List<String> request) throws PEPException {
+        if (request == null) {
+            throw new NullPointerException("evaluateBatch(request=null)");
+        }
         if (logger.isDebugEnabled()) {
-            logger.debug("Resolving request batch (" + request.length
-                    + " requests)");
+            logger.debug("Resolving request batch ({} requests)", request.size());
         }
 
         String response = null;
         try {
-            response = getClient().evaluateBatch(request);
+            response = this.client.evaluateBatch(request.toArray(STRING_TYPE));
         } catch (Exception e) {
             logger.error("Error evaluating request.", e);
             throw new PEPException("Error evaluating request", e);
         }
 
         return response;
-    }
-    private MelcoePDP getClient() throws PEPException {
-        // lazy instantiation - as MelcoePDPImpl attempts to load policies when it is constructed,
-        // if we are using Fedora as a policy store the server won't be running at this point and therefore the load will fail
-        if (client == null) {
-            try {
-                client = new MelcoePDPImpl();
-            } catch (Exception e) {
-                logger.error("Could not initialise the PEP Client.");
-                throw new PEPException("Could not initialise the PEP Client.", e);
-            }
-        }
-        return client;
-
     }
 }

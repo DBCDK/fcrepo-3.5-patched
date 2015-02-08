@@ -8,16 +8,12 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.Reader;
-import java.io.StringReader;
+import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
-
 import java.util.Date;
 import java.util.Iterator;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-
-import org.apache.commons.io.IOUtils;
 
 import org.apache.abdera.Abdera;
 import org.apache.abdera.ext.thread.ThreadHelper;
@@ -26,21 +22,20 @@ import org.apache.abdera.model.Entry;
 import org.apache.abdera.model.Feed;
 import org.apache.abdera.model.Link;
 import org.apache.abdera.util.MimeTypeHelper;
-
+import org.apache.commons.io.IOUtils;
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.Models;
 import org.fcrepo.common.PID;
 import org.fcrepo.common.xml.format.XMLFormat;
-
 import org.fcrepo.server.errors.ObjectIntegrityException;
 import org.fcrepo.server.errors.StreamIOException;
 import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.DatastreamXMLMetadata;
 import org.fcrepo.server.storage.types.DigitalObject;
 import org.fcrepo.server.utilities.StreamUtility;
-
 import org.fcrepo.utilities.DateUtility;
 import org.fcrepo.utilities.MimeTypeUtils;
+import org.fcrepo.utilities.ReadableCharArrayWriter;
 
 /**
  * <p>Serializes a Fedora Object in Atom with Threading Extensions.</p>
@@ -219,10 +214,10 @@ public class AtomDOSerializer
 
                 String altIds =
                         DOTranslationUtility.oneString(dsv.DatastreamAltIDs);
-                if (altIds != null && !altIds.equals("")) {
+                if (altIds != null && !altIds.isEmpty()) {
                     dsvEntry.addCategory(MODEL.ALT_IDS.uri, altIds, null);
                 }
-                if (dsv.DSFormatURI != null && !dsv.DSFormatURI.equals("")) {
+                if (dsv.DSFormatURI != null && !dsv.DSFormatURI.isEmpty()) {
                     dsvEntry.addCategory(MODEL.FORMAT_URI.uri,
                                          dsv.DSFormatURI,
                                          null);
@@ -316,10 +311,13 @@ public class AtomDOSerializer
             String name = "AUDIT.0.xml";
             try {
                 m_zout.putNextEntry(new ZipEntry(name));
-                Reader r = new StringReader(DOTranslationUtility.getAuditTrail(m_obj));
-                IOUtils.copy(r, m_zout, m_encoding);
+                ReadableCharArrayWriter buf =
+                        new ReadableCharArrayWriter(512);
+                PrintWriter pw  = new PrintWriter(buf);
+                DOTranslationUtility.appendAuditTrail(m_obj, pw);
+                pw.close();
+                IOUtils.copy(buf.toReader(), m_zout, m_encoding);
                 m_zout.closeEntry();
-                r.close();
             } catch(IOException e) {
                 throw new StreamIOException(e.getMessage(), e);
             }
@@ -346,7 +344,7 @@ public class AtomDOSerializer
 
     private void setInlineXML(Entry entry, DatastreamXMLMetadata ds)
             throws UnsupportedEncodingException, StreamIOException {
-        String content;
+        byte[] content;
 
         if (m_obj.hasContentModel(
                                   Models.SERVICE_DEPLOYMENT_3_0)
@@ -356,16 +354,16 @@ public class AtomDOSerializer
                     DOTranslationUtility
                             .normalizeInlineXML(new String(ds.xmlContent,
                                                            m_encoding),
-                                                m_transContext);
+                                                m_transContext).getBytes(m_encoding);
         } else {
-            content = new String(ds.xmlContent, m_encoding);
+            content = ds.xmlContent;
         }
 
         if (m_format.equals(ATOM_ZIP1_1)) {
             String name = ds.DSVersionID + ".xml";
             try {
                 m_zout.putNextEntry(new ZipEntry(name));
-                InputStream is = new ByteArrayInputStream(content.getBytes(m_encoding));
+                InputStream is = new ByteArrayInputStream(content);
                 IOUtils.copy(is, m_zout);
                 m_zout.closeEntry();
                 is.close();
@@ -376,7 +374,7 @@ public class AtomDOSerializer
             entry.setSummary(ds.DSVersionID);
             entry.setContent(iri, ds.DSMIME);
         } else {
-            entry.setContent(content, ds.DSMIME);
+            entry.setContent(new String(content, m_encoding), ds.DSMIME);
         }
     }
 

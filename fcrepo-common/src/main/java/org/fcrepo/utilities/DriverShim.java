@@ -5,10 +5,8 @@
 package org.fcrepo.utilities;
 
 import java.io.File;
-
 import java.net.URL;
 import java.net.URLClassLoader;
-
 import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.DriverManager;
@@ -16,8 +14,6 @@ import java.sql.DriverPropertyInfo;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.SQLFeatureNotSupportedException;
-
 import java.util.Properties;
 import java.util.logging.Logger;
 
@@ -114,6 +110,11 @@ public class DriverShim
         return _driver.jdbcCompliant();
     }
 
+    public Logger getParentLogger() {
+        throw new UnsupportedOperationException(
+                "Java 1.7 Driver methods are not supported");
+    }
+
     /**
      * Command-line test. Dynamically loads the driver given at the command
      * line, opens a connection, and get the row count of the given table to
@@ -140,9 +141,5 @@ public class DriverShim
                     + " org.SomeDriver jdbcURL name pwd tbl");
             System.exit(1);
         }
-    }
-
-    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
-        throw new SQLFeatureNotSupportedException("Not supported yet.");
     }
 }

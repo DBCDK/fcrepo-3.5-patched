@@ -6,8 +6,7 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import com.sun.xacml.ctx.RequestCtx;
-
+import org.fcrepo.server.security.RequestCtx;
 import org.fcrepo.server.security.xacml.pep.PEPException;
 
 /**
@@ -29,13 +28,5 @@ public class NoopFilter
             throws IOException, ServletException {
         return null;
     }
-
-    @Override
-    public RequestCtx handleResponse(HttpServletRequest request,
-                                     HttpServletResponse response)
-            throws IOException, ServletException {
-        return null;
-    }
-
 
 }

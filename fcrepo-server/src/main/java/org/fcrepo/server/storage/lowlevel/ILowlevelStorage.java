@@ -5,6 +5,7 @@
 package org.fcrepo.server.storage.lowlevel;
 
 import java.io.InputStream;
+import java.util.Map;
 
 import org.fcrepo.server.errors.LowlevelStorageException;
 
@@ -22,10 +23,11 @@ public interface ILowlevelStorage {
      *
      * @param objectKey the pid of the object.
      * @param content the serialized object.
+     * @param objectStorageHints a map of hints for object storage
      * @throws LowlevelStorageException if the object already exists or
      *         cannot be added for any other reason.
      */
-    public void addObject(String objectKey, InputStream content)
+    public void addObject(String objectKey, InputStream content, Map<String, String> objectStorageHints)
             throws LowlevelStorageException;
 
     /**
@@ -33,10 +35,11 @@ public interface ILowlevelStorage {
      *
      * @param objectKey the pid of the object.
      * @param content the serialized object.
+     * @param objectStorageHints a map of hints for object storage
      * @throws LowlevelStorageException if the object does not already exist
      *         or cannot be replaced for any other reason.
      */
-    public void replaceObject(String objectKey, InputStream content)
+    public void replaceObject(String objectKey, InputStream content, Map<String, String> objectHints)
             throws LowlevelStorageException;
 
     /**
@@ -49,6 +52,18 @@ public interface ILowlevelStorage {
      */
     public InputStream retrieveObject(String objectKey)
             throws LowlevelStorageException;
+
+    /**
+     * Gets an existing object.
+     *
+     * @param objectKey the pid of the object.
+     * @param objectStorageHints a map of hints for object storage
+     * @return the serialized form of the object, as stored.
+     * @throws LowlevelStorageException if the object does not exist or
+     *         cannot be read for any other reason.
+     */
+//    public InputStream retrieveObject(String objectKey,  Map<String, String> objectHints)
+//            throws LowlevelStorageException;
 
     /**
      * Removes an object.
@@ -95,7 +110,7 @@ public interface ILowlevelStorage {
      *         exists or cannot be added for any other reason.
      * @returns size - the size of the added object in bytes
      */
-    public long addDatastream(String dsKey, InputStream content)
+    public long addDatastream(String dsKey, InputStream content, Map<String, String> dsStorageHints)
             throws LowlevelStorageException;
 
     /**
@@ -108,7 +123,7 @@ public interface ILowlevelStorage {
      *         already exist or cannot be replaced for any other reason.
      * @returns size - the size of the added object in bytes
      */
-    public long replaceDatastream(String dsKey, InputStream content)
+    public long replaceDatastream(String dsKey, InputStream content, Map<String, String> dsHints)
             throws LowlevelStorageException;
 
     /**

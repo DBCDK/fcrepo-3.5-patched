@@ -8,26 +8,16 @@ package org.fcrepo.server.security.xacml.pdp.data;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
-
 import java.util.List;
-
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
+import java.util.Map;
 
 import org.apache.commons.io.IOUtils;
-
-import org.w3c.dom.Document;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.MalformedPIDException;
 import org.fcrepo.common.PID;
-
 import org.fcrepo.server.Context;
 import org.fcrepo.server.ReadOnlyContext;
 import org.fcrepo.server.Server;
@@ -37,10 +27,12 @@ import org.fcrepo.server.errors.ObjectNotInLowlevelStorageException;
 import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.management.Management;
 import org.fcrepo.server.security.PolicyParser;
-import org.fcrepo.server.security.xacml.pdp.MelcoePDP;
 import org.fcrepo.server.security.xacml.pdp.MelcoePDPException;
 import org.fcrepo.server.utilities.StreamUtility;
 import org.fcrepo.server.validation.ValidationUtility;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.xml.sax.SAXException;
 
 /**
  * A PolicyStore for managing policies stored as Fedora digital objects.
@@ -52,16 +44,14 @@ import org.fcrepo.server.validation.ValidationUtility;
  * @author Stephen Bayliss
  * @version $Id$
  */
-public class FedoraPolicyStore
+public class FedoraPolicyStore extends AbstractPolicyStore
 implements PolicyStore {
 
     private static final Logger log =
         LoggerFactory.getLogger(FedoraPolicyStore.class.getName());
 
     private static final String XACML20_POLICY_NS =
-        "urn:oasis:names:tc:xacml:2.0:policy:schema:os";
-
-    private static final String CONFIG_FILE = "config-pdm-fedora.xml";
+        Constants.XACML2_POLICY_SCHEMA.OS.uri;
 
     public static final String FESL_POLICY_DATASTREAM = "FESLPOLICY";
 
@@ -71,66 +61,110 @@ implements PolicyStore {
     // escaping to use for ":" in policy names
     private static final String PID_SEPARATOR_ESCAPED = "%3A"; // = "__";
 
-
-    private static final char[] hexChar = {
-        '0' , '1' , '2' , '3' ,
-        '4' , '5' , '6' , '7' ,
-        '8' , '9' , 'A' , 'B' ,
-        'C' , 'D' , 'E' , 'F'};
-
     // read from config file:
     private String pidNamespace = "";
     private String contentModel = "";
     private String datastreamControlGroup = "";
     private String collection = "";
     private String collectionRelationship = "";
+    private boolean validateSchema = false;
+    private Map<String,String> schemaLocations = null;
 
-    private PolicyUtils utils;
+    private final PolicyUtils utils = new PolicyUtils();
     protected Server fedoraServer;
 
     protected Management apiMService;
     protected Access apiAService;
 
 
-    protected FedoraPolicyStore()
+    public FedoraPolicyStore(Server server)
     throws PolicyStoreException {
+        this.fedoraServer = server;
+        this.apiMService = (Management)server.getBean("org.fcrepo.server.management.Management");
+        this.apiAService = (Access)server.getBean("org.fcrepo.server.access.Access");
+    }
 
-        // parse config file and set fields
-        initConfig();
-
-        try {
-            this.fedoraServer =
-                Server.getInstance(new File(Constants.FEDORA_HOME), false);
-        } catch (Exception e) {
-            throw new PolicyStoreException("Error initialising FedoraPolicyDataManager: "
-                                                 + e.getMessage(),
-                                                 e);
+    @Override
+    public void init() throws PolicyStoreException, FileNotFoundException {
+        if (log.isDebugEnabled()) {
+            Runtime runtime = Runtime.getRuntime();
+            log.debug("Total memory: " + runtime.totalMemory() / 1024);
+            log.debug("Free memory: " + runtime.freeMemory() / 1024);
+            log.debug("Max memory: " + runtime.maxMemory() / 1024);
         }
-        this.apiMService =
-            (Management) fedoraServer
-            .getModule("org.fcrepo.server.management.Management");
-        this.apiAService =
-            (Access) fedoraServer
-            .getModule("org.fcrepo.server.access.Access");
-
-
+        super.init();
         // if no pid namespace was specified, use the default specified in fedora.fcfg
-        if (pidNamespace.equals("")) {
+        if (pidNamespace.isEmpty()) {
             pidNamespace = fedoraServer.getModule("org.fcrepo.server.storage.DOManager").getParameter("pidNamespace");
         }
 
         // check control group was supplied
-        if (datastreamControlGroup.equals("")) {
-            throw new PolicyStoreException("No control group for policy datastreams was specified in " + CONFIG_FILE);
+        if (datastreamControlGroup.isEmpty()) {
+            throw new PolicyStoreException("No control group for policy datastreams was specified in FedoraPolicyStore configuration");
         }
+        if (validateSchema) {
+            String schemaLocation = schemaLocations.get(XACML20_POLICY_NS);
+            if ( schemaLocation == null) {
+                throw new PolicyStoreException("Configuration error - no policy schema specified");
+            }
+            try{
+            String serverHome =
+                    fedoraServer.getHomeDir().getCanonicalPath() + File.separator;
 
+                String schemaPath =
+                    ((schemaLocation)
+                            .startsWith(File.separator) ? "" : serverHome)
+                            + schemaLocation;
+                FileInputStream in = new FileInputStream(schemaPath);
+                PolicyParser policyParser = new PolicyParser(in);
+                ValidationUtility.setFeslPolicyParser(policyParser);
+            } catch (IOException ioe) {
+                throw new PolicyStoreException(ioe.getMessage(),ioe);
+            } catch (SAXException se) {
+                throw new PolicyStoreException(se.getMessage(),se);
+            }
+        }
     }
+
+    public void setPidNamespace( String pidNamespace ) {
+        this.pidNamespace = pidNamespace;
+    }
+    public void setContentModel( String contentModel ) {
+        this.contentModel = contentModel;
+    }
+    public void setDatastreamControlGroup(String datastreamControlGroup){
+        this.datastreamControlGroup = datastreamControlGroup;
+    }
+    public void setCollection(String collection){
+        this.collection = collection;
+    }
+    public void setCollectionRelationship(String collectionRelationship){
+        this.collectionRelationship = collectionRelationship;
+    }
+    // schema config properties
+    public void setSchemaValidation(boolean validate){
+        this.validateSchema = validate;
+        log.info("Initialising validation " + Boolean.toString(validate));
+        ValidationUtility.setValidateFeslPolicy(validate);
+    }
+
+    /**
+     * Map policy schema URIs to locations for the schema document
+     * @param schemaLocation
+     * @throws IOException
+     * @throws SAXException
+     */
+    public void setSchemaLocations(Map<String,String> schemaLocation) throws IOException, SAXException{
+        this.schemaLocations = schemaLocation;
+    }
+
     /*
      * (non-Javadoc)
      * @see
      * org.fcrepo.server.security.xacml.pdp.data.PolicyDataManager#addPolicy
      * (java.io.File)
      */
+    @Override
     public String addPolicy(File f) throws PolicyStoreException {
         return addPolicy(f, null);
     }
@@ -141,6 +175,7 @@ implements PolicyStore {
      * org.fcrepo.server.security.xacml.pdp.data.PolicyDataManager#addPolicy
      * (java.io.File, java.lang.String)
      */
+    @Override
     public String addPolicy(File f, String name)
     throws PolicyStoreException {
         try {
@@ -156,6 +191,7 @@ implements PolicyStore {
      * org.fcrepo.server.security.xacml.pdp.data.PolicyDataManager#addPolicy
      * (java.lang.String)
      */
+    @Override
     public String addPolicy(String document) throws PolicyStoreException {
         return addPolicy(document, null);
     }
@@ -166,12 +202,13 @@ implements PolicyStore {
      * org.fcrepo.server.security.xacml.pdp.data.PolicyDataManager#addPolicy
      * (java.lang.String, java.lang.String)
      */
+    @Override
     public String addPolicy(String document, String name)
     throws PolicyStoreException {
 
         String policyName;
 
-        if (name == null || name.equals("")) {
+        if (name == null || name.isEmpty()) {
             // no policy name, derive from document
             // (note: policy ID is mandatory according to schema)
             try {
@@ -273,6 +310,7 @@ implements PolicyStore {
      * org.fcrepo.server.security.xacml.pdp.data.PolicyDataManager#deletePolicy
      * (java.lang.String)
      */
+    @Override
     public boolean deletePolicy(String name) throws PolicyStoreException {
         String pid = this.getPID(name);
         if (!contains(name)) {
@@ -304,6 +342,7 @@ implements PolicyStore {
      * org.fcrepo.server.security.xacml.pdp.data.PolicyDataManager#updatePolicy
      * (java.lang.String, java.lang.String)
      */
+    @Override
     public boolean updatePolicy(String name, String newDocument)
     throws PolicyStoreException {
 
@@ -387,6 +426,7 @@ implements PolicyStore {
      * org.fcrepo.server.security.xacml.pdp.data.PolicyDataManager#getPolicy
      * (java.lang.String)
      */
+    @Override
     public byte[] getPolicy(String name) throws PolicyStoreException {
         String pid = getPID(name);
         if (!contains(name)) {
@@ -416,6 +456,7 @@ implements PolicyStore {
      *         policyName
      * @throws PolicyStoreException
      */
+    @Override
     public boolean contains(String policyName)
     throws PolicyStoreException {
 
@@ -459,6 +500,7 @@ implements PolicyStore {
      *         PolicyId
      * @throws PolicyStoreException
      */
+    @Override
     public boolean contains(File policy) throws PolicyStoreException {
 
         try {
@@ -474,6 +516,7 @@ implements PolicyStore {
      * org.fcrepo.server.security.xacml.pdp.data.PolicyDataManager#listPolicies
      * ()
      */
+    @Override
     public List<String> listPolicies() throws PolicyStoreException {
         // not implemented (is it ever used?)
 
@@ -555,115 +598,6 @@ implements PolicyStore {
         }
     }
 
-    private void initConfig() throws PolicyStoreException {
-        if (log.isDebugEnabled()) {
-            Runtime runtime = Runtime.getRuntime();
-            log.debug("Total memory: " + runtime.totalMemory() / 1024);
-            log.debug("Free memory: " + runtime.freeMemory() / 1024);
-            log.debug("Max memory: " + runtime.maxMemory() / 1024);
-        }
-
-        try {
-            utils = new PolicyUtils();
-
-
-            String home = MelcoePDP.PDP_HOME.getAbsolutePath();
-
-            String filename = home + "/conf/" + CONFIG_FILE;
-            File f = new File(filename);
-            if (!f.exists()) {
-                throw new PolicyStoreException("Could not locate config file: "
-                                                     + f.getAbsolutePath());
-            }
-
-            log.info("Loading config file: " + f.getAbsolutePath());
-
-            DocumentBuilderFactory factory =
-                DocumentBuilderFactory.newInstance();
-            DocumentBuilder docBuilder = factory.newDocumentBuilder();
-            Document doc = docBuilder.parse(new FileInputStream(f));
-
-            NodeList nodes = null;
-
-            // get fedora policy object information
-            nodes = doc.getElementsByTagName("object").item(0).getChildNodes();
-            for (int x = 0; x < nodes.getLength(); x++) {
-                Node node = nodes.item(x);
-                if (node.getNodeName().equals("pid-namespace")) {
-                    this.pidNamespace =
-                        node.getAttributes().getNamedItem("name")
-                        .getNodeValue();
-                }
-                if (node.getNodeName().equals("content-model")) {
-                    this.contentModel =
-                        node.getAttributes().getNamedItem("name")
-                        .getNodeValue();
-                }
-                if (node.getNodeName().equals("datastream-control-group")) {
-                    this.datastreamControlGroup =
-                        node.getAttributes().getNamedItem("name")
-                        .getNodeValue();
-                }
-                if (node.getNodeName().equals("collection")) {
-                    this.collection =
-                        node.getAttributes().getNamedItem("name")
-                        .getNodeValue();
-                }
-                if (node.getNodeName().equals("collection-relationship")) {
-                    this.collectionRelationship =
-                        node.getAttributes().getNamedItem("name")
-                        .getNodeValue();
-                }
-            }
-
-            // get validation information
-            Node schemaConfig =
-                doc.getElementsByTagName("schemaConfig").item(0);
-            nodes = schemaConfig.getChildNodes();
-
-
-            log.info("Initialising validation");
-
-            // FIXME: at some point this config should be moved into the Spring module architecture
-            ValidationUtility.setValidateFeslPolicy("true".equals(schemaConfig.getAttributes()
-                                                                  .getNamedItem("validation").getNodeValue()));
-
-            boolean foundSchema = false;
-            for (int x = 0; x < nodes.getLength(); x++) {
-                Node schemaNode = nodes.item(x);
-                if (schemaNode.getNodeType() == Node.ELEMENT_NODE) {
-                    if (XACML20_POLICY_NS.equals(schemaNode.getAttributes()
-                                                 .getNamedItem("namespace").getNodeValue())) {
-                        String loc =
-                            schemaNode.getAttributes()
-                            .getNamedItem("location")
-                            .getNodeValue();
-                        Server fedoraServer = Server.getInstance(new File(Constants.FEDORA_HOME), false);
-                        String serverHome =
-                            fedoraServer.getHomeDir().getCanonicalPath() + File.separator;
-
-                        String schemaPath =
-                            ((loc)
-                                    .startsWith(File.separator) ? "" : serverHome)
-                                    + loc;
-                        FileInputStream in = new FileInputStream(schemaPath);
-                        PolicyParser policyParser = new PolicyParser(in);
-                        ValidationUtility.setFeslPolicyParser(policyParser);
-                        foundSchema = true;
-                    }
-                }
-            }
-            if (!foundSchema) {
-                throw new PolicyStoreException("Configuration error - no policy schema specified");
-            }
-
-        } catch (Exception e) {
-            log.error("Could not initialise DBXML: " + e.getMessage(), e);
-            throw new PolicyStoreException("Could not initialise DBXML: "
-                                           + e.getMessage(), e);
-        }
-    }
-
     /**
      * Generate FOXML for a new policy object
      * @param pid
@@ -682,38 +616,43 @@ implements PolicyStore {
                                                  String policyOrLocation,
                                                  String controlGroup)
     throws PolicyStoreException {
-        StringBuilder foxml = new StringBuilder();
+        StringBuilder foxml = new StringBuilder(1024);
         foxml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         foxml.append("<foxml:digitalObject VERSION=\"1.1\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n");
         foxml.append("    xmlns:foxml=\"info:fedora/fedora-system:def/foxml#\"\n");
         foxml.append("           xsi:schemaLocation=\"" + Constants.FOXML.uri
                      + " " + Constants.FOXML1_1.xsdLocation + "\"");
-        foxml.append("\n           PID=\"" + StreamUtility.enc(pid)
-                         + "\">\n");
-        foxml.append("  <foxml:objectProperties>\n");
+        foxml.append("\n           PID=\"");
+        StreamUtility.enc(pid, foxml);
+        foxml.append("\">\n  <foxml:objectProperties>\n");
         foxml.append("    <foxml:property NAME=\"info:fedora/fedora-system:def/model#state\" VALUE=\"A\"/>\n");
-        foxml.append("    <foxml:property NAME=\"info:fedora/fedora-system:def/model#label\" VALUE=\""
-                + StreamUtility.enc(label) + "\"/>\n");
-        foxml.append("  </foxml:objectProperties>\n");
+        foxml.append("    <foxml:property NAME=\"info:fedora/fedora-system:def/model#label\" VALUE=\"");
+        StreamUtility.enc(label, foxml);
+        foxml.append("\"/>\n  </foxml:objectProperties>\n");
 
 
         // RELS-EXT specifying content model - if present, collection relationship if present
         // but not for bootstrap policies
         if (!pid.startsWith(FESL_BOOTSTRAP_POLICY_NAMESPACE + ":")) {
-            if (!contentModel.equals("") || !collection.equals("")) {
+            if (!contentModel.isEmpty() || !collection.isEmpty()) {
                 foxml.append("<foxml:datastream ID=\"RELS-EXT\" CONTROL_GROUP=\"X\">");
                 foxml.append("<foxml:datastreamVersion FORMAT_URI=\"info:fedora/fedora-system:FedoraRELSExt-1.0\" ID=\"RELS-EXT.0\" MIMETYPE=\"application/rdf+xml\" LABEL=\"RDF Statements about this object\">");
                 foxml.append("  <foxml:xmlContent>");
                 foxml.append("   <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:rdfs=\"http://www.w3.org/2000/01/rdf-schema#\" xmlns:fedora-model=\"info:fedora/fedora-system:def/model#\" xmlns:rel=\"info:fedora/fedora-system:def/relations-external#\">");
-                foxml.append("      <rdf:Description rdf:about=\"" + "info:fedora/"
-                             + StreamUtility.enc(pid) + "\">");
-                if (!contentModel.equals("")) {
-                    foxml.append("        <fedora-model:hasModel rdf:resource=\""
-                                 + StreamUtility.enc(contentModel) + "\"/>");
+                foxml.append("      <rdf:Description rdf:about=\"" + "info:fedora/");
+                StreamUtility.enc(pid, foxml);
+                foxml.append("\">");
+                if (!contentModel.isEmpty()) {
+                    foxml.append("        <fedora-model:hasModel rdf:resource=\"");
+                    StreamUtility.enc(contentModel, foxml);
+                    foxml.append("\"/>");
                 }
-                if (!collection.equals("")) {
-                    foxml.append("        <rel:" + StreamUtility.enc(collectionRelationship) + " rdf:resource=\""
-                                 + StreamUtility.enc(collection) + "\"/>");
+                if (!collection.isEmpty()) {
+                    foxml.append("        <rel:");
+                    StreamUtility.enc(collectionRelationship, foxml);
+                    foxml.append(" rdf:resource=\"");
+                    StreamUtility.enc(collection, foxml);
+                    foxml.append("\"/>");
                 }
                 foxml.append("       </rdf:Description>");
                 foxml.append("      </rdf:RDF>");
@@ -728,7 +667,7 @@ implements PolicyStore {
         foxml.append("<foxml:datastreamVersion ID=\"POLICY.0\" MIMETYPE=\"text/xml\" LABEL=\"XACML policy datastream\">");
         if (controlGroup.equals("M")) {
             foxml.append("  <foxml:contentLocation REF=\"" + policyOrLocation
-                         + "\" TYPE=\"URL\"/>");
+                         + "\" TYPE=\"" + org.fcrepo.server.storage.types.Datastream.DS_LOCATION_TYPE_URL + "\"/>");
 
         } else if (controlGroup.equals("X")) {
             foxml.append("  <foxml:xmlContent>");

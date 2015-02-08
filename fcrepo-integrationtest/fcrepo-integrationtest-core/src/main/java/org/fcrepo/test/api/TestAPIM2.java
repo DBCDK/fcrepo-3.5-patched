@@ -4,38 +4,44 @@
  */
 package org.fcrepo.test.api;
 
+import static junit.framework.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 import java.io.File;
-
-import java.rmi.RemoteException;
-
 import java.util.HashMap;
 import java.util.Map;
 
-import org.apache.axis.types.NonNegativeInteger;
+import javax.xml.ws.soap.SOAPFaultException;
+
+import junit.framework.JUnit4TestAdapter;
 
 import org.apache.commons.io.FileUtils;
-
 import org.custommonkey.xmlunit.NamespaceContext;
 import org.custommonkey.xmlunit.SimpleNamespaceContext;
 import org.custommonkey.xmlunit.XMLUnit;
-
-import junit.framework.Test;
-import junit.framework.TestSuite;
-
+import org.fcrepo.client.FedoraClient;
 import org.fcrepo.common.Constants;
-
 import org.fcrepo.server.access.FedoraAPIA;
 import org.fcrepo.server.management.FedoraAPIM;
 import org.fcrepo.server.types.gen.ComparisonOperator;
 import org.fcrepo.server.types.gen.Condition;
 import org.fcrepo.server.types.gen.FieldSearchQuery;
 import org.fcrepo.server.types.gen.FieldSearchResult;
-
+import org.fcrepo.server.types.gen.ObjectFactory;
+import org.fcrepo.server.utilities.TypeUtility;
 import org.fcrepo.test.FedoraServerTestCase;
 import org.fcrepo.test.TemplatedResourceIterator;
+import org.junit.After;
+import org.junit.AfterClass;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Test;
+import org.junit.runner.JUnitCore;
 
 /**
  * Test APIM based on templating of resource files
+ * These tests also use the non-MTOM WS client
  *
  * @author Stephen Bayliss
  * @version $Id$
@@ -44,19 +50,27 @@ public class TestAPIM2
         extends FedoraServerTestCase
         implements Constants {
 
+    private static FedoraClient s_client;
     private FedoraAPIM apim;
     private FedoraAPIA apia;
 
-    public static Test suite() {
-        TestSuite suite = new TestSuite("TestAPIM2 TestSuite");
-        suite.addTestSuite(TestAPIM2.class);
-        return suite;
+    @BeforeClass
+    public static void bootStrap() throws Exception {
+        s_client = getFedoraClient();
+        ingestImageCollectionDemoObjects(s_client);
+    }
+    
+    @AfterClass
+    public static void cleanUp() throws Exception {
+        purgeDemoObjects(s_client);
+        s_client.shutdown();
     }
 
-    @Override
+
+    @Before
     public void setUp() throws Exception {
-        apim = getFedoraClient().getAPIM();
-        apia = getFedoraClient().getAPIA();
+        apim = s_client.getAPIM();
+        apia = s_client.getAPIA();
 
 
         Map<String, String> nsMap = new HashMap<String, String>();
@@ -67,18 +81,19 @@ public class TestAPIM2
         XMLUnit.setXpathNamespaceContext(ctx);
 
         // not really necessary, but will cope with any junk left from other tests
-        purgeDemoObjects();
+        purgeDemoObjects(s_client);
 
     }
 
-    @Override
+    @After
     public void tearDown() throws Exception {
         // assumes all our test objects are in the demo namespace
-        purgeDemoObjects();
+        purgeDemoObjects(s_client);
 
         XMLUnit.setXpathNamespaceContext(SimpleNamespaceContext.EMPTY_CONTEXT);
     }
 
+    @Test
     public void testIngest() throws Exception {
 
         String resourceDirName = "src/test/resources/APIM2/foxml/";
@@ -99,7 +114,7 @@ public class TestAPIM2
             }
         }
 
-        assertEquals("Ingested object count", count, getDemoObjects().size());
+        assertEquals("Ingested object count", count, getDemoObjects(s_client).size());
 
         // ingest resources, substituting from file "valuesplain"
         for (String resourceFilename : resourceFilenames) {
@@ -115,10 +130,11 @@ public class TestAPIM2
             }
         }
 
-        assertEquals("Ingested object count", count, getDemoObjects().size());
+        assertEquals("Ingested object count", count, getDemoObjects(s_client).size());
 
     }
 
+    @Test
     public void testFieldSearch() throws Exception {
 
         // get some sample objects ingested
@@ -138,37 +154,43 @@ public class TestAPIM2
         }
 
         String[] resultFields = {"pid", "title"};
-        NonNegativeInteger maxResults = new NonNegativeInteger("100");
+        java.math.BigInteger maxResults = new java.math.BigInteger("100");
 
 
         String termsTemplate = "$value$";
         TemplatedResourceIterator tri = new TemplatedResourceIterator(termsTemplate, "src/test/resources/APIM2/searchvalues");
         while (tri.hasNext()) {
-            FieldSearchQuery query;
-            FieldSearchResult res;
-
-            // using conditions
-            Condition[] conditions = {new Condition("pid", ComparisonOperator.fromString("eq"), tri.getAttributeValue("value"))};
-            query = new FieldSearchQuery(conditions, null);
-            try {
-                res = apia.findObjects(resultFields, maxResults, query);
-            } catch (RemoteException e) {
-                if (!e.getMessage().startsWith("org.fcrepo.server.errors.QueryParseException"))
-                    throw e;
-            }
-
             String terms = tri.next();
-            query = new FieldSearchQuery(null, terms);
+            FieldSearchQuery query;
+            // using conditions
+            FieldSearchQuery.Conditions conds = new FieldSearchQuery.Conditions();
+            Condition c = new Condition();
+            c.setProperty("pid");
+            c.setOperator(ComparisonOperator.fromValue("eq"));
+            c.setValue(tri.getAttributeValue("value"));
+            conds.getCondition().add(c);
+            query = new FieldSearchQuery();
+            ObjectFactory factory = new ObjectFactory();
+            query.setConditions(factory.createFieldSearchQueryConditions(conds));
             try {
-                res = apia.findObjects(resultFields, maxResults, query);
-            } catch (RemoteException e) {
-                if (!e.getMessage().startsWith("org.fcrepo.server.errors.QueryParseException"))
-                    throw e;
+                apia.findObjects(TypeUtility.convertStringtoAOS(resultFields), maxResults, query);
+                // FieldsearchLucene does not use SQL
+                //fail("Query should not have succeeded with SQL");
+            } catch (SOAPFaultException e) {
+                // expected
+                String expected = "Query cannot contain the ' character.";
+                assertTrue(
+                        "\"" + e.getCause().getMessage() + "\" did not contain expected message \"" + expected + "\"",
+                        e.getCause().getMessage().contains(expected));
             }
 
+            query = new FieldSearchQuery();
+            query.setTerms(factory.createFieldSearchQueryTerms(terms));
+            FieldSearchResult result = apia.findObjects(TypeUtility.convertStringtoAOS(resultFields), maxResults, query);
+            assertEquals(8,result.getResultList().getObjectFields().size());
         }
 
-        purgeDemoObjects();
+        purgeDemoObjects(s_client);
 
         for (String resourceFilename : resourceFilenames) {
             File resourceFile = new File(resourceDirName + resourceFilename);
@@ -182,9 +204,11 @@ public class TestAPIM2
             }
         }
 
-        purgeDemoObjects();
+        purgeDemoObjects(s_client);
 
     }
+    
+    @Test
     public void testObjectMethods() throws Exception {
         // test object
         String resfile = "src/test/resources/APIM2/foxml/demo_SmileyBeerGlass.xml";
@@ -193,8 +217,8 @@ public class TestAPIM2
         String resource = FileUtils.readFileToString(resourceFile, "UTF-8");
         TemplatedResourceIterator tri = new TemplatedResourceIterator(resource, "src/test/resources/APIM2/valuesplain");
         while (tri.hasNext()) {
-            String label2 = tri.getAttributeValue("label2");
             byte[] foxml = tri.next().getBytes("UTF-8");
+            String label2 = tri.getAttributeValue("label2");
             String pid = apim.ingest(foxml, FOXML1_1.uri,"ingesting new foxml object");
 
             // update object label with new value
@@ -202,7 +226,7 @@ public class TestAPIM2
 
         }
 
-        purgeDemoObjects();
+        purgeDemoObjects(s_client);
 
         String resourceDirName = "src/test/resources/APIM2/foxml/";
         String[] resourceFilenames = new File(resourceDirName).list();
@@ -218,9 +242,11 @@ public class TestAPIM2
             }
         }
 
-        purgeDemoObjects();
+        purgeDemoObjects(s_client);
 
     }
+    
+    @Test
     public void testDatastreamMethods() throws Exception {
         // test object
         String resfile = "src/test/resources/APIM2/foxml/demo_SmileyBeerGlass.xml";
@@ -229,8 +255,8 @@ public class TestAPIM2
         String resource = FileUtils.readFileToString(resourceFile, "UTF-8");
         TemplatedResourceIterator tri = new TemplatedResourceIterator(resource, "src/test/resources/APIM2/valuesplain");
         while (tri.hasNext()) {
-            String label2 = tri.getAttributeValue("label2");
             byte[] foxml = tri.next().getBytes("UTF-8");
+            String label2 = tri.getAttributeValue("label2");
             String pid = apim.ingest(foxml, FOXML1_1.uri,"ingesting new foxml object");
 
             // modify datastream label
@@ -238,7 +264,7 @@ public class TestAPIM2
 
         }
 
-        purgeDemoObjects();
+        purgeDemoObjects(s_client);
 
         String resourceDirName = "src/test/resources/APIM2/foxml/";
         String[] resourceFilenames = new File(resourceDirName).list();
@@ -254,12 +280,16 @@ public class TestAPIM2
             }
         }
 
-        purgeDemoObjects();
+        purgeDemoObjects(s_client);
 
     }
 
+    public static junit.framework.Test suite() {
+        return new JUnit4TestAdapter(TestAPIM2.class);
+    }
+
     public static void main(String[] args) {
-        junit.textui.TestRunner.run(TestAPIM2.class);
+        JUnitCore.runClasses(TestAPIM2.class);
     }
 
 }

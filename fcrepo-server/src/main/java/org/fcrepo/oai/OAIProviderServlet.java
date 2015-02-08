@@ -1,12 +1,12 @@
 /* The contents of this file are subject to the license and copyright terms
- * detailed in the license directory at the root of the source tree (also 
+ * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
 package org.fcrepo.oai;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-
+import java.nio.charset.Charset;
 import java.util.Enumeration;
 import java.util.HashMap;
 
@@ -24,16 +24,16 @@ import org.fcrepo.server.errors.authorization.AuthzOperationalException;
 import org.fcrepo.server.errors.authorization.AuthzPermittedException;
 import org.fcrepo.server.errors.servletExceptionExtensions.InternalError500Exception;
 import org.fcrepo.server.errors.servletExceptionExtensions.RootException;
+import org.fcrepo.utilities.ReadableByteArrayOutputStream;
 
 
 
 /**
  * @author Chris Wilper
  */
+@SuppressWarnings("serial")
 public abstract class OAIProviderServlet
         extends HttpServlet {
-
-    OAIResponder m_responder;
 
     public OAIProviderServlet() {
     }
@@ -44,18 +44,19 @@ public abstract class OAIProviderServlet
     public void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         try {
-            HashMap params = new HashMap();
-            Enumeration enm = request.getParameterNames();
+            HashMap<String,String> params = new HashMap<String,String>();
+            Enumeration<?> enm = request.getParameterNames();
             while (enm.hasMoreElements()) {
                 String name = (String) enm.nextElement();
                 params.put(name, request.getParameter(name));
             }
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ReadableByteArrayOutputStream out = new ReadableByteArrayOutputStream();
             Context context =
                     ReadOnlyContext.getContext(Constants.HTTP_REQUEST.REST.uri,
                                                request);
             try {
                 getResponder().respond(context, params, out);
+                out.close();
             } catch (AuthzException ae) {
                 throw RootException.getServletException(ae,
                                                         request,
@@ -63,7 +64,7 @@ public abstract class OAIProviderServlet
                                                         new String[0]);
             }
             response.setContentType("text/xml; charset=UTF-8");
-            response.getWriter().print(new String(out.toByteArray(), "UTF-8"));
+            response.getWriter().print(out.getString(Charset.forName("UTF-8")));
         } catch (Throwable t) {
             throw new InternalError500Exception("",
                                                 t,
@@ -74,27 +75,10 @@ public abstract class OAIProviderServlet
         }
     }
 
-    private static String getMessage(Throwable t) {
-        String msg = t.getMessage();
-        if (msg == null) {
-            msg = "Unexpected repository error.";
-        }
-        return msg;
-    }
-
     @Override
     public void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         doGet(request, response);
-    }
-
-    @Override
-    public void init() throws ServletException {
-        try {
-            m_responder = getResponder();
-        } catch (RepositoryException re) {
-            throw new ServletException(getMessage(re));
-        }
     }
 
     public void test(String[] args) throws OAIException, RepositoryException {
@@ -118,8 +102,8 @@ public abstract class OAIProviderServlet
 
     public abstract OAIResponder getResponder() throws RepositoryException;
 
-    public static HashMap getAsParameterMap(String[] args) {
-        HashMap h = new HashMap();
+    public static HashMap<String,String> getAsParameterMap(String[] args) {
+        HashMap<String,String> h = new HashMap<String,String>();
         for (String arg : args) {
             int pos = arg.indexOf("=");
             if (pos != -1) {

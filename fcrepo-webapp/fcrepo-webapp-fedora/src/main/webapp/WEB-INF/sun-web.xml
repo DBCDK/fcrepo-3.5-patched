@@ -1,0 +1,3 @@
+<sun-web-app error-url="">
+    <class-loader delegate="false"/>
+</sun-web-app>

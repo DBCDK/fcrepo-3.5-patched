@@ -5,30 +5,40 @@
 
 package org.fcrepo.server.storage.translation;
 
+import static org.fcrepo.common.Constants.METS;
+import static org.fcrepo.common.Constants.XLINK;
+import static org.fcrepo.common.Models.FEDORA_OBJECT_3_0;
+
+import java.io.ByteArrayOutputStream;
+import java.io.PrintWriter;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 
 import javax.xml.transform.TransformerException;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathExpression;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
 
 import org.custommonkey.xmlunit.NamespaceContext;
 import org.custommonkey.xmlunit.SimpleNamespaceContext;
 import org.custommonkey.xmlunit.XMLUnit;
 import org.custommonkey.xmlunit.exceptions.XpathException;
-
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-
-import org.w3c.dom.Document;
-
-import org.fcrepo.server.storage.translation.DOSerializer;
+import org.fcrepo.server.storage.types.Datastream;
+import org.fcrepo.server.storage.types.DatastreamManagedContent;
 import org.fcrepo.server.storage.types.DatastreamReferencedContent;
 import org.fcrepo.server.storage.types.DatastreamXMLMetadata;
 import org.fcrepo.server.storage.types.DigitalObject;
-
-import static org.fcrepo.common.Constants.METS;
-import static org.fcrepo.common.Constants.XLINK;
-import static org.fcrepo.common.Models.FEDORA_OBJECT_3_0;
+import org.fcrepo.utilities.TestBase64;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.w3c.dom.Document;
+import org.w3c.dom.NodeList;
 
 
 
@@ -44,6 +54,9 @@ public abstract class TestMETSFedoraExtDOSerializer
 
     protected static final String AMDSEC_PATH =
             ROOT_PATH + "/" + METS.AMD_SEC.qName;
+    
+    protected static final String SERIALIZED_DS_CONTENT =
+        "<" + METS.prefix + ":FContent> \n              " + TestBase64.FOO_STRING_ENCODED + "\n</" + METS.prefix + ":FContent>\n";
 
     TestMETSFedoraExtDOSerializer(DOSerializer serializer) {
         super(serializer);
@@ -108,7 +121,7 @@ public abstract class TestMETSFedoraExtDOSerializer
     }
 
     @Test
-    public void testTwoInlineDatastreams() throws TransformerException, XpathException {
+    public void testTwoInlineDatastreams() throws TransformerException, XpathException, XPathExpressionException {
         DigitalObject obj = createTestObject(FEDORA_OBJECT_3_0);
 
         final String dsID1 = "DS1";
@@ -120,8 +133,68 @@ public abstract class TestMETSFedoraExtDOSerializer
         obj.addDatastreamVersion(ds1, true);
         obj.addDatastreamVersion(ds2, true);
         Document xml = doSerializeOrFail(obj);
-        /* ds1, ds2 + rels-ext */
+        
         assertXpathEvaluatesTo("3", "count(" + AMDSEC_PATH + ")", xml);
+    }
+    @Test
+    public void testTwoDataStreamsVersion() throws TransformerException, XpathException, XPathExpressionException {
+        DigitalObject obj = createTestObject(FEDORA_OBJECT_3_0);
+
+        final String dsID1 = "DS1";
+        final String dsID2 = "DS2";
+        // hugely randomly generated test data 
+        DatastreamManagedContent ds1 = createMDatastream(dsID1, "aölksdiudshfljdsfnalj mdscmjlfjaö nsaölkjfsölkjfsöldkjfaöslfjasödflaöl".getBytes());
+        DatastreamManagedContent ds2 = createMDatastream(dsID2, "älkfddöslfjsölkfjäaoiam,yjöoicncäaskcäaäöl kf,jvdhfkjh".getBytes());
+
+
+        obj.addDatastreamVersion(ds1, true);
+        obj.addDatastreamVersion(ds2, true);
+        Document xml = doSerializeOrFail(obj);
+
+        // was unable to do this with assertXpathsNotEqual() method
+        // therefore do the assertions by xpath manually
+        XPath xp = XPathFactory.newInstance().newXPath();
+        xp.setNamespaceContext(new javax.xml.namespace.NamespaceContext() {
+			@Override
+			public Iterator<String> getPrefixes(String namespaceURI) {
+				// TODO Auto-generated method stub
+				return null;
+			}
+			@Override
+			public String getPrefix(String namespaceURI) {
+				return "METS";
+			}
+			@Override
+			public String getNamespaceURI(String prefix) {
+				return "http://www.loc.gov/METS/";
+			}
+		});
+        XPathExpression expr = xp.compile("//METS:fileGrp[@ID='DS1']/METS:file");
+        NodeList list = (NodeList) expr.evaluate(xml, XPathConstants.NODESET);
+        String checksum1 = list.item(0).getAttributes().getNamedItem("CHECKSUM").toString();
+        expr = xp.compile("//METS:fileGrp[@ID='DS2']/METS:file");
+        list = (NodeList) expr.evaluate(xml, XPathConstants.NODESET);
+        String checkSum2 = list.item(0).getAttributes().getNamedItem("CHECKSUM").toString();
+        assertFalse(checksum1.equals(checkSum2));
+    }
+    @Test
+    public void testDatastreamContentSerialization()
+        throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+        Datastream dsc = createMDatastream("DS1", TestBase64.FOO_BYTES);
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        PrintWriter pw = new PrintWriter(bos);
+        Method testMethod = METSFedoraExtDOSerializer.class.getDeclaredMethod("serializeDatastreamContent", Datastream.class, PrintWriter.class);
+        boolean accessible = testMethod.isAccessible();
+        if ( !accessible ) testMethod.setAccessible(true);
+        try{
+            testMethod.invoke(this.m_serializer, dsc, pw);
+        }
+        finally {
+            if ( !accessible ) testMethod.setAccessible( accessible );
+        }
+        pw.flush();
+        String actual = bos.toString();
+        assertEquals(SERIALIZED_DS_CONTENT, actual);
     }
 
     //---

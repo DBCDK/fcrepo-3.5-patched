@@ -57,30 +57,30 @@ public class MySQLDDLConverter
             if (cs.getDefaultValue() != null) {
                 out.append(" default '");
                 out.append(cs.getDefaultValue());
-                out.append("'");
+                out.append('\'');
             }
             if (cs.isUnique()) {
-                if (!end.toString().equals("")) {
+                if (end.length() != 0) {
                     end.append(",\n");
                 }
                 end.append("  UNIQUE KEY ");
                 end.append(cs.getName());
                 end.append(" (");
                 end.append(cs.getName());
-                end.append(")");
+                end.append(')');
             }
             if (cs.getIndexName() != null) {
-                if (!end.toString().equals("")) {
+                if (end.length() != 0) {
                     end.append(",\n");
                 }
                 end.append("  KEY ");
                 end.append(cs.getIndexName());
                 end.append(" (");
                 end.append(cs.getName());
-                end.append(")");
+                end.append(')');
             }
             if (cs.getForeignTableName() != null) {
-                if (!end.toString().equals("")) {
+                if (end.length() != 0) {
                     end.append(",\n");
                 }
                 end.append("  FOREIGN KEY ");
@@ -91,7 +91,7 @@ public class MySQLDDLConverter
                 end.append(cs.getForeignTableName());
                 end.append(" (");
                 end.append(cs.getForeignColumnName());
-                end.append(")");
+                end.append(')');
                 if (cs.getOnDeleteAction() != null) {
                     end.append(" ON DELETE ");
                     end.append(cs.getOnDeleteAction());
@@ -101,14 +101,13 @@ public class MySQLDDLConverter
         if (spec.getPrimaryColumnName() != null) {
             out.append(",\n  PRIMARY KEY (");
             out.append(spec.getPrimaryColumnName());
-            out.append(")");
+            out.append(')');
         }
-        if (!end.toString().equals("")) {
+        if (end.length() != 0) {
             out.append(",\n");
             out.append(end);
         }
-        out.append("\n");
-        out.append(")");
+        out.append("\n)");
         if (spec.getType() != null) {
             out.append(" TYPE=" + spec.getType());
         }

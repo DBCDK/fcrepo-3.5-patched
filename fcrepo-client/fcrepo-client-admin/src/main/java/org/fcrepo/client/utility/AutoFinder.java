@@ -4,20 +4,19 @@
  */
 package org.fcrepo.client.utility;
 
+import java.math.BigInteger;
 import java.net.MalformedURLException;
-
 import java.rmi.RemoteException;
+import java.util.Arrays;
 
 import javax.xml.rpc.ServiceException;
 
-import org.apache.axis.types.NonNegativeInteger;
-
 import org.fcrepo.client.FedoraClient;
 import org.fcrepo.common.Constants;
-import org.fcrepo.server.access.FedoraAPIA;
+import org.fcrepo.server.access.FedoraAPIAMTOM;
+import org.fcrepo.server.types.gen.ArrayOfString;
 import org.fcrepo.server.types.gen.FieldSearchQuery;
 import org.fcrepo.server.types.gen.FieldSearchResult;
-import org.fcrepo.server.types.gen.ListSession;
 import org.fcrepo.server.types.gen.ObjectFields;
 
 
@@ -29,14 +28,14 @@ import org.fcrepo.server.types.gen.ObjectFields;
  */
 public class AutoFinder {
 
-    private final FedoraAPIA m_apia;
+    private final FedoraAPIAMTOM m_apia;
 
-    public AutoFinder(FedoraAPIA apia)
+    public AutoFinder(FedoraAPIAMTOM apia)
             throws MalformedURLException, ServiceException {
         m_apia = apia;
     }
 
-    public FieldSearchResult findObjects(String[] resultFields,
+    public FieldSearchResult findObjects(ArrayOfString resultFields,
                                          int maxResults,
                                          FieldSearchQuery query)
             throws RemoteException {
@@ -48,16 +47,16 @@ public class AutoFinder {
         return resumeFindObjects(m_apia, sessionToken);
     }
 
-    public static FieldSearchResult findObjects(FedoraAPIA skeleton,
-                                                String[] resultFields,
+    public static FieldSearchResult findObjects(FedoraAPIAMTOM skeleton,
+                                                ArrayOfString resultFields,
                                                 int maxResults,
                                                 FieldSearchQuery query)
             throws RemoteException {
-        return skeleton.findObjects(resultFields, new NonNegativeInteger(""
+        return skeleton.findObjects(resultFields, new BigInteger(""
                 + maxResults), query);
     }
 
-    public static FieldSearchResult resumeFindObjects(FedoraAPIA skeleton,
+    public static FieldSearchResult resumeFindObjects(FedoraAPIAMTOM skeleton,
                                                       String sessionToken)
             throws RemoteException {
         return skeleton.resumeFindObjects(sessionToken);
@@ -109,7 +108,7 @@ public class AutoFinder {
         String phrase = args[5];
         String protocol = args[6];
 
-        if (args.length == 8 && !args[7].equals("")){
+        if (args.length == 8 && !args[7].isEmpty()){
             context = args[7];
         }
 
@@ -117,44 +116,49 @@ public class AutoFinder {
             // FIXME:  Get around hardcoding the path in the baseURL
             String baseURL = protocol + "://" + host + ":" + port + "/" + context;
             FedoraClient fc = new FedoraClient(baseURL, user, pass);
-            AutoFinder finder = new AutoFinder(fc.getAPIA());
+            AutoFinder finder = new AutoFinder(fc.getAPIAMTOM());
+            fc.shutdown();
 
             FieldSearchQuery query = new FieldSearchQuery();
-            query.setTerms(phrase);
+            org.fcrepo.server.types.gen.ObjectFactory factory =
+                new org.fcrepo.server.types.gen.ObjectFactory();
+            query.setTerms(factory.createFieldSearchQueryTerms(phrase));
+            String[] arrayS = fields.split(" ");
+            ArrayOfString aux = new ArrayOfString();
+            aux.getItem().addAll(Arrays.asList(arrayS));
             FieldSearchResult result =
-                    finder.findObjects(fields.split(" "), 20, query);
+                    finder.findObjects(aux, 20, query);
             int matchNum = 0;
             while (result != null) {
-                for (int i = 0; i < result.getResultList().length; i++) {
-                    ObjectFields o = result.getResultList()[i];
+                for (int i = 0; i < result.getResultList().getObjectFields().size(); i++) {
+                    ObjectFields o = result.getResultList().getObjectFields().get(i);
                     matchNum++;
                     System.out.println("#" + matchNum);
-                    AutoFinder.printValue("pid              ", o.getPid());
-                    AutoFinder.printValue("state            ", o.getState());
-                    AutoFinder.printValue("ownerId          ", o.getOwnerId());
-                    AutoFinder.printValue("cDate            ", o.getCDate());
-                    AutoFinder.printValue("mDate            ", o.getMDate());
-                    AutoFinder.printValue("dcmDate          ", o.getDcmDate());
-                    AutoFinder.printValue("title            ", o.getTitle());
-                    AutoFinder.printValue("creator          ", o.getCreator());
-                    AutoFinder.printValue("subject          ", o.getSubject());
-                    AutoFinder.printValue("description      ", o.getDescription());
-                    AutoFinder.printValue("publisher        ", o.getPublisher());
-                    AutoFinder.printValue("contributor      ", o.getContributor());
-                    AutoFinder.printValue("date             ", o.getDate());
-                    AutoFinder.printValue("type             ", o.getType());
-                    AutoFinder.printValue("format           ", o.getFormat());
-                    AutoFinder.printValue("identifier       ", o.getIdentifier());
-                    AutoFinder.printValue("source           ", o.getSource());
-                    AutoFinder.printValue("language         ", o.getLanguage());
-                    AutoFinder.printValue("relation         ", o.getRelation());
-                    AutoFinder.printValue("coverage         ", o.getCoverage());
-                    AutoFinder.printValue("rights           ", o.getRights());
+                    AutoFinder.printValue("pid              ", o.getPid() != null ? o.getPid().getValue() : null);
+                    AutoFinder.printValue("state            ", o.getState() != null ? o.getState().getValue() : null);
+                    AutoFinder.printValue("ownerId          ", o.getOwnerId() != null ? o.getOwnerId().getValue() : null);
+                    AutoFinder.printValue("cDate            ", o.getCDate() != null ? o.getCDate().getValue() : null);
+                    AutoFinder.printValue("mDate            ", o.getMDate() != null ? o.getMDate().getValue() : null);
+                    AutoFinder.printValue("dcmDate          ", o.getDcmDate() != null ? o.getDcmDate().getValue() : null);
+                    AutoFinder.printValue("title            ", o.getTitle() != null ? o.getTitle().toString() : null);
+                    AutoFinder.printValue("creator          ", o.getCreator() != null ? o.getCreator().toString() : null);
+                    AutoFinder.printValue("subject          ", o.getSubject() != null ? o.getSubject().toString() : null);
+                    AutoFinder.printValue("description      ", o.getDescription() != null ? o.getDescription().toString() : null);
+                    AutoFinder.printValue("publisher        ", o.getPublisher() != null ? o.getPublisher().toString() : null);
+                    AutoFinder.printValue("contributor      ", o.getContributor() != null ? o.getContributor().toString() : null);
+                    AutoFinder.printValue("date             ", o.getDate() != null ? o.getDate().toString() : null);
+                    AutoFinder.printValue("type             ", o.getType() != null ? o.getType().toString() : null);
+                    AutoFinder.printValue("format           ", o.getFormat() != null ? o.getFormat().toString() : null);
+                    AutoFinder.printValue("identifier       ", o.getIdentifier() != null ? o.getIdentifier().toString() : null);
+                    AutoFinder.printValue("source           ", o.getSource() != null ? o.getSource().toString() : null);
+                    AutoFinder.printValue("language         ", o.getLanguage() != null ? o.getLanguage().toString() : null);
+                    AutoFinder.printValue("relation         ", o.getRelation() != null ? o.getRelation().toString() : null);
+                    AutoFinder.printValue("coverage         ", o.getCoverage() != null ? o.getCoverage().toString() : null);
+                    AutoFinder.printValue("rights           ", o.getRights() != null ? o.getRights().toString() : null);
                     System.out.println("");
                 }
-                ListSession sess = result.getListSession();
-                if (sess != null) {
-                    result = finder.resumeFindObjects(sess.getToken());
+                if (result.getListSession() != null && result.getListSession().getValue() != null) {
+                    result = finder.resumeFindObjects(result.getListSession().getValue().getToken());
                 } else {
                     result = null;
                 }

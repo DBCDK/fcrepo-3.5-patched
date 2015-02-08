@@ -4,11 +4,14 @@
  */
 package org.fcrepo.server.journal.readerwriter.multifile;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,17 +24,26 @@ import org.fcrepo.server.journal.JournalConsumer;
 import org.fcrepo.server.journal.MockJournalRecoveryLog;
 import org.fcrepo.server.journal.MockServerForJournalTesting;
 import org.fcrepo.server.journal.ServerInterface;
-import org.fcrepo.server.journal.readerwriter.multifile.MultiFileJournalConstants;
-import org.fcrepo.server.journal.readerwriter.multifile.MultiFileJournalHelper;
 import org.fcrepo.server.management.MockManagementDelegate;
-
-import junit.framework.TestCase;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Ignore;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
 public class TestLockingFollowingJournalReader
-        extends TestCase
         implements Constants, JournalConstants, MultiFileJournalConstants {
+
+    private static Logger LOGGER =
+        LoggerFactory.getLogger(TestLockingFollowingJournalReader.class);
+    
+    @Rule
+    public TemporaryFolder tmpFolder = new TemporaryFolder();
 
     private static final int WAIT_INTERVAL = 5;
 
@@ -57,14 +69,8 @@ public class TestLockingFollowingJournalReader
 
     private int initialNumberOfThreads;
 
-    public TestLockingFollowingJournalReader(String name) {
-        super(name);
-    }
-
-    @Override
-    protected void setUp() throws Exception {
-        super.setUp();
-
+    @Before
+    public void setUp() throws Exception {
         journalDirectory = createTempDirectory("fedoraTestingJournalFiles");
         archiveDirectory = createTempDirectory("fedoraTestingArchiveFiles");
 
@@ -86,8 +92,7 @@ public class TestLockingFollowingJournalReader
         parameters.put(PARAMETER_JOURNAL_RECOVERY_LOG_CLASSNAME,
                        MockJournalRecoveryLog.class.getName());
         parameters.put(PARAMETER_JOURNAL_READER_CLASSNAME,
-                       "org.fcrepo.server.journal.readerwriter.multifile."
-                               + "LockingFollowingJournalReader");
+                       LockingFollowingJournalReader.class.getName());
         parameters.put(PARAMETER_JOURNAL_DIRECTORY, journalDirectory.getPath());
         parameters.put(PARAMETER_ARCHIVE_DIRECTORY, archiveDirectory.getPath());
         parameters.put(PARAMETER_FOLLOW_POLLING_INTERVAL, "1");
@@ -100,10 +105,33 @@ public class TestLockingFollowingJournalReader
 
         initialNumberOfThreads = getNumberOfCurrentThreads();
     }
+    
+    @After
+    public void cleanUp() throws Exception {
+        delegate.reset();
+        if (lockRequestFile.delete()){
+            LOGGER.info("Cleaned up lockRequestFile file at {}", lockRequestFile.getPath());
+        }
+        if (lockAcceptedFile.delete()){
+            LOGGER.info("Cleaned up lockAcceptedFile file at {}", lockAcceptedFile.getPath());
+        }
+
+        for (File file: journalDirectory.listFiles()) {
+            boolean deleted = file.delete();
+            LOGGER.info("{} Cleaned up a journalDirectory file: {}",
+                    deleted, file.getPath());
+        }
+        for (File file: archiveDirectory.listFiles()) {
+            boolean deleted = file.delete();
+            LOGGER.info("{} Cleaned up a archiveDirectory file: {}",
+                    deleted, file.getPath());
+        }
+    }
 
     /**
      * Create 3 files and watch it process all of them
      */
+    @Test
     public void testSimpleNoLocking() {
         try {
             // create 3 files, each with an ingest
@@ -135,8 +163,8 @@ public class TestLockingFollowingJournalReader
      * A lock request created before startup will prevent processing. When the
      * request is removed, processing will occur.
      */
-    public void disabledtestLockBeforeStartingAndResume() {
-        try {
+    @Ignore
+    public void testLockBeforeStartingAndResume() throws Exception {
             // create 3 files, each with an ingest, and create a lock request.
             createJournalFileFromString(getSimpleIngestString());
             createJournalFileFromString(getSimpleIngestString());
@@ -177,17 +205,14 @@ public class TestLockingFollowingJournalReader
                          3,
                          howManyFilesInDirectory(archiveDirectory));
             assertUnlockMessageInLog(lockMessageIndex);
-        } catch (Throwable e) {
-            processException(e);
-        }
     }
 
     /**
      * A lock request created while a file is in progress, which should prevent
      * further processing until it is removed.
      */
-    public void testLockWhileProcessingAndResume() {
-        try {
+    @Test
+    public void testLockWhileProcessingAndResume() throws Exception {
             // create 3 files, each with an ingest
             createJournalFileFromString(getSimpleIngestString());
             createJournalFileFromString(getSimpleIngestString());
@@ -232,9 +257,22 @@ public class TestLockingFollowingJournalReader
                          3,
                          howManyFilesInDirectory(archiveDirectory));
             assertUnlockMessageInLog(lockMessageIndex);
-        } catch (Throwable e) {
-            processException(e);
-        }
+    }
+    
+    @Ignore
+    public void testSimpleFirst() throws Exception {
+        testSimpleNoLocking();
+        cleanUp();
+        setUp();
+        testLockWhileProcessingAndResume();
+    }
+
+    @Ignore
+    public void testSimpleLast() throws Exception {
+        testLockWhileProcessingAndResume();
+        cleanUp();
+        setUp();
+        testSimpleNoLocking();
     }
 
     /**
@@ -244,7 +282,8 @@ public class TestLockingFollowingJournalReader
      * file, and it will not be processed. Remove the lock; ack is removed and
      * last file is processed.
      */
-    public void disabledtestLockWhilePollingAndResume() {
+    @Ignore
+    public void testLockWhilePollingAndResume() {
         try {
             // create 1 file, with an ingest
             createJournalFileFromString(getSimpleIngestString());
@@ -340,7 +379,7 @@ public class TestLockingFollowingJournalReader
      * latter, complain.
      */
     private void waitForLockAccepted() {
-        int maxWait = 3;
+        int maxWait = 10;
         for (int i = 0; i < maxWait; i++) {
             if (lockAcceptedFile.exists()) {
                 return;
@@ -359,7 +398,7 @@ public class TestLockingFollowingJournalReader
      * latter, complain.
      */
     private void waitForLockReleased() {
-        int maxWait = 3;
+        int maxWait = 10;
         for (int i = 0; i < maxWait; i++) {
             if (!lockAcceptedFile.exists()) {
                 return;
@@ -450,19 +489,8 @@ public class TestLockingFollowingJournalReader
         }
     }
 
-    private File createTempDirectory(String name) {
-        File directory = new File(System.getProperty("java.io.tmpdir"), name + Long.toString(System.nanoTime()));
-        directory.mkdir();
-        cleanOutDirectory(directory);
-        directory.deleteOnExit();
-        return directory;
-    }
-
-    private void cleanOutDirectory(File directory) {
-        File[] files = directory.listFiles();
-        for (File element : files) {
-            element.delete();
-        }
+    private File createTempDirectory(String name) throws IOException {
+        return tmpFolder.newFolder(name);
     }
 
     private String getSimpleIngestString() {

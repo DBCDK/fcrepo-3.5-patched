@@ -5,18 +5,18 @@
 
 package org.fcrepo.server.search;
 
+import static junit.framework.Assert.assertEquals;
+import static junit.framework.Assert.fail;
+
 import java.io.IOException;
 import java.io.InputStream;
-
 import java.lang.reflect.Field;
-
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -26,11 +26,7 @@ import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import junit.framework.JUnit4TestAdapter;
 
 import org.fcrepo.mock.sql.MockConnection;
 import org.fcrepo.mock.sql.MockDriver;
@@ -40,7 +36,6 @@ import org.fcrepo.server.Context;
 import org.fcrepo.server.config.DatastoreConfiguration;
 import org.fcrepo.server.errors.InconsistentTableSpecException;
 import org.fcrepo.server.errors.ServerException;
-import org.fcrepo.server.search.FieldSearchSQLImpl;
 import org.fcrepo.server.storage.ConnectionPool;
 import org.fcrepo.server.storage.MockDOReader;
 import org.fcrepo.server.storage.MockRepositoryReader;
@@ -52,12 +47,11 @@ import org.fcrepo.server.storage.types.DeploymentDSBindSpec;
 import org.fcrepo.server.utilities.SQLUtility;
 import org.fcrepo.server.utilities.TableCreatingConnection;
 import org.fcrepo.server.utilities.TableSpec;
-
-import junit.framework.JUnit4TestAdapter;
-
-
-import static junit.framework.Assert.assertEquals;
-import static junit.framework.Assert.fail;
+import org.junit.After;
+import org.junit.AfterClass;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Test;
 
 public class TestFieldSearchSQLImpl {
     private static final String[] SHORT_FIELDS = FieldSearchSQLImpl.DB_COLUMN_NAMES_NODC;
@@ -114,13 +108,11 @@ public class TestFieldSearchSQLImpl {
         setSqlUtilityInstance(saveSqlUtility);
     }
 
-    private MockConnection mockConnection;
-
     private MockRepositoryReader mockRepositoryReader;
 
     private ConnectionPool connectionPool;
 
-    private final MyMockDriver mockDriver = new MyMockDriver();
+    private MyMockDriver mockDriver;
 
     private int expectedDateInserts;
 
@@ -129,6 +121,7 @@ public class TestFieldSearchSQLImpl {
     @Before
     public void registerMockDriver() {
         try {
+            mockDriver = new MyMockDriver();
             DriverManager.registerDriver(mockDriver);
         } catch (SQLException e) {
             fail("Failed to register mock JDBC driver: " + e);
@@ -138,6 +131,7 @@ public class TestFieldSearchSQLImpl {
     @After
     public void deregisterMockDriver() {
         try {
+            mockDriver.resetLog();
             DriverManager.deregisterDriver(mockDriver);
         } catch (SQLException e) {
             fail("Failed to deregister mock JDBC driver: " + e);
@@ -163,7 +157,6 @@ public class TestFieldSearchSQLImpl {
     public void noDC() throws ServerException {
         setSqlUtilityInstance(new UpdatingMockSqlUtility(SHORT_FIELDS,
                 OBJECT_WITH_NO_DC.getShortFieldValueList()));
-        this.mockConnection = new UnusedMockConnection();
         this.mockRepositoryReader = new UnusedMockRepositoryReader();
 
         updateRecord(OBJECT_WITH_NO_DC, false);
@@ -174,7 +167,6 @@ public class TestFieldSearchSQLImpl {
     public void dcNoDatesShortFields() throws ServerException {
         setSqlUtilityInstance(new UpdatingMockSqlUtility(SHORT_FIELDS,
                 OBJECT_WITH_DC.getShortFieldValueList()));
-        this.mockConnection = new UnusedMockConnection();
         this.mockRepositoryReader = new UnusedMockRepositoryReader();
 
         updateRecord(OBJECT_WITH_DC, false);
@@ -185,7 +177,6 @@ public class TestFieldSearchSQLImpl {
     public void dcNoDatesLongFields() throws ServerException {
         setSqlUtilityInstance(new UpdatingMockSqlUtility(LONG_FIELDS,
                 OBJECT_WITH_DC.getLongFieldValueList()));
-        this.mockConnection = new UpdatingMockConnection();
         this.expectedDateDeletes = 1;
         this.expectedDateInserts = 0;
         this.mockRepositoryReader = new UnusedMockRepositoryReader();
@@ -198,7 +189,6 @@ public class TestFieldSearchSQLImpl {
     public void dcDatesShortFields() throws ServerException {
         setSqlUtilityInstance(new UpdatingMockSqlUtility(SHORT_FIELDS,
                 OBJECT_WITH_DC_AND_DATES.getShortFieldValueList()));
-        this.mockConnection = new UnusedMockConnection();
         this.mockRepositoryReader = new UnusedMockRepositoryReader();
 
         updateRecord(OBJECT_WITH_DC_AND_DATES, false);
@@ -209,7 +199,6 @@ public class TestFieldSearchSQLImpl {
     public void dcDatesLongFields() throws ServerException {
         setSqlUtilityInstance(new UpdatingMockSqlUtility(LONG_FIELDS,
                 OBJECT_WITH_DC_AND_DATES.getLongFieldValueList()));
-        this.mockConnection = new UpdatingMockConnection();
         this.expectedDateDeletes = 1;
         this.expectedDateInserts = 1;
         this.mockRepositoryReader = new UnusedMockRepositoryReader();
@@ -253,8 +242,8 @@ public class TestFieldSearchSQLImpl {
     private void checkExpectations() {
         ((MockSqlUtility) getSqlUtilityInstance()).checkExpectations();
 
-        if (mockConnection instanceof UpdatingMockConnection) {
-            ((UpdatingMockConnection) mockConnection).checkExpectations(
+        if (mockDriver instanceof MyMockDriver) {
+            ((MyMockDriver) mockDriver).checkExpectations(
                     expectedDateDeletes, expectedDateInserts);
         }
 
@@ -371,7 +360,7 @@ public class TestFieldSearchSQLImpl {
         protected void i_createNonExistingTables(ConnectionPool pool,
                 InputStream dbSpec) throws IOException,
                 InconsistentTableSpecException, SQLException {
-            fail("Unexpected call to MockSqlUtility.i_addRow");
+            fail("Unexpected call to MockSqlUtility.i_createNonExistingTables");
         }
 
         @Override
@@ -414,6 +403,26 @@ public class TestFieldSearchSQLImpl {
                 boolean[] numeric) throws SQLException {
             fail("Unexpected call to MockSqlUtility.i_addRow");
             return false;
+        }
+
+        @Override
+        protected long i_getMostRecentRebuild(Connection conn)
+                throws SQLException {
+            fail("Unexpected call to MockSqlUtility.i_getMostRecentRebuild");
+            return 0;
+        }
+
+        @Override
+        protected boolean i_getRebuildStatus(Connection conn, long rebuildDate)
+                throws SQLException {
+            fail("Unexpected call to MockSqlUtility.i_getRebuildStatus");
+            return false;
+        }
+
+        @Override
+        protected void i_recordSuccessfulRebuild(Connection conn,
+                long rebuildDate) throws SQLException {
+            fail("Unexpected call to MockSqlUtility.i_recordSuccessfulRebuild");            
         }
     }
 
@@ -467,55 +476,44 @@ public class TestFieldSearchSQLImpl {
         }
     }
 
-    private static class UnusedMockConnection extends MockConnection {
-        @Override
-        public Statement createStatement() throws SQLException {
-            fail("Unexpected call to UnusedMockConnection.createStatement");
-            return null;
-        }
-    }
-
     private static class UpdatingMockConnection extends MockConnection {
-        private int deleteCalls = 0;
+        private MyMockDriver driver;
 
-        private int insertCalls = 0;
-
+        UpdatingMockConnection(MyMockDriver driver) {
+            this.driver = driver;
+        }
         @Override
         public Statement createStatement() throws SQLException {
             return new MockStatement() {
                 @Override
                 public int executeUpdate(String sql) throws SQLException {
                     if (sql.trim().toLowerCase().startsWith("insert")) {
-                        insertCalls++;
+                        driver.logInsert();
                     }
                     if (sql.trim().toLowerCase().startsWith("delete")) {
-                        deleteCalls++;
+                        driver.logDelete();
                     }
                     return 1;
                 }
             };
         }
-        
+
         @Override
-        public PreparedStatement prepareStatement(String sql) throws SQLException {
+        public PreparedStatement prepareStatement(final String sql) throws SQLException {
         	return new MockPreparedStatement(sql) {
                 @Override
                 public int executeUpdate() throws SQLException {
-                    if (getSql().trim().toLowerCase().startsWith("insert")) {
-                        insertCalls++;
+                    if (sql.trim().toLowerCase().startsWith("insert")) {
+                        driver.logInsert();
                     }
-                    if (getSql().trim().toLowerCase().startsWith("delete")) {
-                        deleteCalls++;
+                    if (sql.trim().toLowerCase().startsWith("delete")) {
+                        driver.logDelete();
                     }
                     return 1;
                 }
         	};
         }
 
-        public void checkExpectations(int expectedDeletes, int expectedInserts) {
-            assertEquals("delete calls", expectedDeletes, deleteCalls);
-            assertEquals("insert calls", expectedInserts, insertCalls);
-        }
     }
 
     private static class UnusedMockRepositoryReader extends
@@ -531,9 +529,6 @@ public class TestFieldSearchSQLImpl {
 
     private static class SDepMockRepositoryReader extends MockRepositoryReader {
         private int calls;
-
-        public SDepMockRepositoryReader() {
-        }
 
         public void checkExpectations() {
             assertEquals("sDep reader calls", 1, calls);
@@ -556,13 +551,35 @@ public class TestFieldSearchSQLImpl {
     }
 
     private class MyMockDriver extends MockDriver {
+        private int deleteCalls = 0;
+
+        private int insertCalls = 0;
+        
+        public void logInsert() {
+            insertCalls++;
+        }
+        
+        public void logDelete() {
+            deleteCalls++;
+        }
+        
+        public void resetLog() {
+            deleteCalls = 0;
+            insertCalls = 0;
+        }
+
         @Override
         public Connection connect(String url, Properties info)
                 throws SQLException {
-            return mockConnection;
+            return new UpdatingMockConnection(this);
+        }
+
+        public void checkExpectations(int expectedDeletes, int expectedInserts) {
+            assertEquals("delete calls", expectedDeletes, deleteCalls);
+            assertEquals("insert calls", expectedInserts, insertCalls);
         }
     }
-
+    
     private static class ObjectData {
         private final String pid;
 

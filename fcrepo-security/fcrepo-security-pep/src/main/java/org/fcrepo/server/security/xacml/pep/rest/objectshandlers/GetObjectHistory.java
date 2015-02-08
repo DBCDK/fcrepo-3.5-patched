@@ -27,24 +27,21 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-
+import org.fcrepo.common.Constants;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.pep.PEPException;
+import org.fcrepo.server.security.xacml.pep.ResourceAttributes;
+import org.fcrepo.server.security.xacml.pep.rest.filters.AbstractFilter;
+import org.fcrepo.server.security.xacml.util.LogUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.fcrepo.common.Constants;
-import org.fcrepo.server.security.xacml.pep.PEPException;
-import org.fcrepo.server.security.xacml.pep.rest.filters.AbstractFilter;
-import org.fcrepo.server.security.xacml.util.LogUtil;
-
-import com.sun.xacml.attr.AnyURIAttribute;
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.StringAttribute;
-import com.sun.xacml.ctx.RequestCtx;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
 
 
 /**
  * Handles the GetObjectHistory operation.
- * 
+ *
  * @author nish.naidoo@gmail.com
  */
 public class GetObjectHistory
@@ -55,7 +52,7 @@ public class GetObjectHistory
 
     /**
      * Default constructor.
-     * 
+     *
      * @throws PEPException
      */
     public GetObjectHistory()
@@ -69,37 +66,26 @@ public class GetObjectHistory
      * org.fcrepo.server.security.xacml.pep.rest.filters.RESTFilter#handleRequest(javax.servlet
      * .http.HttpServletRequest, javax.servlet.http.HttpServletResponse)
      */
+    @Override
     public RequestCtx handleRequest(HttpServletRequest request,
                                     HttpServletResponse response)
             throws IOException, ServletException {
         if (logger.isDebugEnabled()) {
-            logger.debug(this.getClass().getName() + "/handleRequest!");
+            logger.debug("{}/handleRequest!", this.getClass().getName());
         }
-
-        String path = request.getPathInfo();
-        String[] parts = path.split("/");
-
-        String pid = parts[1];
 
         RequestCtx req = null;
         Map<URI, AttributeValue> actions = new HashMap<URI, AttributeValue>();
-        Map<URI, AttributeValue> resAttr = new HashMap<URI, AttributeValue>();
+        Map<URI, AttributeValue> resAttr;
         try {
-            if (pid != null && !"".equals(pid)) {
-                resAttr.put(Constants.OBJECT.PID.getURI(),
-                            new StringAttribute(pid));
-            }
-            if (pid != null && !"".equals(pid)) {
-                resAttr.put(new URI(XACML_RESOURCE_ID),
-                            new AnyURIAttribute(new URI(pid)));
-            }
+            String[] parts = getPathParts(request);
+            resAttr = ResourceAttributes.getResources(parts);
 
             actions.put(Constants.ACTION.ID.getURI(),
-                        new StringAttribute(Constants.ACTION.GET_OBJECT_HISTORY
-                                .getURI().toASCIIString()));
+                        Constants.ACTION.GET_OBJECT_HISTORY
+                                .getStringAttribute());
             actions.put(Constants.ACTION.API.getURI(),
-                        new StringAttribute(Constants.ACTION.APIA.getURI()
-                                .toASCIIString()));
+                        Constants.ACTION.APIA.getStringAttribute());
 
             req =
                     getContextHandler().buildRequest(getSubjects(request),
@@ -107,9 +93,9 @@ public class GetObjectHistory
                                                      resAttr,
                                                      getEnvironment(request));
 
+            String pid = resAttr.get(Constants.OBJECT.PID.getURI()).toString();
             LogUtil.statLog(request.getRemoteUser(),
-                            Constants.ACTION.GET_OBJECT_HISTORY.getURI()
-                                    .toASCIIString(),
+                            Constants.ACTION.GET_OBJECT_HISTORY.uri,
                             pid,
                             null);
         } catch (Exception e) {

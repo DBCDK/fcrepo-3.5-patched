@@ -18,9 +18,10 @@
 
 package org.fcrepo.server.security.xacml.pep.ws.operations;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.URISyntaxException;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -28,25 +29,28 @@ import java.util.Map;
 import java.util.Set;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.xml.bind.JAXBContext;
+import javax.xml.bind.JAXBException;
+import javax.xml.bind.Marshaller;
+import javax.xml.bind.Unmarshaller;
+import javax.xml.namespace.QName;
+import javax.xml.soap.SOAPBody;
+import javax.xml.soap.SOAPElement;
+import javax.xml.soap.SOAPException;
+import javax.xml.soap.SOAPMessage;
+import javax.xml.ws.handler.soap.SOAPMessageContext;
 
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.StringAttribute;
-
-import org.apache.axis.AxisFault;
-import org.apache.axis.Message;
-import org.apache.axis.MessageContext;
-import org.apache.axis.description.OperationDesc;
-import org.apache.axis.message.RPCElement;
-import org.apache.axis.message.RPCParam;
-import org.apache.axis.message.SOAPBodyElement;
-import org.apache.axis.message.SOAPEnvelope;
-
+import org.apache.cxf.binding.soap.SoapFault;
 import org.fcrepo.common.Constants;
 import org.fcrepo.server.security.xacml.pep.ContextHandler;
-import org.fcrepo.server.security.xacml.pep.ContextHandlerImpl;
 import org.fcrepo.server.security.xacml.pep.PEPException;
+import org.fcrepo.server.security.xacml.pep.ResourceAttributes;
+import org.fcrepo.server.utilities.CXFUtility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
+import org.jboss.security.xacml.sunxacml.attr.StringAttribute;
 
 /**
  * This is the AbstractHandler class which provides generic functionality for
@@ -57,147 +61,119 @@ import org.slf4j.LoggerFactory;
 public abstract class AbstractOperationHandler
         implements OperationHandler {
 
-    private static final Logger logger =
-            LoggerFactory.getLogger(AbstractOperationHandler.class);
+    private static final Logger logger = LoggerFactory
+            .getLogger(AbstractOperationHandler.class);
 
-    protected static final String XACML_RESOURCE_ID =
-            "urn:oasis:names:tc:xacml:1.0:resource:resource-id";
+    protected static final JAXBContext JAXB_CONTEXT = getJAXBContext();
 
-    protected static final String SUBJECT_ID =
-            "urn:oasis:names:tc:xacml:1.0:subject:subject-id";
-
-    protected static final String FEDORA_ROLE =
-            "urn:fedora:names:fedora:2.1:subject:role";
-
-    private static ContextHandler contextHandlerImpl;
+    private final ContextHandler m_contextHandler;
 
     /**
      * Default constructor that obtains an instance of the ContextHandler.
      *
      * @throws PEPException
      */
-    public AbstractOperationHandler()
+    public AbstractOperationHandler(ContextHandler contextHandler)
             throws PEPException {
-        contextHandlerImpl = ContextHandlerImpl.getInstance();
+        m_contextHandler = contextHandler;
     }
 
     /**
-     * Extracts the request parameters as objects from the context.
+     * Extracts the request as object from the context.
      *
      * @param context
      *        the message context.
-     * @return list of Objects
-     * @throws AxisFault
+     * @return Object
+     * @throws SoapFault
      */
-    protected List<Object> getSOAPRequestObjects(MessageContext context)
-            throws AxisFault {
-        // return result
-        List<Object> result = new ArrayList<Object>();
-
+    protected Object getSOAPRequestObjects(SOAPMessageContext context) {
         // Obtain the operation details and message type
-        OperationDesc operation = context.getOperation();
-
         // Extract the SOAP Message
-        Message message = context.getRequestMessage();
+        SOAPElement requestNode = getSOAPRequestNode(context);
+        return unmarshall(requestNode);
+    }
 
-        // Extract the SOAP Envelope from the Message
-        SOAPEnvelope envelope = message.getSOAPEnvelope();
-
-        // Get the envelope body
-        SOAPBodyElement body = envelope.getFirstBody();
-
-        // Make sure that the body element is an RPCElement.
-        if (body instanceof RPCElement) {
-            // Get all the parameters from the Body Element.
-            List params = null;
-            try {
-                params = ((RPCElement) body).getParams();
-                logger.debug("Number of params: " + params.size());
-            } catch (Exception e) {
-                logger.error("Problem obtaining params", e);
-                throw AxisFault.makeFault(e);
-            }
-
-            if (params.size() > 0) {
-                logger.info("Operation returnType: "
-                        + operation.getReturnType().getNamespaceURI() + " "
-                        + operation.getReturnType().getLocalPart());
-
-                for (int x = 0; x < params.size(); x++) {
-                    RPCParam param = (RPCParam) params.get(x);
-                    result.add(param.getObjectValue());
-                    logger.info("Obtained object: (" + x + ") "
-                            + param.getQName().toString());
-                }
-            }
+    private SOAPElement getSOAPNode(SOAPMessageContext context, QName operation) {
+        SOAPMessage message = context.getMessage();
+        SOAPBody body;
+        try {
+            body = message.getSOAPBody();
+        } catch (SOAPException e) {
+            throw CXFUtility.getFault(e);
         }
+        SOAPElement bodyElement = body;
+        if (bodyElement.getNamespaceURI().equals("http://schemas.xmlsoap.org/soap/envelope/")
+                && bodyElement.getLocalName().equals("Body")){
+            bodyElement = (SOAPElement)bodyElement.getElementsByTagNameNS(operation.getNamespaceURI(), operation.getLocalPart()).item(0);
+        }
+        if (logger.isDebugEnabled() && bodyElement != null) {
+            logger.debug("Operation: {} {}", operation.getNamespaceURI(), operation.getLocalPart());
+        }
+        return bodyElement;
+    }
 
-        return result;
+    protected SOAPElement getSOAPRequestNode(SOAPMessageContext context) {
+        QName operation =
+                (QName) context.get(SOAPMessageContext.WSDL_OPERATION);
+        SOAPElement bodyElement = getSOAPNode(context, operation);
+        if (bodyElement == null){
+            logger.error("Could not obtain " + operation.toString() + " Object from SOAP Request");
+            logger.error(context.getMessage().toString());
+            throw CXFUtility
+                    .getFault(new Exception("Could not obtain Object from SOAP Request"));
+        }
+        return bodyElement;
+    }
+
+    protected SOAPElement getSOAPResponseNode(SOAPMessageContext context) {
+        QName operation =
+                (QName) context.get(SOAPMessageContext.WSDL_OPERATION);
+        operation = new QName(operation.getNamespaceURI(),operation.getLocalPart() + "Response");
+        SOAPElement bodyElement = getSOAPNode(context, operation);
+        if (bodyElement == null){
+            logger.error("Could not obtain " + operation.toString() + " Object from SOAP Response");
+            logger.error(context.getMessage().toString());
+            throw CXFUtility
+                    .getFault(new Exception("Could not obtain Object from SOAP Response"));
+        }
+        return bodyElement;
+    }
+
+    protected Object getSOAPResponseObject(SOAPMessageContext context) {
+        // Obtain the operation details and message type
+        // Extract the SOAP Message
+        SOAPElement responseNode = getSOAPResponseNode(context);
+        return unmarshall(responseNode);
     }
 
     /**
      * Extracts the return object from the context.
+     * @param <T>
+     * @param <T>
      *
      * @param context
      *        the message context.
      * @return the return object for the message.
-     * @throws AxisFault
+     * @throws SoapFault
      */
-    protected Object getSOAPResponseObject(MessageContext context)
-            throws AxisFault {
+    @SuppressWarnings("unchecked")
+    protected <T> List<T>  getSOAPResponseObject(SOAPMessageContext context, Class<T> clazz) {
         // return result
-        Object result = null;
 
-        // Obtain the operation details and message type
-        OperationDesc operation = context.getOperation();
-
-        // Extract the SOAP Message
-        Message message =
-                context.getPastPivot() ? context.getResponseMessage() : context
-                        .getRequestMessage();
-
-        // Extract the SOAP Envelope from the Message
-        SOAPEnvelope envelope = message.getSOAPEnvelope();
-
-        // Get the envelope body
-        SOAPBodyElement body = envelope.getFirstBody();
-
-        // Make sure that the body element is an RPCElement.
-        if (body instanceof RPCElement) {
-            // Get all the parameters from the Body Element.
-            List params = null;
-            try {
-                params = ((RPCElement) body).getParams();
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Number of params: " + params.size());
-                }
-            } catch (Exception e) {
-                logger.error("Problem obtaining params", e);
-                throw AxisFault.makeFault(e);
-            }
-
-            if (params != null && params.size() > 0) {
-                logger.info("Operation returnType: "
-                        + operation.getReturnType().getNamespaceURI() + " "
-                        + operation.getReturnType().getLocalPart());
-
-                for (int x = 0; result == null && x < params.size(); x++) {
-                    RPCParam param = (RPCParam) params.get(x);
-                    if (param.getQName().equals(operation.getReturnQName())) {
-                        logger.info("Obtained object: (" + x + ") "
-                                + param.getQName().toString());
-                        result = param.getObjectValue();
-                    }
+        Object responseObject = getSOAPResponseObject(context);
+        ArrayList<T> resultList = new ArrayList<T>();
+        for (Method m:responseObject.getClass().getDeclaredMethods()){
+            if (m.getReturnType() == clazz) {
+                try {
+                    resultList.add((T)m.invoke(responseObject));
+                } catch (Exception e) {
+                    logger.error(e.toString(),e);
+                    throw CXFUtility.getFault(e);
                 }
             }
         }
 
-        if (result == null) {
-            throw AxisFault
-                    .makeFault(new Exception("Could not obtain Object from SOAP Response"));
-        }
-
-        return result;
+        return resultList;
     }
 
     /**
@@ -207,30 +183,29 @@ public abstract class AbstractOperationHandler
      *        the message context
      * @param params
      *        list of parameters to set in order
-     * @throws AxisFault
+     * @throws SoapFault
      */
-    protected void setSOAPRequestObjects(MessageContext context,
-                                         List<RPCParam> params)
-            throws AxisFault {
+    protected void setSOAPRequestObjects(SOAPMessageContext context,
+                                         List<SOAPElement> params) {
         // Extract the SOAP Message
-        Message message =
-                context.getPastPivot() ? context.getResponseMessage() : context
-                        .getRequestMessage();
-
-        // Extract the SOAP Envelope from the Message
-        SOAPEnvelope envelope = message.getSOAPEnvelope();
+        SOAPMessage message = context.getMessage();
 
         // Get the envelope body
-        SOAPBodyElement body = envelope.getFirstBody();
+        SOAPBody body;
+        try {
+            body = message.getSOAPBody();
+        } catch (SOAPException e) {
+            throw CXFUtility.getFault(e);
+        }
 
         try {
             body.removeContents();
-            for (RPCParam p : params) {
-                body.addChild(p);
+            for (SOAPElement p : params) {
+                body.addChildElement(p);
             }
         } catch (Exception e) {
             logger.error("Problem changing SOAP message contents", e);
-            throw AxisFault.makeFault(e);
+            throw CXFUtility.getFault(e);
         }
     }
 
@@ -241,62 +216,26 @@ public abstract class AbstractOperationHandler
      *        the message context
      * @param param
      *        the object to set as the return object
-     * @throws AxisFault
+     * @throws SoapFault
      */
-    protected void setSOAPResponseObject(MessageContext context, RPCParam param)
-            throws AxisFault {
-        // Extract the SOAP Message
-        Message message =
-                context.getPastPivot() ? context.getResponseMessage() : context
-                        .getRequestMessage();
-
-        // Extract the SOAP Envelope from the Message
-        SOAPEnvelope envelope = message.getSOAPEnvelope();
-
-        // Get the envelope body
-        SOAPBodyElement body = envelope.getFirstBody();
-
-        try {
-            body.removeContents();
-            body.addChild(param);
-        } catch (Exception e) {
-            logger.error("Problem changing SOAP message contents", e);
-            throw AxisFault.makeFault(e);
+    protected void setSOAPResponseObject(SOAPMessageContext context,
+                                         Object newResponse) {
+        if (newResponse == null) {
+            return;
         }
-    }
-
-    /**
-     * Sets the return object for a response as a sequence of params.
-     *
-     * @param context
-     *        the message context
-     * @param param
-     *        the object to set as the return object
-     * @throws AxisFault
-     */
-    protected void setSOAPResponseObject(MessageContext context,
-                                         RPCParam[] params) throws AxisFault {
         // Extract the SOAP Message
-        Message message =
-                context.getPastPivot() ? context.getResponseMessage() : context
-                        .getRequestMessage();
-
-        // Extract the SOAP Envelope from the Message
-        SOAPEnvelope envelope = message.getSOAPEnvelope();
+        SOAPMessage message = context.getMessage();
 
         // Get the envelope body
-        SOAPBodyElement body = envelope.getFirstBody();
-
+        SOAPElement body;
         try {
-            body.removeContents();
-            if (params != null) {
-                for (RPCParam param : params) {
-                    body.addChild(param);
-                }
-            }
-        } catch (Exception e) {
+            body = message.getSOAPBody();
+            SOAPElement response = getSOAPResponseNode(context);
+            body.removeChild(response);
+            marshall(newResponse, body);
+        } catch (SOAPException e) {
             logger.error("Problem changing SOAP message contents", e);
-            throw AxisFault.makeFault(e);
+            throw CXFUtility.getFault(e);
         }
     }
 
@@ -306,16 +245,15 @@ public abstract class AbstractOperationHandler
      * @param context
      *        the message context
      * @return a list of Subjects
-     * @throws AxisFault
+     * @throws SoapFault
      */
-    protected List<Map<URI, List<AttributeValue>>> getSubjects(MessageContext context)
-            throws AxisFault {
+    protected List<Map<URI, List<AttributeValue>>> getSubjects(SOAPMessageContext context) {
         // setup the id and value for the requesting subject
         List<Map<URI, List<AttributeValue>>> subjects =
                 new ArrayList<Map<URI, List<AttributeValue>>>();
 
-        if (context.getUsername() == null
-                || "".equals(context.getUsername().trim())) {
+        if (getUser(context) == null
+                || getUser(context).trim().isEmpty()) {
             return subjects;
         }
 
@@ -323,78 +261,110 @@ public abstract class AbstractOperationHandler
 
         Map<URI, List<AttributeValue>> subAttr = null;
         List<AttributeValue> attrList = null;
-        try {
-            subAttr = new HashMap<URI, List<AttributeValue>>();
-            attrList = new ArrayList<AttributeValue>();
-            attrList.add(new StringAttribute(context.getUsername()));
-            subAttr.put(Constants.SUBJECT.LOGIN_ID.getURI(), attrList);
-            if (fedoraRole != null && fedoraRole.length > 0) {
-                attrList = new ArrayList<AttributeValue>();
-                for (String r : fedoraRole) {
-                    attrList.add(new StringAttribute(r));
-                }
-                subAttr.put(new URI(FEDORA_ROLE), attrList);
-            }
-            subjects.add(subAttr);
 
-            subAttr = new HashMap<URI, List<AttributeValue>>();
+        subAttr = new HashMap<URI, List<AttributeValue>>();
+        attrList = new ArrayList<AttributeValue>();
+        attrList.add(new StringAttribute(getUser(context)));
+        subAttr.put(Constants.SUBJECT.LOGIN_ID.getURI(), attrList);
+        if (fedoraRole != null && fedoraRole.length > 0) {
             attrList = new ArrayList<AttributeValue>();
-            attrList.add(new StringAttribute(context.getUsername()));
-            subAttr.put(Constants.SUBJECT.USER_REPRESENTED.getURI(), attrList);
-            if (fedoraRole != null && fedoraRole.length > 0) {
-                attrList = new ArrayList<AttributeValue>();
-                for (String r : fedoraRole) {
-                    attrList.add(new StringAttribute(r));
-                }
-                subAttr.put(new URI(FEDORA_ROLE), attrList);
+            for (String r : fedoraRole) {
+                attrList.add(new StringAttribute(r));
             }
-            subjects.add(subAttr);
-
-            subAttr = new HashMap<URI, List<AttributeValue>>();
-            attrList = new ArrayList<AttributeValue>();
-            attrList.add(new StringAttribute(context.getUsername()));
-            subAttr.put(new URI(SUBJECT_ID), attrList);
-            if (fedoraRole != null && fedoraRole.length > 0) {
-                attrList = new ArrayList<AttributeValue>();
-                for (String r : fedoraRole) {
-                    attrList.add(new StringAttribute(r));
-                }
-                subAttr.put(new URI(FEDORA_ROLE), attrList);
-            }
-            subjects.add(subAttr);
-        } catch (URISyntaxException use) {
-            logger.error(use.getMessage(), use);
-            throw AxisFault.makeFault(use);
+            subAttr.put(Constants.SUBJECT.ROLE.getURI(), attrList);
         }
+        subjects.add(subAttr);
+
+        subAttr = new HashMap<URI, List<AttributeValue>>();
+        attrList = new ArrayList<AttributeValue>();
+        attrList.add(new StringAttribute(getUser(context)));
+        subAttr.put(Constants.SUBJECT.USER_REPRESENTED.getURI(), attrList);
+        if (fedoraRole != null && fedoraRole.length > 0) {
+            attrList = new ArrayList<AttributeValue>();
+            for (String r : fedoraRole) {
+                attrList.add(new StringAttribute(r));
+            }
+            subAttr.put(Constants.SUBJECT.ROLE.getURI(), attrList);
+        }
+        subjects.add(subAttr);
+
+        subAttr = new HashMap<URI, List<AttributeValue>>();
+        attrList = new ArrayList<AttributeValue>();
+        attrList.add(new StringAttribute(getUser(context)));
+        subAttr.put(Constants.XACML1_SUBJECT.ID.getURI(), attrList);
+        if (fedoraRole != null && fedoraRole.length > 0) {
+            attrList = new ArrayList<AttributeValue>();
+            for (String r : fedoraRole) {
+                attrList.add(new StringAttribute(r));
+            }
+            subAttr.put(Constants.SUBJECT.ROLE.getURI(), attrList);
+        }
+        subjects.add(subAttr);
 
         return subjects;
     }
 
     /**
-     * Obtains a list of environment Attributes.
+     * Obtains a map of environment Attributes.
      *
      * @param context
      *        the message context
-     * @return list of environment Attributes
+     * @return map of environment Attributes
      */
-    protected Map<URI, AttributeValue> getEnvironment(MessageContext context) {
+    protected Map<URI, AttributeValue> getEnvironment(SOAPMessageContext context) {
         Map<URI, AttributeValue> envAttr = new HashMap<URI, AttributeValue>();
 
-        String ip = (String) context.getProperty("remoteaddr");
+        HttpServletRequest request =
+                (HttpServletRequest) context
+                        .get(SOAPMessageContext.SERVLET_REQUEST);
+        String ip = request.getRemoteAddr();
 
-        if (ip != null && !"".equals(ip)) {
+        if (ip != null && !ip.isEmpty()) {
             envAttr.put(Constants.HTTP_REQUEST.CLIENT_IP_ADDRESS.getURI(),
                         new StringAttribute(ip));
         }
 
         return envAttr;
     }
+    
+    /**
+     * Obtains a map of resource Attributes.
+     *
+     * @param context
+     *        the message context
+     * @return map of resource Attributes
+     * @throws OperationHandlerException
+     * @throws URISyntaxException
+     */
+    protected Map<URI, AttributeValue> getResources(SOAPMessageContext context) throws OperationHandlerException, URISyntaxException {
+        Object oMap = null;
 
+        String pid = null;
+        try {
+            oMap = getSOAPRequestObjects(context);
+            logger.debug("Retrieved SOAP Request Objects");
+        } catch (SoapFault af) {
+            logger.error("Error obtaining SOAP Request Objects", af);
+            throw new OperationHandlerException("Error obtaining SOAP Request Objects",
+                                                af);
+        }
+
+        try {
+            pid = (String) callGetter("getPid",oMap);
+        } catch (Exception e) {
+            logger.error("Error obtaining parameters", e);
+            throw new OperationHandlerException("Error obtaining parameters.",
+                                                e);
+        }
+        Map<URI, AttributeValue> resAttr = ResourceAttributes.getResources(pid);
+        logger.debug("Extracted SOAP Request Objects");
+        return resAttr;
+    }
     /**
      * @return the Context Handler
      */
     protected ContextHandler getContextHandler() {
-        return contextHandlerImpl;
+        return m_contextHandler;
     }
 
     /**
@@ -405,10 +375,10 @@ public abstract class AbstractOperationHandler
      * @return a String array of roles
      */
     @SuppressWarnings("unchecked")
-    protected String[] getUserRoles(MessageContext context) {
+    protected String[] getUserRoles(SOAPMessageContext context) {
         HttpServletRequest request =
                 (HttpServletRequest) context
-                        .getProperty("transport.http.servletRequest");
+                        .get(SOAPMessageContext.SERVLET_REQUEST);
 
         Map<String, Set<String>> reqAttr = null;
         reqAttr =
@@ -429,4 +399,65 @@ public abstract class AbstractOperationHandler
 
         return fedoraRole;
     }
+
+    protected String getUser(SOAPMessageContext context){
+//        String username = (String) context.get("Username");
+        HttpServletRequest request =
+            (HttpServletRequest) context
+                    .get(SOAPMessageContext.SERVLET_REQUEST);
+        return request.getRemoteUser();
+    }
+
+    protected Object callGetter(String mname, Object context) throws SecurityException, NoSuchMethodException, IllegalArgumentException, IllegalAccessException, InvocationTargetException {
+        Class<?> klass = context.getClass();
+        Method getter = klass.getDeclaredMethod(mname);
+        return getter.invoke(context);
+    }
+
+    private static JAXBContext getJAXBContext(){
+        try {
+            return JAXBContext.newInstance("org.fcrepo.server.types.gen:org.fcrepo.server.types.mtom.gen");
+        } catch (JAXBException e) {
+            logger.error(e.toString(),e);
+            return null;
+        }
+
+    }
+
+    protected static Object unmarshall(SOAPElement node) {
+        if (node == null) return node;
+        Unmarshaller um = null;
+        try {
+            um = JAXB_CONTEXT.createUnmarshaller();
+        } catch (JAXBException e) {
+            logger.error(e.toString(),e);
+            throw CXFUtility.getFault(e);
+        }
+        Object result = null;
+        try {
+            result = um.unmarshal(node);
+        } catch (Exception e) {
+            logger.error("Problem obtaining params", e);
+            throw CXFUtility.getFault(e);
+        }
+        return result;
+    }
+
+    protected static void marshall(Object unmarshalled, SOAPElement parent) {
+        if (unmarshalled == null) return;
+        Marshaller m = null;
+        try {
+            m = JAXB_CONTEXT.createMarshaller();
+        } catch (Exception e) {
+            logger.error(e.toString(),e);
+            throw CXFUtility.getFault(e);
+        }
+        try {
+            m.marshal(unmarshalled, parent);
+        } catch (JAXBException e) {
+            logger.error("Problem serializing params", e);
+            throw CXFUtility.getFault(e);
+        }
+    }
+
 }

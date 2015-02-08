@@ -6,7 +6,11 @@ package org.fcrepo.server.security.xacml.pdp.data;
 
 import java.util.Map;
 
-import com.sun.xacml.EvaluationCtx;
+import org.fcrepo.common.Constants;
+
+import org.jboss.security.xacml.sunxacml.AbstractPolicy;
+import org.jboss.security.xacml.sunxacml.EvaluationCtx;
+import org.jboss.security.xacml.sunxacml.finder.PolicyFinder;
 
 
 /**
@@ -31,8 +35,8 @@ import com.sun.xacml.EvaluationCtx;
 
 public interface PolicyIndex {
 
-    public static final String XACML20_POLICY_NS = "urn:oasis:names:tc:xacml:2.0:policy:schema:os";
-    public static final String XACML_RESOURCE_ID = "urn:oasis:names:tc:xacml:1.0:resource:resource-id";
+    public static final String XACML20_POLICY_NS = Constants.XACML2_POLICY_SCHEMA.OS.toString();
+    public static final String XACML_RESOURCE_ID = Constants.XACML1_RESOURCE.ID.toString();
 
     /**
      * Extracts a list of policies from the Policy Index that are relevant to
@@ -46,7 +50,7 @@ public interface PolicyIndex {
      * @return the List of potential policies
      * @throws PolicyIndexException
      */
-    Map<String, byte[]> getPolicies(EvaluationCtx eval)
+    Map<String, AbstractPolicy> getPolicies(EvaluationCtx eval, PolicyFinder policyFinder)
             throws PolicyIndexException;
 
 
@@ -63,7 +67,7 @@ public interface PolicyIndex {
      * @return the policy as an array of bytes
      * @throws PolicyStoreException
      */
-    byte[] getPolicy(String name) throws PolicyIndexException;
+    AbstractPolicy getPolicy(String name, PolicyFinder policyFinder) throws PolicyIndexException;
 
 
     /**

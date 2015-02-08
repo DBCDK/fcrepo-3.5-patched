@@ -2,30 +2,27 @@
 package org.fcrepo.server.security.xacml.util;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Writer;
-
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-
-import com.sun.org.apache.xml.internal.serialize.OutputFormat;
-import com.sun.org.apache.xml.internal.serialize.XMLSerializer;
 
 import org.apache.commons.io.IOUtils;
-
-import org.w3c.dom.Document;
-
+import org.fcrepo.utilities.ReadableByteArrayOutputStream;
+import org.fcrepo.utilities.ReadableCharArrayWriter;
+import org.fcrepo.utilities.XmlTransformUtility;
+import org.fcrepo.utilities.xml.XercesXmlSerializers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
 
 public class DataFileUtils {
 
@@ -34,13 +31,15 @@ public class DataFileUtils {
 
     public static Document getDocumentFromFile(File file) throws Exception {
         byte[] document = loadFile(file);
-        DocumentBuilderFactory documentBuilderFactory =
-                DocumentBuilderFactory.newInstance();
-        documentBuilderFactory.setNamespaceAware(true);
         DocumentBuilder docBuilder =
-                documentBuilderFactory.newDocumentBuilder();
+                XmlTransformUtility.borrowDocumentBuilder();
 
-        Document doc = docBuilder.parse(new ByteArrayInputStream(document));
+        Document doc = null;
+        try {
+            doc = docBuilder.parse(new ByteArrayInputStream(document));
+        } finally {
+            XmlTransformUtility.returnDocumentBuilder(docBuilder);
+        }
 
         return doc;
     }
@@ -53,7 +52,7 @@ public class DataFileUtils {
     public static byte[] loadFile(File file) throws Exception {
         if (!file.exists() || !file.canRead()) {
             String message = "Cannot read file: " + file.getCanonicalPath();
-            System.err.println(message);
+            logger.error(message);
             throw new Exception(message);
         }
 
@@ -73,18 +72,19 @@ public class DataFileUtils {
     public static void saveDocument(String filename, byte[] document)
             throws Exception {
         try {
-            DocumentBuilderFactory documentBuilderFactory =
-                    DocumentBuilderFactory.newInstance();
-            documentBuilderFactory.setNamespaceAware(true);
             DocumentBuilder docBuilder =
-                    documentBuilderFactory.newDocumentBuilder();
+                    XmlTransformUtility.borrowDocumentBuilder();
 
-            Document doc = docBuilder.parse(new ByteArrayInputStream(document));
+            Document doc = null;
+            try {
+                doc = docBuilder.parse(new ByteArrayInputStream(document));
+            } finally {
+                XmlTransformUtility.returnDocumentBuilder(docBuilder);
+            }
             saveDocument(filename, doc);
         } catch (Exception e) {
             String message = "Unable to save file: " + filename;
-            System.err.println(message);
-            e.printStackTrace();
+            logger.error(message,e);
             throw new Exception(message, e);
         }
     }
@@ -93,79 +93,74 @@ public class DataFileUtils {
             throws Exception {
         try {
             File file = new File(filename.trim());
-            String data = format(doc);
             PrintWriter writer = new PrintWriter(file, "UTF-8");
-            writer.print(data);
+            format(doc, writer);
             writer.flush();
             writer.close();
         } catch (Exception e) {
             String message = "Unable to save file: " + filename;
-            System.err.println(message);
-            e.printStackTrace();
+            logger.error(message,e);
             throw new Exception(message, e);
         }
     }
 
     public static String format(Document doc) {
-        OutputFormat format = new OutputFormat(doc);
-        format.setEncoding("UTF-8");
-        format.setIndenting(true);
-        format.setIndent(2);
-        format.setOmitXMLDeclaration(true);
-
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        Writer output = new OutputStreamWriter(out);
-
-        XMLSerializer serializer = new XMLSerializer(output, format);
-        String result = null;
         try {
-            serializer.serialize(doc);
-            result = new String(out.toByteArray(), "UTF-8");
+            ReadableCharArrayWriter out = new ReadableCharArrayWriter();
+            Writer output = new BufferedWriter(out);
+
+            format(doc, output);
+            output.close();
+
+            return out.getString();
         } catch (Exception e) {
             logger.error("Failed to format document.", e);
         }
 
-        return result;
+        return null;
+    }
+    
+    private static void format(Document doc, Writer out) throws Exception {
+        XercesXmlSerializers.writePrettyPrint(doc, out);
     }
 
     public static String format(byte[] document) throws Exception {
-        DocumentBuilderFactory documentBuilderFactory =
-                DocumentBuilderFactory.newInstance();
-        documentBuilderFactory.setNamespaceAware(true);
-        DocumentBuilder docBuilder =
-                documentBuilderFactory.newDocumentBuilder();
+        DocumentBuilder builder = XmlTransformUtility.borrowDocumentBuilder();
 
-        Document doc = docBuilder.parse(new ByteArrayInputStream(document));
+        Document doc = null;
+        try {
+            doc = builder.parse(new ByteArrayInputStream(document));
+        } finally {
+            XmlTransformUtility.returnDocumentBuilder(builder);
+        }
 
         return format(doc);
     }
 
     public static byte[] fedoraXMLHashFormat(byte[] data) throws Exception {
-        OutputFormat format = new OutputFormat("XML", "UTF-8", false);
-        format.setIndent(0);
-        format.setLineWidth(0);
-        format.setPreserveSpace(false);
-        ByteArrayOutputStream outStream = new ByteArrayOutputStream();
-        XMLSerializer serializer = new XMLSerializer(outStream, format);
+        ReadableCharArrayWriter writer = new ReadableCharArrayWriter();
 
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(true);
-        DocumentBuilder builder = factory.newDocumentBuilder();
-        Document doc = builder.parse(new ByteArrayInputStream(data));
-        serializer.serialize(doc);
-
-        ByteArrayInputStream in =
-                new ByteArrayInputStream(outStream.toByteArray());
-        BufferedReader br =
-                new BufferedReader(new InputStreamReader(in, "UTF-8"));
-        String line = null;
-        StringBuffer sb = new StringBuffer();
-        while ((line = br.readLine()) != null) {
-            line = line.trim();
-            sb = sb.append(line);
+        DocumentBuilder builder = XmlTransformUtility.borrowDocumentBuilder();
+        try {
+            Document doc = builder.parse(new ByteArrayInputStream(data));
+            XercesXmlSerializers.writeXmlNoSpace(doc, "UTF-8", writer);
+            writer.close();
+        } finally {
+            XmlTransformUtility.returnDocumentBuilder(builder);
         }
 
-        return sb.toString().getBytes("UTF-8");
+        BufferedReader br =
+                new BufferedReader(writer.toReader());
+        String line = null;
+        ReadableByteArrayOutputStream outStream = new ReadableByteArrayOutputStream();
+        OutputStreamWriter sb = new OutputStreamWriter(outStream, "UTF-8");
+        while ((line = br.readLine()) != null) {
+            line = line.trim();
+            sb.write(line);
+        }
+        sb.close();
+
+        return outStream.toByteArray();
     }
 
     public static String getHash(byte[] data) throws NoSuchAlgorithmException {

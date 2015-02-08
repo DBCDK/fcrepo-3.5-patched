@@ -8,22 +8,24 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-
 import java.net.URI;
+import java.util.Date;
 
-import org.apache.commons.httpclient.UsernamePasswordCredentials;
+import javax.ws.rs.core.HttpHeaders;
 
 import org.apache.commons.io.IOUtils;
-
+import org.apache.http.auth.UsernamePasswordCredentials;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.http.WebClient;
 import org.fcrepo.common.http.WebClientConfiguration;
+import org.fcrepo.server.Context;
 import org.fcrepo.server.config.Parameter;
 import org.fcrepo.server.config.ServerConfiguration;
 import org.fcrepo.server.config.ServerConfigurationParser;
+import org.fcrepo.server.storage.types.Property;
+import org.fcrepo.utilities.DateUtility;
 
 
 
@@ -31,6 +33,10 @@ public class ServerUtility {
 
     private static final Logger logger =
             LoggerFactory.getLogger(ServerUtility.class);
+
+    private static final String IMS_KEY = HttpHeaders.IF_MODIFIED_SINCE.toLowerCase();
+
+    private static final String INM_KEY = HttpHeaders.IF_NONE_MATCH.toLowerCase();
 
     public static final String HTTP = "http";
 
@@ -44,23 +50,33 @@ public class ServerUtility {
 
     public static final String FEDORA_REDIRECT_PORT = "fedoraRedirectPort";
 
-    private static ServerConfiguration CONFIG;
+    private static ServerConfiguration CONFIG =
+        getServerConfig();
+    
+    private static WebClient s_webClient =
+            getWebClient();
 
-    static {
+    private static ServerConfiguration getServerConfig() {
         String fedoraHome = Constants.FEDORA_HOME;
         if (fedoraHome == null) {
             logger.warn("FEDORA_HOME not set; unable to initialize");
         } else {
             File fcfgFile = new File(fedoraHome, "server/config/fedora.fcfg");
             try {
-                CONFIG =
-                        new ServerConfigurationParser(new FileInputStream(fcfgFile))
+                return new ServerConfigurationParser(new FileInputStream(fcfgFile))
                                 .parse();
             } catch (IOException e) {
                 logger.warn("Unable to read server configuration from "
                         + fcfgFile.getPath(), e);
             }
         }
+        return null;
+    }
+    
+    private static WebClient getWebClient() {
+        WebClientConfiguration webconfig = new WebClientConfiguration();
+        initWebClientConfig(webconfig);
+        return new WebClient(webconfig);
     }
 
     /**
@@ -115,12 +131,10 @@ public class ServerUtility {
                                             String pass,
                                             String path) throws IOException {
         String url = getBaseURL(protocol) + path;
-        logger.info("Getting URL: " + url);
+        logger.info("Getting URL: {}", url);
         UsernamePasswordCredentials creds =
                 new UsernamePasswordCredentials(user, pass);
-        WebClientConfiguration webconfig = new WebClientConfiguration();
-        initWebClientConfig(webconfig);
-        return new WebClient(webconfig).getResponseAsString(url, true, creds);
+        return s_webClient.getResponseAsString(url, true, creds);
     }
 
     /**
@@ -132,10 +146,10 @@ public class ServerUtility {
                                             String pass,
                                             String path) throws IOException {
         String url = getBaseURL(protocol) + path;
-        logger.info("Getting URL: " + url);
+        logger.info("Getting URL: {}", url);
         UsernamePasswordCredentials creds =
                 new UsernamePasswordCredentials(user, pass);
-        return new WebClient().get(url, true, creds);
+        return s_webClient.get(url, true, creds);
     }
 
 
@@ -212,7 +226,11 @@ public class ServerUtility {
      * Initializes the web client http connection settings.
      */
     private static void initWebClientConfig(WebClientConfiguration wconf) {
-
+        if (CONFIG == null) {
+            logger.warn("Web client config was null; cannot configure web client for {}", ServerUtility.class);
+            logger.info("FEDORA_HOME is used to configure web client; was set to {}", Constants.FEDORA_HOME);
+            return;
+        }
         if (CONFIG.getParameter("httpClientTimeoutSecs") != null)
             wconf.setTimeoutSecs(Integer.parseInt(CONFIG.getParameter("httpClientTimeoutSecs")));
 
@@ -347,6 +365,27 @@ public class ServerUtility {
         } else {
             return defaultValue;
         }
+    }
+
+    public static boolean isStaleCache(Context context, Property[] headers) {
+        String ifNoneMatch = context.getHeaderValue(INM_KEY);
+        String ifModSince = context.getHeaderValue(IMS_KEY);
+        if (ifModSince == null && ifNoneMatch == null) return true;
+        // parse out the data for comparison
+        Date imsDate = (ifModSince == null) ? null : DateUtility.parseDateLoose(ifModSince);
+        long ims = (imsDate == null) ? Long.MIN_VALUE : imsDate.getTime();
+        // get the local comparison values
+        String etag = null;
+        long lastMod = Long.MAX_VALUE;
+        for (Property header: headers) {
+            if (HttpHeaders.ETAG.equalsIgnoreCase(header.name)) etag = header.value;
+            if (HttpHeaders.LAST_MODIFIED.equalsIgnoreCase(header.name)) {
+                Date d = DateUtility.parseDateLoose(header.value);
+                if (d != null) lastMod = d.getTime();
+            }
+        }
+        if (ifNoneMatch != null && !ifNoneMatch.equals(etag)) return true;
+        return (ifModSince != null && ims < lastMod);
     }
 
 }

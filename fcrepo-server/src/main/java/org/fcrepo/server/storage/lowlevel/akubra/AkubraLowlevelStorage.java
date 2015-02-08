@@ -9,36 +9,32 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
-
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
-
 import java.util.Iterator;
 import java.util.Map;
-
-import org.apache.commons.io.IOUtils;
 
 import org.akubraproject.Blob;
 import org.akubraproject.BlobStore;
 import org.akubraproject.BlobStoreConnection;
 import org.akubraproject.DuplicateBlobException;
 import org.akubraproject.MissingBlobException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import org.apache.commons.io.IOUtils;
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.FaultException;
 import org.fcrepo.common.MalformedPIDException;
 import org.fcrepo.common.PID;
-
 import org.fcrepo.server.errors.LowlevelStorageException;
 import org.fcrepo.server.errors.ObjectAlreadyInLowlevelStorageException;
 import org.fcrepo.server.errors.ObjectNotInLowlevelStorageException;
+import org.fcrepo.server.storage.lowlevel.ICheckable;
 import org.fcrepo.server.storage.lowlevel.IListable;
 import org.fcrepo.server.storage.lowlevel.ILowlevelStorage;
 import org.fcrepo.server.storage.lowlevel.ISizable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
@@ -51,7 +47,7 @@ import org.fcrepo.server.storage.lowlevel.ISizable;
  * @author Chris Wilper
  */
 public class AkubraLowlevelStorage
-        implements ILowlevelStorage, IListable, ISizable {
+        implements ILowlevelStorage, IListable, ISizable, ICheckable {
 
     private static final Logger logger =
             LoggerFactory.getLogger(AkubraLowlevelStorage.class);
@@ -105,57 +101,80 @@ public class AkubraLowlevelStorage
     // ILowlevelStorage methods
     //
 
-    public long addDatastream(String dsKey, InputStream content)
+    public long addDatastream(String dsKey, InputStream content, Map<String, String> hints)
             throws LowlevelStorageException {
-        return add(datastreamStore, dsKey, content);
+        return add(datastreamStore, dsKey, content, hints);
     }
 
-    public void addObject(String objectKey, InputStream content)
-            throws LowlevelStorageException {
-        add(objectStore, objectKey, content);
+    public long addDatastream(String pid, InputStream content) throws LowlevelStorageException {
+        return this.addDatastream(pid, content, null);
     }
 
+    public void addObject(String objectKey, InputStream content, Map<String, String> hints)
+            throws LowlevelStorageException {
+        add(objectStore, objectKey, content, hints);
+    }
+
+    public void addObject(String pid, InputStream content) throws LowlevelStorageException {
+        this.addObject(pid, content, null);
+    }
+
+    @Override
     public void auditDatastream() throws LowlevelStorageException {
         audit(datastreamStore);
     }
 
+    @Override
     public void auditObject() throws LowlevelStorageException {
         audit(objectStore);
     }
 
+    @Override
     public void rebuildDatastream() throws LowlevelStorageException {
         rebuild(datastreamStore);
     }
 
+    @Override
     public void rebuildObject() throws LowlevelStorageException {
         rebuild(objectStore);
     }
 
+    @Override
     public void removeDatastream(String dsKey)
             throws LowlevelStorageException {
         remove(datastreamStore, dsKey);
     }
 
+    @Override
     public void removeObject(String objectKey)
             throws LowlevelStorageException {
         remove(objectStore, objectKey);
     }
 
-    public long replaceDatastream(String dsKey, InputStream content)
+    public long replaceDatastream(String dsKey, InputStream content, Map<String, String> hints)
             throws LowlevelStorageException {
-        return replace(datastreamStore, dsKey, content, forceSafeDatastreamOverwrites);
+        return replace(datastreamStore, dsKey, content, forceSafeDatastreamOverwrites, hints);
+    }
+    
+    public long replaceDatastream(String pid, InputStream content) throws LowlevelStorageException {
+        return this.replaceDatastream(pid, content, null);
     }
 
-    public void replaceObject(String objectKey, InputStream content)
+    public void replaceObject(String objectKey, InputStream content, Map<String, String> hints)
             throws LowlevelStorageException {
-        replace(objectStore, objectKey, content, forceSafeObjectOverwrites);
+        replace(objectStore, objectKey, content, forceSafeObjectOverwrites, hints);
+    }
+    public void replaceObject(String pid, InputStream content) throws LowlevelStorageException {
+        this.replaceObject(pid, content, null);
     }
 
+    @Override
     public InputStream retrieveDatastream(String dsKey)
             throws LowlevelStorageException {
         return retrieve(datastreamStore, dsKey);
     }
 
+    @Override
     public InputStream retrieveObject(String objectKey)
             throws LowlevelStorageException {
         return retrieve(objectStore, objectKey);
@@ -165,10 +184,12 @@ public class AkubraLowlevelStorage
     // IListable methods
     //
 
+    @Override
     public Iterator<String> listDatastreams() {
         return list(datastreamStore);
     }
 
+    @Override
     public Iterator<String> listObjects() {
         return list(objectStore);
     }
@@ -181,20 +202,28 @@ public class AkubraLowlevelStorage
     public long getDatastreamSize(String dsKey) throws LowlevelStorageException {
         return getSize(datastreamStore, dsKey);
     }
-
+    
+    //
+    // ICheckable methods
+    //
+    @Override
+    public boolean objectExists(String objectKey) {
+        return exists(objectStore, objectKey, null);
+    }
+    
     //
     // Private implementation methods
     //
 
     private static long add(BlobStore store,
                             String key,
-                            InputStream content)
+                            InputStream content, Map<String, String> hints)
             throws ObjectAlreadyInLowlevelStorageException {
         BlobStoreConnection connection = null;
         try {
             URI blobId = getBlobId(key);
-            connection = getConnection(store);
-            Blob blob = getBlob(connection, blobId, null);
+            connection = getConnection(store, hints);
+            Blob blob = getBlob(connection, blobId, hints);
             OutputStream out = openOutputStream(blob, -1, false);
             copy(content, out);
             try {
@@ -227,12 +256,12 @@ public class AkubraLowlevelStorage
         BlobStoreConnection connection = null;
         try {
             URI blobId = getBlobId(key);
-            connection = getConnection(store);
+            connection = getConnection(store, null);
             Blob blob = getBlob(connection, blobId, null);
             if (exists(blob)) {
                 delete(blob);
             } else {
-                throw new ObjectNotInLowlevelStorageException(key);
+                throw new ObjectNotInLowlevelStorageException("Object not found in low-level storage: " + key);
             }
         } finally {
             closeConnection(connection);
@@ -242,12 +271,13 @@ public class AkubraLowlevelStorage
     private static long replace(BlobStore store,
                                 String key,
                                 InputStream content,
-                                boolean forceSafeOverwrite)
+                                boolean forceSafeOverwrite,
+                                Map<String, String> hints)
             throws LowlevelStorageException {
         BlobStoreConnection connection = null;
         try {
             URI blobId = getBlobId(key);
-            connection = getConnection(store);
+            connection = getConnection(store, hints);
             Blob blob = getBlob(connection, blobId, null);
             if (exists(blob)) {
                 if (forceSafeOverwrite) {
@@ -258,7 +288,7 @@ public class AkubraLowlevelStorage
                     copy(content, out);
                 }
             } else {
-                throw new ObjectNotInLowlevelStorageException(key);
+                throw new ObjectNotInLowlevelStorageException("Object not found in low-level storage: " + key);
             }
             try {
                 return blob.getSize();
@@ -278,7 +308,7 @@ public class AkubraLowlevelStorage
         BlobStoreConnection connection = null;
         boolean successful = false;
         try {
-            connection = getConnection(store);
+            connection = getConnection(store, null);
             Iterator<URI> blobIds = listBlobIds(connection);
             successful = true;
             return new ConnectionClosingKeyIterator(connection, blobIds);
@@ -384,13 +414,13 @@ public class AkubraLowlevelStorage
         boolean successful = false;
         try {
             URI blobId = getBlobId(key);
-            connection = getConnection(store);
+            connection = getConnection(store, null);
             Blob blob = getBlob(connection, blobId, null);
             content = openInputStream(blob);
             successful = true;
             return new ConnectionClosingInputStream(connection, content);
         } catch (MissingBlobException e) {
-            throw new ObjectNotInLowlevelStorageException(key, e);
+            throw new ObjectNotInLowlevelStorageException("Object not found in low-level storage: " + key, e);
         } finally {
             if (!successful) {
                 IOUtils.closeQuietly(content);
@@ -406,11 +436,11 @@ public class AkubraLowlevelStorage
         boolean successful = false;
         try {
             URI blobId = getBlobId(key);
-            connection = getConnection(store);
+            connection = getConnection(store, null);
             Blob blob = getBlob(connection, blobId, null);
             return blob.getSize();
         } catch (MissingBlobException e) {
-            throw new ObjectNotInLowlevelStorageException(key);
+            throw new ObjectNotInLowlevelStorageException("Object not found in low-level storage: " + key);
         } catch (IOException e) { // should never happen
             throw new RuntimeException("Error reading blob size: " +e.getMessage(), e);
         } finally {
@@ -421,9 +451,10 @@ public class AkubraLowlevelStorage
     }
 
 
-    private static BlobStoreConnection getConnection(BlobStore store) {
+    private static BlobStoreConnection getConnection(BlobStore store,
+            Map<String, String> hints) {
         try {
-            return store.openConnection(null, null);
+            return store.openConnection(null, hints);
         } catch (IOException e) {
             throw new FaultException(
                     "System error getting blob store connection", e);
@@ -475,6 +506,14 @@ public class AkubraLowlevelStorage
             logger.error(e.toString(),e);
             throw new FaultException("System error opening output stream", e);
         }
+    }
+    
+    private static boolean exists(BlobStore blobStore, String key,
+            Map<String, String> hints) {
+        URI blobId = getBlobId(key);
+        BlobStoreConnection conn =
+                getConnection(blobStore, hints);
+        return exists(getBlob(conn, blobId, hints));
     }
 
     private static boolean exists(Blob blob) {
@@ -645,6 +684,7 @@ public class AkubraLowlevelStorage
             this.blobIds = blobIds;
         }
 
+        @Override
         public boolean hasNext() {
             if (!blobIds.hasNext()) {
                 connection.close();
@@ -653,10 +693,12 @@ public class AkubraLowlevelStorage
             return true;
         }
 
+        @Override
         public String next() {
             return getToken(blobIds.next());
         }
 
+        @Override
         public void remove() {
             throw new UnsupportedOperationException();
         }

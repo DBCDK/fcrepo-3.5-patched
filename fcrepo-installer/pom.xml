@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
     <groupId>org.fcrepo</groupId>
     <artifactId>fcrepo</artifactId>
-    <version>3.5</version>
+    <version>3.8.0</version>
   </parent>
 
   <artifactId>fcrepo-installer</artifactId>
@@ -15,48 +14,49 @@
 
   <build>
 
-    <!--
-      This 'resource' directory should be migrated to default location
-    -->
     <resources>
       <resource>
-        <directory>../resources/server</directory>
+        <directory>${project.build.directory}/maven-shared-archive-resources/server</directory>
         <filtering>true</filtering>
+      </resource>
+      <resource>
+        <directory>${project.build.directory}/maven-shared-archive-resources/webapp-context</directory>
+        <filtering>false</filtering>
       </resource>
     </resources>
 
     <plugins>
 
-    <plugin>
-      <groupId>org.apache.maven.plugins</groupId>
-      <artifactId>maven-jar-plugin</artifactId>
-      <executions>
-        <execution>
-          <id>utilities-main</id>
-          <phase>package</phase>
-          <goals>
-            <goal>jar</goal>
-          </goals>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>utilities-main</id>
+            <phase>package</phase>
+            <goals>
+              <goal>jar</goal>
+            </goals>
 
-          <configuration>
+            <configuration>
 
-            <classifier>utilities-main</classifier>
-            <archive>
-             <manifest>
-                <mainClass>org.fcrepo.utilities.install.Installer</mainClass>
-              </manifest>
-            </archive>
+              <classifier>utilities-main</classifier>
+              <archive>
+                <manifest>
+                  <mainClass>org.fcrepo.utilities.install.Installer</mainClass>
+                </manifest>
+              </archive>
 
-            <includes>
-             <include>org/fcrepo/utilities/**</include>
-             <include>org/fcrepo/server/**</include>
-             <include>**/fedorausers-mapping.xml</include>
-             <include>**/webxml-mapping.xml</include>
-            </includes>
-          </configuration>
-        </execution>
-      </executions>
-    </plugin>
+              <includes>
+                <include>org/fcrepo/utilities/**</include>
+                <include>org/fcrepo/server/**</include>
+                <include>**/fedorausers-mapping.xml</include>
+                <include>**/webxml-mapping.xml</include>
+              </includes>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
 
       <plugin>
         <artifactId>maven-assembly-plugin</artifactId>
@@ -103,9 +103,24 @@
               </archive>
             </configuration>
           </execution>
-
         </executions>
-
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-remote-resources-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>process-remote-resources</id>
+            <goals>
+              <goal>process</goal>
+            </goals>
+	        <configuration>
+	          <resourceBundles>
+	            <resourceBundle>org.fcrepo:fcrepo-shared-resources:${project.version}</resourceBundle>
+	          </resourceBundles>
+	        </configuration>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
@@ -124,7 +139,6 @@
     <dependency>
       <groupId>commons-collections</groupId>
       <artifactId>commons-collections</artifactId>
-      <version>3.1</version>
     </dependency>
 
     <dependency>
@@ -141,9 +155,9 @@
     </dependency>
 
     <dependency>
-      <groupId>org.fcrepo</groupId>
-      <artifactId>apache-tomcat</artifactId>
-      <version>6.0.29</version>
+      <groupId>org.apache.tomcat</groupId>
+      <artifactId>tomcat</artifactId>
+      <version>7.0.55</version>
       <type>zip</type>
     </dependency>
 
@@ -198,7 +212,7 @@
     <dependency>
       <groupId>mysql</groupId>
       <artifactId>mysql-connector-java</artifactId>
-      <version>5.1.6</version>
+      <version>5.1.21</version>
       <scope>runtime</scope>
     </dependency>
 
@@ -237,30 +251,15 @@
 
     <dependency>
       <groupId>org.fcrepo</groupId>
-      <artifactId>fcrepo-server</artifactId>
-      <classifier>cli-loader-main</classifier>
-      <version>${project.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>org.fcrepo</groupId>
       <artifactId>fcrepo-webapp-imagemanip</artifactId>
       <type>war</type>
       <version>${project.version}</version>
     </dependency>
-
     <dependency>
       <groupId>org.fcrepo</groupId>
       <artifactId>fcrepo-client-admin</artifactId>
       <version>${project.version}</version>
     </dependency>
-
-    <!--
-      <dependency> <groupId>org.fcrepo</groupId>
-      <artifactId>client</artifactId> <classifier>fedora</classifier>
-      <version>1.0.0</version> </dependency>
-    -->
-
     <dependency>
       <groupId>org.fcrepo</groupId>
       <artifactId>fcrepo-client-messaging</artifactId>
@@ -280,6 +279,10 @@
       <artifactId>one-jar-boot</artifactId>
       <version>0.96</version>
     </dependency>
+    <dependency>
+      <groupId>org.openrdf.sesame</groupId>
+      <artifactId>sesame-model</artifactId>
+    </dependency>
 
     <dependency>
       <groupId>org.apache.lucene</groupId>
@@ -298,9 +301,14 @@
     </dependency>
 
     <dependency>
-      <groupId>postgresql</groupId>
+      <groupId>org.jboss.security</groupId>
+      <artifactId>jboss-sunxacml</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-      <version>8.3-603.jdbc3</version>
+      <version>9.3-1102-jdbc41</version>
       <scope>runtime</scope>
     </dependency>
 
@@ -318,7 +326,6 @@
     <dependency>
       <groupId>commons-io</groupId>
       <artifactId>commons-io</artifactId>
-      <version>2.0.1</version>
     </dependency>
 
   </dependencies>

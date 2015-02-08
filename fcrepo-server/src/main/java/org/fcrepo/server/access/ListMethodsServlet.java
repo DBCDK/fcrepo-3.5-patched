@@ -12,13 +12,12 @@ import java.io.PipedWriter;
 import java.text.ParseException;
 import java.util.Date;
 
+import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.xml.transform.Templates;
 import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
 
@@ -28,7 +27,6 @@ import org.fcrepo.server.ReadOnlyContext;
 import org.fcrepo.server.Server;
 import org.fcrepo.server.errors.DisseminationException;
 import org.fcrepo.server.errors.GeneralException;
-import org.fcrepo.server.errors.InitializationException;
 import org.fcrepo.server.errors.ObjectNotFoundException;
 import org.fcrepo.server.errors.ObjectNotInLowlevelStorageException;
 import org.fcrepo.server.errors.ServerException;
@@ -86,7 +84,7 @@ import org.slf4j.LoggerFactory;
  * @version $Id$
  */
 public class ListMethodsServlet
-        extends HttpServlet
+        extends SpringAccessServlet
         implements Constants {
 
     private static final Logger logger =
@@ -100,12 +98,6 @@ public class ListMethodsServlet
     /** Content type for xml. */
     private static final String CONTENT_TYPE_XML = "text/xml; charset=UTF-8";
 
-    /** Instance of the Fedora server. */
-    private static Server s_server = null;
-
-    /** Instance of the access subsystem. */
-    private static Access s_access = null;
-
     /** Portion of initial request URL from protocol up to query string */
     private String requestURI = null;
 
@@ -118,7 +110,7 @@ public class ListMethodsServlet
     private static final String ACTION_LABEL = "List Methods";
 
     /** Configured Fedora server hostname */
-    private static String fedoraServerHost = null;
+    private String m_fedoraServerHost = null;
 
     /**
      * <p>
@@ -157,7 +149,7 @@ public class ListMethodsServlet
                 throw new BadRequest400Exception(request,
                                                  ACTION_LABEL,
                                                  "",
-                                                 new String[0]);
+                                                 EMPTY_STRING_ARRAY);
             }
             if (URIArray.length == 7) {
                 // Request is a versioned listMethods request
@@ -168,22 +160,22 @@ public class ListMethodsServlet
                     throw new BadRequest400Exception(request,
                                                      ACTION_LABEL,
                                                      "",
-                                                     new String[0]);
+                                                     EMPTY_STRING_ARRAY);
                 }
                 asOfDateTime = versDateTime;
             }
-            logger.debug("Listing methods (PID=" + PID + ", asOfDate="
-                    + versDateTime + ")");
+            logger.debug("Listing methods (PID={}, asOfDate={})",
+                    PID, versDateTime);
         } else {
             logger.error("Bad syntax (expected 6 or 7 parts) in request");
             throw new BadRequest400Exception(request,
                                              ACTION_LABEL,
                                              "",
-                                             new String[0]);
+                                             EMPTY_STRING_ARRAY);
         }
 
         if (request.getParameter("xml") != null) {
-            xml = new Boolean(request.getParameter("xml")).booleanValue();
+            xml = Boolean.parseBoolean(request.getParameter("xml"));
         }
 
         try {
@@ -197,7 +189,7 @@ public class ListMethodsServlet
             throw new NotFound404Exception(request,
                                            ACTION_LABEL,
                                            "",
-                                           new String[0]);
+                                           EMPTY_STRING_ARRAY);
         } catch (DisseminationException e) {
             logger.error("Error Listing Methods: " + requestURI + " (actionLabel="
                     + ACTION_LABEL + ")", e);
@@ -206,20 +198,20 @@ public class ListMethodsServlet
                                            request,
                                            ACTION_LABEL,
                                            "",
-                                           new String[0]);
+                                           EMPTY_STRING_ARRAY);
         } catch (ObjectNotInLowlevelStorageException e) {
             logger.error("Object not found for request: " + requestURI
                     + " (actionLabel=" + ACTION_LABEL + ")", e);
             throw new NotFound404Exception(request,
                                            ACTION_LABEL,
                                            "",
-                                           new String[0]);
+                                           EMPTY_STRING_ARRAY);
         } catch (AuthzException ae) {
             logger.error("Authorization error listing methods", ae);
             throw RootException.getServletException(ae,
                                                     request,
                                                     ACTION_LABEL,
-                                                    new String[0]);
+                                                    EMPTY_STRING_ARRAY);
         } catch (Throwable th) {
             logger.error("Error listing methods", th);
             throw new InternalError500Exception("Error listing methods",
@@ -227,7 +219,7 @@ public class ListMethodsServlet
                                                 request,
                                                 ACTION_LABEL,
                                                 "",
-                                                new String[0]);
+                                                EMPTY_STRING_ARRAY);
         }
     }
 
@@ -248,7 +240,7 @@ public class ListMethodsServlet
         try {
             pw = new PipedWriter();
             pr = new PipedReader(pw);
-            methodDefs = s_access.listMethods(context, PID, asOfDateTime);
+            methodDefs = m_access.listMethods(context, PID, asOfDateTime);
 
             // Object Profile found.
             // Serialize the ObjectProfile object into XML
@@ -281,12 +273,10 @@ public class ListMethodsServlet
                         new OutputStreamWriter(response.getOutputStream(),
                                                "UTF-8");
                 File xslFile =
-                        new File(s_server.getHomeDir(),
+                        new File(m_server.getHomeDir(),
                                  "access/listMethods.xslt");
-                TransformerFactory factory =
-                        XmlTransformUtility.getTransformerFactory();
                 Templates template =
-                        factory.newTemplates(new StreamSource(xslFile));
+                        XmlTransformUtility.getTemplates(xslFile);
                 Transformer transformer = template.newTransformer();
                 transformer.setParameter("fedora", context
                         .getEnvironmentValue(FEDORA_APP_CONTEXT_NAME));
@@ -365,16 +355,16 @@ public class ListMethodsServlet
             this.methodDefs = methodDefs;
             this.versDateTime = versDateTime;
             fedoraServerPort =
-                    context.getEnvironmentValue(HTTP_REQUEST.SERVER_PORT.uri);
+                    context.getEnvironmentValue(HTTP_REQUEST.SERVER_PORT.attributeId);
 
             fedoraAppServerContext =
                     context
                             .getEnvironmentValue(Constants.FEDORA_APP_CONTEXT_NAME);
             if (HTTP_REQUEST.SECURE.uri.equals(context
-                    .getEnvironmentValue(HTTP_REQUEST.SECURITY.uri))) {
+                    .getEnvironmentValue(HTTP_REQUEST.SECURITY.attributeId))) {
                 fedoraServerProtocol = HTTPS;
             } else if (HTTP_REQUEST.INSECURE.uri.equals(context
-                    .getEnvironmentValue(HTTP_REQUEST.SECURITY.uri))) {
+                    .getEnvironmentValue(HTTP_REQUEST.SECURITY.attributeId))) {
                 fedoraServerProtocol = HTTP;
             }
         }
@@ -396,11 +386,13 @@ public class ListMethodsServlet
                         pw.write(DateUtility.convertDateToString(versDateTime));
                         pw.write("\"");
                     }
-                    pw.write(" baseURL=\""
-                            + StreamUtility.enc(fedoraServerProtocol) + "://"
-                            + StreamUtility.enc(fedoraServerHost) + ":"
-                            + StreamUtility.enc(fedoraServerPort) + "/"
-                            + fedoraAppServerContext + "/\"");
+                    pw.write(" baseURL=\"");
+                    StreamUtility.enc(fedoraServerProtocol, pw);
+                    pw.write("://");
+                    StreamUtility.enc(m_fedoraServerHost, pw);
+                    pw.write(':');
+                    StreamUtility.enc(fedoraServerPort, pw);
+                    pw.write("/" + fedoraAppServerContext + "/\"");
                     pw.write(" xmlns=\"" + OBJ_METHODS1_0.namespace.uri + "\" ");
                     pw.write(" xmlns:xsi=\"" + XSI.uri + "\" ");
                     pw.write(" xsi:schemaLocation=\"" + OBJ_METHODS1_0.namespace.uri);
@@ -415,31 +407,30 @@ public class ListMethodsServlet
                             if (i != 0) {
                                 pw.write("</sDef>");
                             }
-                            pw.write("<sDef pid=\""
-                                    + StreamUtility.enc(methodDefs[i].sDefPID)
-                                    + "\" >");
+                            pw.write("<sDef pid=\"");
+                            StreamUtility.enc(methodDefs[i].sDefPID, pw);
+                            pw.write("\" >");
                         }
-                        pw.write("<method name=\""
-                                + StreamUtility.enc(methodDefs[i].methodName)
-                                + "\" >");
+                        pw.write("<method name=\"");
+                        StreamUtility.enc(methodDefs[i].methodName, pw);
+                        pw.write("\" >");
                         MethodParmDef[] methodParms =
                                 methodDefs[i].methodParmDefs;
                         for (MethodParmDef element : methodParms) {
-                            pw.write("<methodParm parmName=\""
-                                    + StreamUtility.enc(element.parmName)
-                                    + "\" parmDefaultValue=\""
-                                    + StreamUtility
-                                            .enc(element.parmDefaultValue)
-                                    + "\" parmRequired=\""
-                                    + element.parmRequired + "\" parmLabel=\""
-                                    + StreamUtility.enc(element.parmLabel)
-                                    + "\" >");
+                            pw.write("<methodParm parmName=\"");
+                            StreamUtility.enc(element.parmName, pw);
+                            pw.write("\" parmDefaultValue=\"");
+                            StreamUtility.enc(element.parmDefaultValue, pw);
+                            pw.write("\" parmRequired=\""
+                                    + element.parmRequired + "\" parmLabel=\"");
+                            StreamUtility.enc(element.parmLabel, pw);
+                            pw.write("\" >");
                             if (element.parmDomainValues.length > 0) {
                                 pw.write("<methodParmDomain>");
                                 for (String element2 : element.parmDomainValues) {
-                                    pw.write("<methodParmValue>"
-                                            + StreamUtility.enc(element2)
-                                            + "</methodParmValue>");
+                                    pw.write("<methodParmValue>");
+                                    StreamUtility.enc(element2, pw);
+                                    pw.write("</methodParmValue>");
                                 }
                                 pw.write("</methodParmDomain>");
                             }
@@ -498,26 +489,9 @@ public class ListMethodsServlet
      *         If the servet cannot be initialized.
      */
     @Override
-    public void init() throws ServletException {
-        try {
-            s_server = Server.getInstance(new File(FEDORA_HOME), false);
-            fedoraServerHost = s_server.getParameter("fedoraServerHost");
-            s_access =
-                    (Access) s_server.getModule("org.fcrepo.server.access.Access");
-        } catch (InitializationException ie) {
-            throw new ServletException("Unable to get Fedora Server instance."
-                    + ie.getMessage());
-        }
-
-    }
-
-    /**
-     * <p>
-     * Cleans up servlet resources.
-     * </p>
-     */
-    @Override
-    public void destroy() {
+    public void init(ServletConfig config) throws ServletException {
+        super.init(config);
+        m_fedoraServerHost = m_server.getParameter("fedoraServerHost");
     }
 
 }

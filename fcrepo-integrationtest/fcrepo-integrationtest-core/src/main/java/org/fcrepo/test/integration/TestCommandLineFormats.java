@@ -5,12 +5,18 @@
 
 package org.fcrepo.test.integration;
 
+import static junit.framework.Assert.assertEquals;
+import static junit.framework.Assert.assertTrue;
+import static org.custommonkey.xmlunit.XMLAssert.assertXpathEvaluatesTo;
+import static org.custommonkey.xmlunit.XMLAssert.assertXpathExists; 
+import static org.custommonkey.xmlunit.XMLAssert.assertXpathNotExists; 
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.StringReader;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.zip.ZipEntry;
@@ -20,26 +26,25 @@ import org.apache.abdera.Abdera;
 import org.apache.abdera.model.Document;
 import org.apache.abdera.model.Feed;
 import org.apache.abdera.parser.Parser;
-
 import org.custommonkey.xmlunit.NamespaceContext;
 import org.custommonkey.xmlunit.SimpleNamespaceContext;
 import org.custommonkey.xmlunit.XMLUnit;
-
 import org.junit.After;
+import org.junit.AfterClass;
+import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import junit.framework.JUnit4TestAdapter;
 
+import org.fcrepo.client.FedoraClient;
 import org.fcrepo.client.utility.export.Export;
 import org.fcrepo.client.utility.ingest.Ingest;
-
 import org.fcrepo.common.PID;
-
-import org.fcrepo.server.management.FedoraAPIM;
-
+import org.fcrepo.server.management.FedoraAPIMMTOM;
+import org.fcrepo.server.utilities.TypeUtility;
 import org.fcrepo.test.FedoraTestCase;
 import org.fcrepo.test.api.TestAPIM;
-
 import org.fcrepo.utilities.FileUtils;
 
 
@@ -51,11 +56,23 @@ import org.fcrepo.utilities.FileUtils;
 public class TestCommandLineFormats
         extends FedoraTestCase {
 
-    private FedoraAPIM apim;
+    private static FedoraAPIMMTOM apim;
+    
+    private static FedoraClient s_client;
 
-    @Override
+    @BeforeClass
+    public static void bootStrap() throws Exception {
+        s_client = getFedoraClient(getBaseURL(), getUsername(), getPassword());
+        apim = s_client.getAPIMMTOM();
+    }
+    
+    @AfterClass
+    public static void cleanUp() {
+        s_client.shutdown();
+    }
+
+    @Before
     public void setUp() throws Exception {
-        apim = getFedoraClient(getBaseURL(), getUsername(), getPassword()).getAPIM();
         Map<String, String> nsMap = new HashMap<String, String>();
         nsMap.put("foxml", "info:fedora/fedora-system:def/foxml#");
         nsMap.put("METS", "http://www.loc.gov/METS/");
@@ -64,7 +81,6 @@ public class TestCommandLineFormats
         XMLUnit.setXpathNamespaceContext(ctx);
     }
 
-    @Override
     @After
     public void tearDown() {
         XMLUnit.setXpathNamespaceContext(SimpleNamespaceContext.EMPTY_CONTEXT);
@@ -87,7 +103,7 @@ public class TestCommandLineFormats
         foxml10.delete();
 
         try {
-            byte[] objectXML = apim.getObjectXML("demo:997");
+            byte[] objectXML = TypeUtility.convertDataHandlerToBytes(apim.getObjectXML("demo:997"));
             assertTrue(objectXML.length > 0);
             String xmlIn = new String(objectXML, "UTF-8");
             assertXpathExists("foxml:digitalObject[@PID='demo:997']", xmlIn);
@@ -121,7 +137,7 @@ public class TestCommandLineFormats
         foxml11.delete();
 
         try {
-            byte[] objectXML = apim.getObjectXML("demo:998");
+            byte[] objectXML = TypeUtility.convertDataHandlerToBytes(apim.getObjectXML("demo:998"));
             assertTrue(objectXML.length > 0);
             String xmlIn = new String(objectXML, "UTF-8");
             assertXpathExists("foxml:digitalObject[@PID='demo:998']", xmlIn);
@@ -155,7 +171,7 @@ public class TestCommandLineFormats
         mets.delete();
 
         try {
-            byte[] objectXML = apim.getObjectXML("demo:999");
+            byte[] objectXML = TypeUtility.convertDataHandlerToBytes(apim.getObjectXML("demo:999"));
             assertTrue(objectXML.length > 0);
             String xmlIn = new String(objectXML, "UTF-8");
             assertXpathExists("foxml:digitalObject[@PID='demo:999']", xmlIn);
@@ -189,7 +205,7 @@ public class TestCommandLineFormats
         mets.delete();
 
         try {
-            byte[] objectXML = apim.getObjectXML("demo:999b");
+            byte[] objectXML = TypeUtility.convertDataHandlerToBytes(apim.getObjectXML("demo:999b"));
             assertTrue(objectXML.length > 0);
             String xmlIn = new String(objectXML, "UTF-8");
             assertXpathExists("foxml:digitalObject[@PID='demo:999b']", xmlIn);
@@ -223,7 +239,7 @@ public class TestCommandLineFormats
         atom.delete();
 
         try {
-            byte[] objectXML = apim.getObjectXML("demo:1000");
+            byte[] objectXML = TypeUtility.convertDataHandlerToBytes(apim.getObjectXML("demo:1000"));
             assertTrue(objectXML.length > 0);
             String xmlIn = new String(objectXML, "UTF-8");
             assertXpathExists("foxml:digitalObject[@PID='demo:1000']", xmlIn);
@@ -257,7 +273,7 @@ public class TestCommandLineFormats
         atom.delete();
 
         try {
-            byte[] objectXML = apim.getObjectXML("demo:1001");
+            byte[] objectXML = TypeUtility.convertDataHandlerToBytes(apim.getObjectXML("demo:1001"));
             assertTrue(objectXML.length > 0);
             String xmlIn = new String(objectXML, "UTF-8");
             assertXpathExists("foxml:digitalObject[@PID='demo:1001']", xmlIn);
@@ -277,7 +293,7 @@ public class TestCommandLineFormats
     @Test
     public void testExportFOXML10() throws Exception {
         System.out.println("Testing Export in FOXML 1.0 format");
-        apim.ingest(TestAPIM.demo998FOXMLObjectXML, FOXML1_1.uri, "Ingest for test");
+        apim.ingest(TypeUtility.convertBytesToDataHandler(TestAPIM.demo998FOXMLObjectXML), FOXML1_1.uri, "Ingest for test");
 
         try {
             File temp = File.createTempFile("temp", "");
@@ -290,6 +306,7 @@ public class TestCommandLineFormats
             FileInputStream fileReader = new FileInputStream(foxml10);
             byte[] objectXML = new byte[fileReader.available()];
             fileReader.read(objectXML);
+            fileReader.close();
             String xmlIn = new String(objectXML, "UTF-8");
             assertXpathExists("foxml:digitalObject[@PID='demo:998']", xmlIn);
             assertXpathExists(
@@ -312,7 +329,7 @@ public class TestCommandLineFormats
     @Test
     public void testExportFOXML11() throws Exception {
         System.out.println("Testing Export in FOXML 1.1 format");
-        apim.ingest(TestAPIM.demo998FOXMLObjectXML, FOXML1_1.uri, "Ingest for test");
+        apim.ingest(TypeUtility.convertBytesToDataHandler(TestAPIM.demo998FOXMLObjectXML), FOXML1_1.uri, "Ingest for test");
 
         try {
             File temp = File.createTempFile("temp", "");
@@ -322,10 +339,44 @@ public class TestCommandLineFormats
 
             Export.main(parameters);
             File foxml11 = new File(temp.getParent() + "/demo_998.xml");
-            FileInputStream fileReader = new FileInputStream(foxml11);
-            byte[] objectXML = new byte[fileReader.available()];
-            fileReader.read(objectXML);
-            String xmlIn = new String(objectXML, "UTF-8");
+            String xmlIn = fileAsUTFString(foxml11);
+            assertXpathExists("foxml:digitalObject[@PID='demo:998']", xmlIn);
+            assertXpathExists(
+                    "//foxml:objectProperties/foxml:property[@NAME='info:fedora/fedora-system:def/model#state' and @VALUE='Active']",
+                    xmlIn);
+            assertXpathExists(
+                    "//foxml:objectProperties/foxml:property[@NAME='info:fedora/fedora-system:def/model#label' and @VALUE='Data Object (Coliseum) for Local Simple Image Demo']",
+                    xmlIn);
+            // Audit stream disabled in code
+            //assertXpathEvaluatesTo("6", "count(//foxml:datastream)", xmlIn);
+            assertXpathEvaluatesTo("5", "count(//foxml:datastream)", xmlIn);
+            assertXpathNotExists("//foxml:disseminator", xmlIn);
+            assertXpathExists("foxml:digitalObject[@VERSION='1.1']", xmlIn);
+
+            temp.delete();
+            foxml11.delete();
+        } finally {
+            apim.purgeObject("demo:998", "Purge test object", false);
+        }
+    }
+
+    @Test
+    public void testBulkExportFOXML11Syntax() throws Exception {
+        System.out.println("Testing Export in FOXML 1.1 format");
+        apim.ingest(TypeUtility.convertBytesToDataHandler(TestAPIM.demo998FOXMLObjectXML), FOXML1_1.uri, "Ingest for test");
+
+        try {
+            File temp = File.createTempFile("temp", "");
+            String[] parameters = {getHost() + ":" + getPort(),
+                                   getUsername(), getPassword(), "FTYPS", "default",
+                                   "default", temp.getParent(), "http", getFedoraAppServerContext()};
+
+            Export.main(parameters);
+            File foxml11 = new File(temp.getParent() + "/demo_998.xml");
+            assertTrue(
+            		"Expected export file " + foxml11.getAbsolutePath() +
+            		" does not exist!", foxml11.exists());
+            String xmlIn = fileAsUTFString(foxml11);
             assertXpathExists("foxml:digitalObject[@PID='demo:998']", xmlIn);
             assertXpathExists(
                     "//foxml:objectProperties/foxml:property[@NAME='info:fedora/fedora-system:def/model#state' and @VALUE='Active']",
@@ -347,7 +398,7 @@ public class TestCommandLineFormats
     @Test
     public void testExportMETS11() throws Exception {
         System.out.println("Testing Export in METS 1.1 format");
-        apim.ingest(TestAPIM.demo998FOXMLObjectXML, FOXML1_1.uri, "Ingest for test");
+        apim.ingest(TypeUtility.convertBytesToDataHandler(TestAPIM.demo998FOXMLObjectXML), FOXML1_1.uri, "Ingest for test");
 
         try {
             File temp = File.createTempFile("temp", "");
@@ -357,10 +408,7 @@ public class TestCommandLineFormats
 
             Export.main(parameters);
             File mets = new File(temp.getParent() + "/demo_998.xml");
-            FileInputStream fileReader = new FileInputStream(mets);
-            byte[] objectXML = new byte[fileReader.available()];
-            fileReader.read(objectXML);
-            String xmlIn = new String(objectXML, "UTF-8");
+            String xmlIn = fileAsUTFString(mets);
             assertXpathExists("METS:mets[@OBJID='demo:998']", xmlIn);
             assertXpathExists("METS:mets[@LABEL='Data Object (Coliseum) for Local Simple Image Demo']", xmlIn);
             assertXpathExists("METS:mets[@EXT_VERSION='1.1']", xmlIn);
@@ -376,7 +424,7 @@ public class TestCommandLineFormats
     @Test
     public void testExportMETS10() throws Exception {
         System.out.println("Testing Export in METS 1.0 format");
-        apim.ingest(TestAPIM.demo998FOXMLObjectXML, FOXML1_1.uri, "Ingest for test");
+        apim.ingest(TypeUtility.convertBytesToDataHandler(TestAPIM.demo998FOXMLObjectXML), FOXML1_1.uri, "Ingest for test");
 
         try {
             File temp = File.createTempFile("temp", "");
@@ -386,10 +434,7 @@ public class TestCommandLineFormats
 
             Export.main(parameters);
             File mets = new File(temp.getParent() + "/demo_998.xml");
-            FileInputStream fileReader = new FileInputStream(mets);
-            byte[] objectXML = new byte[fileReader.available()];
-            fileReader.read(objectXML);
-            String xmlIn = new String(objectXML, "UTF-8");
+            String xmlIn = fileAsUTFString(mets);
             assertXpathExists("METS:mets[@OBJID='demo:998']", xmlIn);
             assertXpathExists("METS:mets[@LABEL='Data Object (Coliseum) for Local Simple Image Demo']", xmlIn);
             assertXpathNotExists("METS:mets[@EXT_VERSION='1.1']", xmlIn);
@@ -405,7 +450,7 @@ public class TestCommandLineFormats
     @Test
     public void testExportATOM() throws Exception {
         System.out.println("Testing Export in ATOM format");
-        apim.ingest(TestAPIM.demo998FOXMLObjectXML, FOXML1_1.uri, "Ingest for test");
+        apim.ingest(TypeUtility.convertBytesToDataHandler(TestAPIM.demo998FOXMLObjectXML), FOXML1_1.uri, "Ingest for test");
 
         try {
             File temp = File.createTempFile("temp", "");
@@ -415,10 +460,7 @@ public class TestCommandLineFormats
 
             Export.main(parameters);
             File atom = new File(temp.getParent() + "/demo_998.xml");
-            FileInputStream fileReader = new FileInputStream(atom);
-            byte[] objectXML = new byte[fileReader.available()];
-            fileReader.read(objectXML);
-            String xmlIn = new String(objectXML, "UTF-8");
+            String xmlIn = fileAsUTFString(atom);
             // FIXME: Determine how to perform xpath tests with default namespace
             assertTrue(xmlIn.indexOf("<id>info:fedora/demo:998</id>") > -1);
             assertTrue(
@@ -437,7 +479,7 @@ public class TestCommandLineFormats
 
     public void testExportATOM_ZIP() throws Exception {
         System.out.println("Testing Export in ATOM_ZIP format");
-        apim.ingest(TestAPIM.demo998FOXMLObjectXML, FOXML1_1.uri, "Ingest for test");
+        apim.ingest(TypeUtility.convertBytesToDataHandler(TestAPIM.demo998FOXMLObjectXML), FOXML1_1.uri, "Ingest for test");
 
         try {
             File temp = File.createTempFile("temp", "");
@@ -473,6 +515,14 @@ public class TestCommandLineFormats
         } finally {
             apim.purgeObject("demo:998", "Purge test object", false);
         }
+    }
+    
+    private static String fileAsUTFString(File input) throws IOException {
+        FileInputStream fileReader = new FileInputStream(input);
+        byte[] objectXML = new byte[fileReader.available()];
+        fileReader.read(objectXML);
+        fileReader.close();
+        return new String(objectXML, "UTF-8");
     }
 
     public static junit.framework.Test suite() {

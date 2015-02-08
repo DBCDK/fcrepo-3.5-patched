@@ -23,7 +23,11 @@ import org.fcrepo.server.resourceIndex.ResourceIndex;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.support.AbstractBeanDefinition;
 import org.springframework.beans.factory.support.GenericBeanDefinition;
+import org.springframework.beans.factory.xml.XmlBeanDefinitionReader;
 import org.springframework.context.annotation.ScannedGenericBeanDefinition;
+import org.springframework.core.io.FileSystemResource;
+
+import org.fcrepo.common.Constants;
 
 
 /**
@@ -37,7 +41,7 @@ public class RebuildServer
      */
     public static String[] REBUILDERS =
         new String[] {"org.fcrepo.server.resourceIndex.ResourceIndexRebuilder",
-    "org.fcrepo.server.utilities.rebuild.SQLRebuilder","org.fcrepo.server.security.xacml.pdp.data.PolicyIndexRebuilder"};
+    "org.fcrepo.server.utilities.rebuild.SQLRebuilder"};
 
     /**
      * @param rootConfigElement
@@ -94,6 +98,23 @@ public class RebuildServer
                 throw new ServerInitializationException(e.toString(),e);
             }
         }
+        File fedoraHome = new File(Constants.FEDORA_HOME);
+        File springWeb = new File(fedoraHome, "server/config/spring/web");
+        String policyIndexName = System.getProperty("FEDORA_POLICY_INDEX_CONFIG");
+        File policyIndex;
+        if (policyIndexName == null) {
+            policyIndex = new File(springWeb,"config-policy-index.xml");
+        } else {
+            policyIndex = new File(policyIndexName);
+            if (!policyIndex.getAbsolutePath().equals(policyIndexName)){
+                policyIndex = new File(springWeb,policyIndexName);
+            }
+        }
+        if (policyIndex.exists()){
+            XmlBeanDefinitionReader beanReader = new XmlBeanDefinitionReader(this);
+            FileSystemResource beanConfig = new FileSystemResource(policyIndex);
+            beanReader.loadBeanDefinitions(beanConfig);
+        }
     }
 
     @Override
@@ -104,6 +125,7 @@ public class RebuildServer
                 || "org.fcrepo.oai.OAIProvider".equals(moduleRole)
                 || "org.fcrepo.oai.OAIProvider".equals(moduleRole)
                 || "org.fcrepo.server.management.Management".equals(moduleRole)
+                || "org.fcrepo.server.management.ManagementDelegate".equals(moduleRole)
                 || "org.fcrepo.server.resourceIndex.ResourceIndex".equals(moduleRole)) {
             return true;
         }
@@ -112,7 +134,7 @@ public class RebuildServer
 
     @Override
     protected String overrideModuleClass(String moduleClass) {
-        if (moduleClass.endsWith("DOManager")) {
+        if (moduleClass != null && moduleClass.endsWith("DOManager")) {
             return "org.fcrepo.server.utilities.rebuild.RebuildDOManager";
         }
         return null;
@@ -140,6 +162,7 @@ public class RebuildServer
             try {
                 Server inst = new RebuildServer(homeDir);
                 s_instances.put(homeDir, inst);
+                inst.init();
                 return inst;
             } catch (IllegalArgumentException iae) {
                 // improbable

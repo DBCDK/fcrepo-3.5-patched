@@ -2,6 +2,7 @@
  * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
+
 package org.fcrepo.client.search;
 
 import java.awt.BorderLayout;
@@ -11,9 +12,9 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
-
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 
 import javax.swing.ImageIcon;
@@ -36,12 +37,11 @@ import org.fcrepo.client.actions.ViewObjectXML;
 import org.fcrepo.client.utility.AutoFinder;
 import org.fcrepo.server.types.gen.FieldSearchQuery;
 import org.fcrepo.server.types.gen.FieldSearchResult;
+import org.fcrepo.server.types.gen.FieldSearchResult.ResultList;
 import org.fcrepo.server.types.gen.ObjectFields;
+import org.fcrepo.server.utilities.TypeUtility;
 import org.fcrepo.swing.jtable.DefaultSortTableModel;
 import org.fcrepo.swing.jtable.JSortTable;
-
-
-
 
 /**
  * @author Chris Wilper
@@ -106,9 +106,11 @@ public class ResultFrame
             if (m_finder == null) {
                 m_finder = new AutoFinder(Administrator.APIA);
             }
-            searchAndDisplay(m_finder.findObjects(resultFields,
+            searchAndDisplay(m_finder.findObjects(TypeUtility
+                                                          .convertStringtoAOS(resultFields),
                                                   maxResults,
-                                                  query), displayFields);
+                                                  query),
+                             displayFields);
         } catch (Exception e) {
             e.printStackTrace();
             System.out.println("ERROR: " + e.getClass().getName() + ":"
@@ -119,15 +121,18 @@ public class ResultFrame
     private void searchAndDisplay(FieldSearchResult fsr, String[] displayFields)
             throws Exception {
         // put the resulting data into a structure suitable for display
-        ObjectFields[] ofs = fsr.getResultList();
-        Object[][] data = new Object[ofs.length][displayFields.length];
-        // while adding the pids to m_rowPids so they can be used later
-        m_rowPids = new String[ofs.length];
-        for (int i = 0; i < ofs.length; i++) {
-            ObjectFields o = ofs[i];
-            m_rowPids[i] = o.getPid();
-            for (int j = 0; j < displayFields.length; j++) {
-                data[i][j] = getValue(o, displayFields[j]);
+        ResultList ofs = fsr.getResultList();
+        Object[][] data = null;
+        if (ofs != null && ofs.getObjectFields() != null) {
+            data = new Object[ofs.getObjectFields().size()][displayFields.length];
+            // while adding the pids to m_rowPids so they can be used later
+            m_rowPids = new String[ofs.getObjectFields().size()];
+            for (int i = 0; i < ofs.getObjectFields().size(); i++) {
+                ObjectFields o = ofs.getObjectFields().get(i);
+                m_rowPids[i] = o.getPid().getValue();
+                for (int j = 0; j < displayFields.length; j++) {
+                    data[i][j] = getValue(o, displayFields[j]);
+                }
             }
         }
 
@@ -144,19 +149,18 @@ public class ResultFrame
         getContentPane().setLayout(new BorderLayout());
         getContentPane().add(browsePanel, BorderLayout.CENTER);
         if (fsr.getListSession() != null
-                && fsr.getListSession().getToken() != null) {
+                && fsr.getListSession().getValue().getToken() != null) {
             m_moreButton = new JButton("More Results...");
             m_moreButton
                     .addActionListener(new MoreResultsListener(displayFields,
-                                                               fsr
-                                                                       .getListSession()
+                                                               fsr.getListSession()
+                                                                       .getValue()
                                                                        .getToken(),
                                                                this));
             getContentPane().add(m_moreButton, BorderLayout.SOUTH);
         }
         ImageIcon zoomIcon =
-            new ImageIcon(ClassLoader.
-                          getSystemResource("images/client/standard/general/Zoom16.gif"));
+                new ImageIcon(ClassLoader.getSystemResource("images/client/standard/general/Zoom16.gif"));
         setFrameIcon(zoomIcon);
         pack();
         setSize(Administrator.getDesktop().getWidth() - 40, getSize().height);
@@ -169,26 +173,29 @@ public class ResultFrame
     }
 
     public String getValue(ObjectFields o, String name) {
+        if (o == null || name == null) {
+            return null;
+        }
         if (name.equals("pid")) {
-            return o.getPid();
+            return o.getPid() != null ? o.getPid().getValue() : "";
         }
         if (name.equals("label")) {
-            return o.getLabel();
+            return o.getLabel() != null ? o.getLabel().getValue() : "";
         }
         if (name.equals("state")) {
-            return o.getState();
+            return o.getState() != null ? o.getState().getValue() : "";
         }
         if (name.equals("ownerId")) {
-            return o.getOwnerId();
+            return o.getOwnerId() != null ? o.getOwnerId().getValue() : "";
         }
         if (name.equals("cDate")) {
-            return o.getCDate();
+            return o.getCDate() != null ? o.getCDate().getValue() : "";
         }
         if (name.equals("mDate")) {
-            return o.getMDate();
+            return o.getMDate() != null ? o.getMDate().getValue() : "";
         }
         if (name.equals("dcmDate")) {
-            return o.getDcmDate();
+            return o.getDcmDate() != null ? o.getDcmDate().getValue() : "";
         }
         if (name.equals("title")) {
             return getList(o.getTitle());
@@ -238,16 +245,16 @@ public class ResultFrame
         return null;
     }
 
-    public String getList(String[] s) {
+    public String getList(List<String> s) {
         if (s == null) {
             return "";
         }
         StringBuffer out = new StringBuffer();
-        for (int i = 0; i < s.length; i++) {
+        for (int i = 0; i < s.size(); i++) {
             if (i > 0) {
                 out.append(", ");
             }
-            out.append(s[i]);
+            out.append(s.get(i));
         }
         return out.toString();
     }
@@ -269,6 +276,7 @@ public class ResultFrame
             m_parent = parent;
         }
 
+        @Override
         public void actionPerformed(ActionEvent e) {
             m_parent.removeMoreResultsButton();
             ResultFrame frame =
@@ -295,9 +303,7 @@ public class ResultFrame
                 public void mouseClicked(MouseEvent e) {
                     if (e.getClickCount() == 2) {
                         int rowNum =
-                                m_table
-                                        .rowAtPoint(new Point(e.getX(), e
-                                                .getY()));
+                                m_table.rowAtPoint(new Point(e.getX(), e.getY()));
                         if (rowNum >= 0) {
                             // launch object viewer to view object
                             new ViewObject(m_rowPids[rowNum]).launch();
@@ -309,13 +315,11 @@ public class ResultFrame
                 public void mousePressed(MouseEvent e) {
                     if (SwingUtilities.isRightMouseButton(e)) {
                         int rowNum =
-                                m_table
-                                        .rowAtPoint(new Point(e.getX(), e
-                                                .getY()));
+                                m_table.rowAtPoint(new Point(e.getX(), e.getY()));
                         if (rowNum >= 0) {
                             int[] sRows = m_table.getSelectedRows();
                             boolean clickedOnSelected = false;
-                            HashSet pids = new HashSet();
+                            HashSet<String> pids = new HashSet<String>();
                             for (int element : sRows) {
                                 if (element == rowNum) {
                                     clickedOnSelected = true;
@@ -323,20 +327,22 @@ public class ResultFrame
                                 pids.add(m_rowPids[element]);
                             }
                             if (!clickedOnSelected) {
-                                pids = new HashSet();
+                                pids = new HashSet<String>();
                                 m_table.clearSelection();
                                 m_table.addRowSelectionInterval(rowNum, rowNum);
                                 pids.add(m_rowPids[rowNum]);
                             }
                             if (pids.size() == 1) {
-                                Iterator pidIter = pids.iterator();
-                                new ResultFrame.SingleSelectionPopup((String) pidIter
-                                        .next()).show(e.getComponent(), e
-                                        .getX(), e.getY());
+                                Iterator<String> pidIter = pids.iterator();
+                                new ResultFrame.SingleSelectionPopup(pidIter
+                                        .next()).show(e.getComponent(),
+                                                      e.getX(),
+                                                      e.getY());
                             } else {
                                 new ResultFrame.MultiSelectionPopup(pids)
-                                        .show(e.getComponent(), e.getX(), e
-                                                .getY());
+                                        .show(e.getComponent(),
+                                              e.getX(),
+                                              e.getY());
                             }
                         }
                     } else {
@@ -360,15 +366,13 @@ public class ResultFrame
             i0.setToolTipText("Launches a viewer for the selected object.");
             JMenuItem i1 = new JMenuItem(new ViewObjectXML(pid));
             i1.setMnemonic(KeyEvent.VK_V);
-            i1
-                    .setToolTipText("Launches an XML viewer for the selected object.");
+            i1.setToolTipText("Launches an XML viewer for the selected object.");
             JMenuItem i2 = new JMenuItem(new ExportObject(pid));
             i2.setMnemonic(KeyEvent.VK_E);
             i2.setToolTipText("Exports the selected object.");
             JMenuItem i3 = new JMenuItem(new PurgeObject(pid));
             i3.setMnemonic(KeyEvent.VK_P);
-            i3
-                    .setToolTipText("Removes the selected object from the repository.");
+            i3.setToolTipText("Removes the selected object from the repository.");
             add(i0);
             add(i1);
             add(i2);
@@ -392,22 +396,20 @@ public class ResultFrame
 
         private static final long serialVersionUID = 1L;
 
-        public MultiSelectionPopup(Set pids) {
+        public MultiSelectionPopup(Set<String> pids) {
             super();
             JMenuItem i0 = new JMenuItem(new ViewObject(pids));
             i0.setMnemonic(KeyEvent.VK_O);
             i0.setToolTipText("Launches a viewer for the selected objects.");
             JMenuItem i1 = new JMenuItem(new ViewObjectXML(pids));
             i1.setMnemonic(KeyEvent.VK_V);
-            i1
-                    .setToolTipText("Launches an XML viewer for the selected objects.");
+            i1.setToolTipText("Launches an XML viewer for the selected objects.");
             JMenuItem i2 = new JMenuItem(new ExportObject(pids));
             i2.setMnemonic(KeyEvent.VK_E);
             i2.setToolTipText("Exports the selected objects.");
             JMenuItem i3 = new JMenuItem(new PurgeObject(pids));
             i3.setMnemonic(KeyEvent.VK_P);
-            i3
-                    .setToolTipText("Removes the selected objects from the repository.");
+            i3.setToolTipText("Removes the selected objects from the repository.");
             add(i0);
             add(i1);
             add(i2);

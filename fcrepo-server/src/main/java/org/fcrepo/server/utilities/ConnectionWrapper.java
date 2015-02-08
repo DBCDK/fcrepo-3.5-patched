@@ -37,6 +37,31 @@ public abstract class ConnectionWrapper
         m_wrappedConnection = wrapped;
     }
 
+    public void setSchema(String schema) {
+        throw new UnsupportedOperationException(
+                "Java 1.7 Connection methods are not supported");
+    }
+
+    public String getSchema() {
+        throw new UnsupportedOperationException(
+                "Java 1.7 Connection methods are not supported");
+    }
+
+    public void abort(Executor executor) {
+        throw new UnsupportedOperationException(
+                "Java 1.7 Connection methods are not supported");
+    }
+
+    public void setNetworkTimeout(Executor executor, int milliseconds) {
+        throw new UnsupportedOperationException(
+                "Java 1.7 Connection methods are not supported");
+    }
+
+    public int getNetworkTimeout() {
+        throw new UnsupportedOperationException(
+                "Java 1.7 Connection methods are not supported");
+    }
+    
     public boolean isWrapperFor(Class<?> iface) {
         throw new UnsupportedOperationException(
                 "Java 1.6 Connection methods are not supported");
@@ -100,31 +125,6 @@ public abstract class ConnectionWrapper
     public String getClientInfo(String a) {
         throw new UnsupportedOperationException(
                 "Java 1.6 Connection methods are not supported");
-    }
-
-    public void setSchema(String schema) throws SQLException {
-        throw new UnsupportedOperationException(
-                "Java 1.7 Connection methods are not supported");
-    }
-
-    public String getSchema() throws SQLException {
-        throw new UnsupportedOperationException(
-                "Java 1.7 Connection methods are not supported");
-    }
-
-    public void abort(Executor executor) throws SQLException {
-        throw new UnsupportedOperationException(
-                "Java 1.7 Connection methods are not supported");
-    }
-
-    public void setNetworkTimeout(Executor executor, int milliseconds) throws SQLException {
-        throw new UnsupportedOperationException(
-                "Java 1.7 Connection methods are not supported");
-    }
-
-    public int getNetworkTimeout() throws SQLException {
-        throw new UnsupportedOperationException(
-                "Java 1.7 Connection methods are not supported");
     }
 
     public Statement createStatement() throws SQLException {

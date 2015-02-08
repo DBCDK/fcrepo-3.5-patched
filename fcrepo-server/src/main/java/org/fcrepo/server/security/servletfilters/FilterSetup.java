@@ -73,7 +73,7 @@ public class FilterSetup
         initErrors = false;
         if (filterConfig != null) {
             FILTER_NAME = filterConfig.getFilterName();
-            if (FILTER_NAME == null || "".equals(FILTER_NAME)) {
+            if (FILTER_NAME == null || FILTER_NAME.isEmpty()) {
                 if (logger.isErrorEnabled()) {
                     logger.error(format(method, "FILTER_NAME not set"));
                 }
@@ -81,7 +81,7 @@ public class FilterSetup
                 if (logger.isDebugEnabled()) {
                     logger.debug(format(method, null, "FILTER_NAME", FILTER_NAME));
                 }
-                Enumeration enumer = filterConfig.getInitParameterNames();
+                Enumeration<?> enumer = filterConfig.getInitParameterNames();
                 while (enumer.hasMoreElements()) {
                     String key = (String) enumer.nextElement();
                     String value = filterConfig.getInitParameter(key);

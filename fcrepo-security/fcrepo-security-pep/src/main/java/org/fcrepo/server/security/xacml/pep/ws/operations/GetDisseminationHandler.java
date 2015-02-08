@@ -20,24 +20,23 @@ package org.fcrepo.server.security.xacml.pep.ws.operations;
 
 import java.net.URI;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
+import javax.xml.ws.handler.soap.SOAPMessageContext;
 
-import org.apache.axis.AxisFault;
-import org.apache.axis.MessageContext;
+import org.apache.cxf.binding.soap.SoapFault;
+import org.fcrepo.common.Constants;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.pep.ContextHandler;
+import org.fcrepo.server.security.xacml.pep.PEPException;
+import org.fcrepo.server.security.xacml.pep.ResourceAttributes;
+import org.fcrepo.server.security.xacml.util.LogUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.fcrepo.common.Constants;
-import org.fcrepo.server.security.xacml.pep.PEPException;
-import org.fcrepo.server.security.xacml.util.LogUtil;
-
-import com.sun.xacml.attr.AnyURIAttribute;
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.DateTimeAttribute;
-import com.sun.xacml.attr.StringAttribute;
-import com.sun.xacml.ctx.RequestCtx;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
+import org.jboss.security.xacml.sunxacml.attr.DateTimeAttribute;
+import org.jboss.security.xacml.sunxacml.attr.StringAttribute;
 
 
 /**
@@ -49,23 +48,25 @@ public class GetDisseminationHandler
     private static final Logger logger =
             LoggerFactory.getLogger(GetDisseminationHandler.class);
 
-    public GetDisseminationHandler()
+    public GetDisseminationHandler(ContextHandler contextHandler)
             throws PEPException {
-        super();
+        super(contextHandler);
     }
 
-    public RequestCtx handleResponse(MessageContext context)
+    @Override
+    public RequestCtx handleResponse(SOAPMessageContext context)
             throws OperationHandlerException {
         return null;
     }
 
+    @Override
     @SuppressWarnings("deprecation")
-    public RequestCtx handleRequest(MessageContext context)
+    public RequestCtx handleRequest(SOAPMessageContext context)
             throws OperationHandlerException {
         logger.debug("GetDisseminationHandler/handleRequest!");
 
         RequestCtx req = null;
-        List<Object> oMap = null;
+        Object oMap = null;
 
         String pid = null;
         String sDefPid = null;
@@ -76,18 +77,17 @@ public class GetDisseminationHandler
         try {
             oMap = getSOAPRequestObjects(context);
             logger.debug("Retrieved SOAP Request Objects");
-        } catch (AxisFault af) {
+        } catch (SoapFault af) {
             logger.error("Error obtaining SOAP Request Objects", af);
             throw new OperationHandlerException("Error obtaining SOAP Request Objects",
                                                 af);
         }
 
         try {
-            pid = (String) oMap.get(0);
-            sDefPid = (String) oMap.get(1);
-            methodName = (String) oMap.get(2);
-            // properties = (Property[]) oMap.get(3);
-            asOfDateTime = (String) oMap.get(4);
+            pid = (String) callGetter("getPid",oMap);
+            sDefPid = (String) callGetter("getServiceDefinitionPid",oMap);
+            methodName = (String) callGetter("getMethodName",oMap);
+            asOfDateTime = (String) callGetter("getAsOfDateTime", oMap);
         } catch (Exception e) {
             logger.error("Error obtaining parameters", e);
             throw new OperationHandlerException("Error obtaining parameters.",
@@ -97,36 +97,28 @@ public class GetDisseminationHandler
         logger.debug("Extracted SOAP Request Objects");
 
         Map<URI, AttributeValue> actions = new HashMap<URI, AttributeValue>();
-        Map<URI, AttributeValue> resAttr = new HashMap<URI, AttributeValue>();
+        Map<URI, AttributeValue> resAttr;
 
         try {
-            if (pid != null && !"".equals(pid)) {
-                resAttr.put(Constants.OBJECT.PID.getURI(),
-                            new StringAttribute(pid));
-            }
-            if (pid != null && !"".equals(pid)) {
-                resAttr.put(new URI(XACML_RESOURCE_ID),
-                            new AnyURIAttribute(new URI(pid)));
-            }
-            if (sDefPid != null && !"".equals(sDefPid)) {
+            resAttr = ResourceAttributes.getResources(pid);
+            if (sDefPid != null && !sDefPid.isEmpty()) {
                 resAttr.put(Constants.SDEF.PID.getURI(),
                             new StringAttribute(sDefPid));
             }
-            if (methodName != null && !"".equals(methodName)) {
+            if (methodName != null && !methodName.isEmpty()) {
                 resAttr.put(Constants.DISSEMINATOR.METHOD.getURI(),
                             new StringAttribute(methodName));
             }
-            if (asOfDateTime != null && !"".equals(asOfDateTime)) {
+            if (asOfDateTime != null && !asOfDateTime.isEmpty()) {
                 resAttr.put(Constants.DATASTREAM.AS_OF_DATETIME.getURI(),
                             DateTimeAttribute.getInstance(asOfDateTime));
             }
 
             actions.put(Constants.ACTION.ID.getURI(),
-                        new StringAttribute(Constants.ACTION.GET_DISSEMINATION
-                                .getURI().toASCIIString()));
+                        Constants.ACTION.GET_DISSEMINATION
+                                .getStringAttribute());
             actions.put(Constants.ACTION.API.getURI(),
-                        new StringAttribute(Constants.ACTION.APIA.getURI()
-                                .toASCIIString()));
+                        Constants.ACTION.APIA.getStringAttribute());
 
             req =
                     getContextHandler().buildRequest(getSubjects(context),
@@ -134,9 +126,8 @@ public class GetDisseminationHandler
                                                      resAttr,
                                                      getEnvironment(context));
 
-            LogUtil.statLog(context.getUsername(),
-                            Constants.ACTION.GET_DISSEMINATION.getURI()
-                                    .toASCIIString(),
+            LogUtil.statLog(getUser(context),
+                            Constants.ACTION.GET_DISSEMINATION.uri,
                             pid,
                             null);
         } catch (Exception e) {

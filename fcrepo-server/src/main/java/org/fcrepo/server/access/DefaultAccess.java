@@ -4,15 +4,11 @@
  */
 package org.fcrepo.server.access;
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
-
 import java.net.InetAddress;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.net.UnknownHostException;
-
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Enumeration;
@@ -25,15 +21,21 @@ import java.util.Vector;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-
+import org.apache.commons.httpclient.util.DateUtil;
+import org.apache.http.HttpHeaders;
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.Models;
-
 import org.fcrepo.server.Context;
 import org.fcrepo.server.Module;
 import org.fcrepo.server.Server;
 import org.fcrepo.server.access.dissemination.DisseminationService;
-import org.fcrepo.server.errors.*;
+import org.fcrepo.server.errors.DatastreamNotFoundException;
+import org.fcrepo.server.errors.DisseminationException;
+import org.fcrepo.server.errors.DisseminatorNotFoundException;
+import org.fcrepo.server.errors.InvalidUserParmException;
+import org.fcrepo.server.errors.MethodNotFoundException;
+import org.fcrepo.server.errors.ModuleInitializationException;
+import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.search.FieldSearchQuery;
 import org.fcrepo.server.search.FieldSearchResult;
 import org.fcrepo.server.security.Authorization;
@@ -45,9 +47,7 @@ import org.fcrepo.server.storage.ServiceDefinitionReader;
 import org.fcrepo.server.storage.ServiceDeploymentReader;
 import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.DatastreamDef;
-import org.fcrepo.server.storage.types.DatastreamManagedContent;
 import org.fcrepo.server.storage.types.DatastreamReferencedContent;
-import org.fcrepo.server.storage.types.DatastreamXMLMetadata;
 import org.fcrepo.server.storage.types.DeploymentDSBindRule;
 import org.fcrepo.server.storage.types.DeploymentDSBindSpec;
 import org.fcrepo.server.storage.types.DisseminationBindingInfo;
@@ -58,7 +58,9 @@ import org.fcrepo.server.storage.types.MethodParmDef;
 import org.fcrepo.server.storage.types.ObjectMethodsDef;
 import org.fcrepo.server.storage.types.Property;
 import org.fcrepo.server.storage.types.RelationshipTuple;
+import org.fcrepo.server.utilities.ServerUtility;
 import org.fcrepo.utilities.DateUtility;
+import org.fcrepo.utilities.io.NullInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,6 +76,9 @@ public class DefaultAccess
 
     private static final Logger logger =
             LoggerFactory.getLogger(DefaultAccess.class);
+
+    private static final MethodParmDef[] METHOD_PARM_DEF_TYPE =
+            new MethodParmDef[0];
 
     /** Current DOManager of the Fedora server. */
     private DOManager m_manager;
@@ -167,8 +172,7 @@ public class DefaultAccess
         }
 
         m_authorizationModule =
-                (Authorization) getServer()
-                        .getModule("org.fcrepo.server.security.Authorization");
+                getServer().getBean("org.fcrepo.server.security.Authorization", Authorization.class);
         if (m_authorizationModule == null) {
             throw new ModuleInitializationException("Can't get an Authorization module (in default access) from Server.getModule",
                                                     getRole());
@@ -205,6 +209,7 @@ public class DefaultAccess
      * @throws ServerException
      *         If any type of error occurred fulfilling the request.
      */
+    @Override
     public MIMETypedStream getDissemination(Context context,
                                             String PID,
                                             String sDefPID,
@@ -214,8 +219,8 @@ public class DefaultAccess
             throws ServerException {
         PID = Server.getPID(PID).toString();
         sDefPID = Server.getPID(sDefPID).toString();
-        long initStartTime = new Date().getTime();
-        long startTime = new Date().getTime();
+        long initStartTime = (logger.isDebugEnabled()) ? System.currentTimeMillis() : 0;
+        long startTime = initStartTime;
         long stopTime;
         long interval;
         ServiceDeploymentReader deploymentReader = null;
@@ -244,10 +249,11 @@ public class DefaultAccess
                                                      methodName,
                                                      userParms,
                                                      asOfDateTime);
-            stopTime = new Date().getTime();
-            interval = stopTime - startTime;
-            logger.debug("Roundtrip DynamicDisseminator: " + interval
-                         + " milliseconds.");
+            if (logger.isDebugEnabled()) {
+                stopTime = System.currentTimeMillis();
+                interval = stopTime - startTime;
+                logger.debug("Roundtrip DynamicDisseminator: {} milliseconds.", interval);
+            }
             return retVal;
         }
 
@@ -260,11 +266,6 @@ public class DefaultAccess
         for (String cModelURI: reader.getContentModels()){
             String cModelPID = cModelURI.substring("info:fedora/".length());
 
-/*
-        for (RelationshipTuple rel : reader.getRelationships(MODEL.HAS_MODEL,
-                                                             null)) {
-            String cModelPID = rel.getObjectPID();
-*/
             String foundDeploymentPID =
                     m_manager.lookupDeploymentForCModel(cModelPID, sDefPID);
 
@@ -284,8 +285,7 @@ public class DefaultAccess
 
                 serviceDeploymentPID = foundDeploymentPID;
             } else {
-                logger.debug("No deployment for (" + cModelPID + ", " + sDefPID
-                             + ")");
+                logger.debug("No deployment for ({}, {})", cModelPID, sDefPID);
             }
         }
 
@@ -319,11 +319,6 @@ public class DefaultAccess
             String cModelPID = null;
             String message = null;
 
-/*
-            models: for (RelationshipTuple rel : reader
-                    .getRelationships(MODEL.HAS_MODEL, null)) {
-                cModelPID = rel.getObjectPID();
-*/
             models: for (String cm:reader.getContentModels()){
                 cModelPID = cm.substring(12);
 
@@ -357,10 +352,11 @@ public class DefaultAccess
             }
             throw new DisseminatorNotFoundException(message);
         }
-        stopTime = new Date().getTime();
-        interval = stopTime - startTime;
-        logger.debug("Roundtrip Looping Diss: " + interval + " milliseconds.");
-
+        if (logger.isDebugEnabled()) {
+            stopTime = System.currentTimeMillis();
+            interval = stopTime - startTime;
+            logger.debug("Roundtrip Looping Diss: {} milliseconds.", interval);
+        }
         // Check deployment object state
         String authzAux_sDepState = deploymentReader.GetObjectState();
         String authzAux_sDepPID = deploymentReader.GetObjectPID();
@@ -397,12 +393,13 @@ public class DefaultAccess
                           h_userParms,
                           asOfDateTime);
 
-        stopTime = new Date().getTime();
-        interval = stopTime - startTime;
-        logger.debug("Roundtrip Get/Validate User Parms: " + interval
-                     + " milliseconds.");
+        if (logger.isDebugEnabled()) {
+            stopTime = System.currentTimeMillis();
+            interval = stopTime - startTime;
+            logger.debug("Roundtrip Get/Validate User Parms:  milliseconds.", interval);
 
-        startTime = new Date().getTime();
+            startTime = System.currentTimeMillis();
+        }
         // SDP: GET INFO FROM DEPLOYMENT READER:
         // Add any default method parameters to validated user parm list
         defaultMethodParms =
@@ -412,8 +409,8 @@ public class DefaultAccess
             if (!defaultMethodParms[i].parmType
                     .equals(MethodParmDef.DATASTREAM_INPUT)) {
                 if (!h_userParms.containsKey(defaultMethodParms[i].parmName)) {
-                    logger.debug("addedDefaultName: "
-                                 + defaultMethodParms[i].parmName);
+                    logger.debug("addedDefaultName: {}",
+                                 defaultMethodParms[i].parmName);
                     String pdv = defaultMethodParms[i].parmDefaultValue;
                     try {
                         // here we make sure the PID is decoded so that encoding
@@ -427,18 +424,19 @@ public class DefaultAccess
                         }
                     } catch (UnsupportedEncodingException uee) {
                     }
-                    logger.debug("addedDefaultValue: " + pdv);
+                    logger.debug("addedDefaultValue: {}", pdv);
                     h_userParms.put(defaultMethodParms[i].parmName, pdv);
                 }
             }
         }
 
-        stopTime = new Date().getTime();
-        interval = stopTime - startTime;
-        logger.debug("Roundtrip Get Deployment Parms: " + interval
-                     + " milliseconds.");
+        if (logger.isDebugEnabled()) {
+            stopTime = System.currentTimeMillis();
+            interval = stopTime - startTime;
+            logger.debug("Roundtrip Get Deployment Parms: {} milliseconds.", interval);
+            startTime = System.currentTimeMillis();
+        }
 
-        startTime = new Date().getTime();
         DisseminationBindingInfo[] dissBindInfo;
         dissBindInfo =
                 getDisseminationBindingInfo(context,
@@ -448,7 +446,7 @@ public class DefaultAccess
                                             asOfDateTime);
 
         // Assemble and execute the dissemination request from the binding info.
-        DisseminationService dissService = new DisseminationService();
+        DisseminationService dissService = new DisseminationService(getServer());
         dissemination =
                 dissService.assembleDissemination(context,
                                                   PID,
@@ -458,14 +456,14 @@ public class DefaultAccess
                                                   deploymentReader,
                                                   methodName);
 
-        stopTime = new Date().getTime();
-        interval = stopTime - startTime;
-        logger.debug("Roundtrip Assemble Dissemination: " + interval
-                     + " milliseconds.");
+        if (logger.isDebugEnabled()) {
+            stopTime = System.currentTimeMillis();
+            interval = stopTime - startTime;
+            logger.debug("Roundtrip Assemble Dissemination: {} milliseconds.", interval);
 
-        stopTime = new Date().getTime();
-        interval = stopTime - initStartTime;
-        logger.debug("Roundtrip GetDissemination: " + interval + " milliseconds.");
+            interval = stopTime - initStartTime;
+            logger.debug("Roundtrip GetDissemination: {} milliseconds.", interval);
+        }
         return dissemination;
     }
 
@@ -504,7 +502,7 @@ public class DefaultAccess
         DeploymentDSBindSpec dsBindSpec =
                 bmReader.getServiceDSInputSpec(versDateTime);
         DeploymentDSBindRule[] dsBindRules =
-                dsBindSpec.dsBindRules == null ? new DeploymentDSBindRule[0]
+                dsBindSpec.dsBindRules == null ? DeploymentDSBindRule.ARRAY_TYPE
                                                : dsBindSpec.dsBindRules;
 
         // Results will be returned in this list, one item per *existing*
@@ -513,7 +511,7 @@ public class DefaultAccess
         // If the datastream is *really* required in order to invoke the
         // dissemination method in question, rest assured it will fail later.
         List<DisseminationBindingInfo> bindingInfoList =
-                new ArrayList<DisseminationBindingInfo>();
+                new ArrayList<DisseminationBindingInfo>(dsBindRules.length);
 
         for (int i = 0; i < dsBindRules.length; i++) {
             DeploymentDSBindRule dsBindRule = dsBindRules[i];
@@ -543,45 +541,44 @@ public class DefaultAccess
                 bindingInfoList.add(bindingInfo);
             }
         }
-        return bindingInfoList.toArray(new DisseminationBindingInfo[0]);
+        return bindingInfoList.toArray(DisseminationBindingInfo.ARRAY_TYPE);
     }
 
+    @Override
     public ObjectMethodsDef[] listMethods(Context context,
                                           String PID,
                                           Date asOfDateTime)
             throws ServerException {
-        long startTime = new Date().getTime();
+        long startTime = logger.isDebugEnabled() ? System.currentTimeMillis() : 0;
         PID = Server.getPID(PID).toString();
         m_authorizationModule.enforceListMethods(context, PID, asOfDateTime);
         DOReader reader =
                 m_manager.getReader(Server.USE_DEFINITIVE_STORE, context, PID);
 
         ObjectMethodsDef[] methodDefs = reader.listMethods(asOfDateTime);
-        long stopTime = new Date().getTime();
-        long interval = stopTime - startTime;
-        logger.debug("Roundtrip listMethods: " + interval + " milliseconds.");
+        if (logger.isDebugEnabled()) {
+            long stopTime = System.currentTimeMillis();
+            long interval = stopTime - startTime;
+            logger.debug("Roundtrip listMethods: {} milliseconds.", interval);
+        }
 
         // DYNAMIC!! Grab any dynamic method definitions and merge them with
         // the statically bound method definitions
         ObjectMethodsDef[] dynamicMethodDefs =
-                //m_dynamicAccess.getObjectMethods(context, PID, asOfDateTime);
                 m_dynamicAccess.listMethods(context, PID, asOfDateTime);
-        ArrayList<ObjectMethodsDef> methodList =
-                new ArrayList<ObjectMethodsDef>();
-        for (ObjectMethodsDef element : methodDefs) {
-            methodList.add(element);
-        }
-        for (ObjectMethodsDef element : dynamicMethodDefs) {
-            methodList.add(element);
-        }
-        return methodList.toArray(new ObjectMethodsDef[0]);
+        ObjectMethodsDef[] result =
+                new ObjectMethodsDef[methodDefs.length + dynamicMethodDefs.length];
+        System.arraycopy(methodDefs, 0, result, 0, methodDefs.length);
+        System.arraycopy(dynamicMethodDefs, 0, result, methodDefs.length, dynamicMethodDefs.length);
+        return result;
     }
 
+    @Override
     public DatastreamDef[] listDatastreams(Context context,
                                            String PID,
                                            Date asOfDateTime)
             throws ServerException {
-        long startTime = new Date().getTime();
+        long startTime = logger.isDebugEnabled() ? new Date().getTime() : 0;
         PID = Server.getPID(PID).toString();
         m_authorizationModule
                 .enforceListDatastreams(context, PID, asOfDateTime);
@@ -597,12 +594,15 @@ public class DefaultAccess
                                       datastreams[i].DSMIME);
         }
 
-        long stopTime = new Date().getTime();
-        long interval = stopTime - startTime;
-        logger.debug("Roundtrip listDatastreams: " + interval + " milliseconds.");
+        if (logger.isDebugEnabled()) {
+            long stopTime = new Date().getTime();
+            long interval = stopTime - startTime;
+            logger.debug("Roundtrip listDatastreams: {} milliseconds.", interval);
+        }
         return dsDefs;
     }
 
+    @Override
     public ObjectProfile getObjectProfile(Context context,
                                           String PID,
                                           Date asOfDateTime)
@@ -626,15 +626,9 @@ public class DefaultAccess
 
         profile.objectModels.addAll(reader.getContentModels());
 
-/*
-        for (RelationshipTuple rel : reader
-                .getRelationships(Constants.MODEL.HAS_MODEL, null)) {
-            profile.objectModels.add(rel.object);
-        }
-*/
         // "bootstrap" context won't have the uri to determine security
         String securityUri = context
-                .getEnvironmentValue(Constants.HTTP_REQUEST.SECURITY.uri);
+                .getEnvironmentValue(Constants.HTTP_REQUEST.SECURITY.attributeId);
 
         if (securityUri != null) {
             String reposBaseURL =
@@ -642,7 +636,7 @@ public class DefaultAccess
                                             .equals(Constants.HTTP_REQUEST.SECURE.uri) ? "https"
                                                                                        : "http",
                                     context
-                                            .getEnvironmentValue(Constants.HTTP_REQUEST.SERVER_PORT.uri));
+                                            .getEnvironmentValue(Constants.HTTP_REQUEST.SERVER_PORT.attributeId));
             profile.dissIndexViewURL =
                     getDissIndexViewURL(reposBaseURL,
                                         context
@@ -676,6 +670,7 @@ public class DefaultAccess
      * @throws ServerException
      *         If any type of error occurred fulfilling the request.
      */
+    @Override
     public FieldSearchResult findObjects(Context context,
                                          String[] resultFields,
                                          int maxResults,
@@ -699,6 +694,7 @@ public class DefaultAccess
      * @throws ServerException
      *         If any type of error occurred fulfilling the request.
      */
+    @Override
     public FieldSearchResult resumeFindObjects(Context context,
                                                String sessionToken)
             throws ServerException {
@@ -717,6 +713,7 @@ public class DefaultAccess
      * @throws ServerException
      *         If any type of error occurred fulfilling the request.
      */
+    @Override
     public RepositoryInfo describeRepository(Context context)
             throws ServerException {
         m_authorizationModule.enforceDescribeRepository(context);
@@ -725,11 +722,11 @@ public class DefaultAccess
                 getServer().getParameter("repositoryName");
         String reposBaseURL =
                 getReposBaseURL(context
-                                        .getEnvironmentValue(Constants.HTTP_REQUEST.SECURITY.uri)
+                                        .getEnvironmentValue(Constants.HTTP_REQUEST.SECURITY.attributeId)
                                         .equals(Constants.HTTP_REQUEST.SECURE.uri) ? "https"
                                                                                    : "http",
                                 context
-                                        .getEnvironmentValue(Constants.HTTP_REQUEST.SERVER_PORT.uri));
+                                        .getEnvironmentValue(Constants.HTTP_REQUEST.SERVER_PORT.attributeId));
         repositoryInfo.repositoryBaseURL =
                 reposBaseURL + "/" + context.getEnvironmentValue(Constants.FEDORA_APP_CONTEXT_NAME);
 
@@ -772,6 +769,7 @@ public class DefaultAccess
      * @throws ServerException
      *         If any type of error occurred fulfilling the request.
      */
+    @Override
     public String[] getObjectHistory(Context context, String PID)
             throws ServerException {
         PID = Server.getPID(PID).toString();
@@ -790,7 +788,7 @@ public class DefaultAccess
         while (st.hasMoreElements()) {
             emails.add(st.nextElement());
         }
-        return emails.toArray(new String[0]);
+        return emails.toArray(EMPTY_STRING_ARRAY);
     }
 
     private String[] getRetainPIDs() {
@@ -803,7 +801,7 @@ public class DefaultAccess
         while (st.hasMoreElements()) {
             retainPIDs.add(st.nextElement());
         }
-        return retainPIDs.toArray(new String[0]);
+        return retainPIDs.toArray(EMPTY_STRING_ARRAY);
     }
 
     private String convertToCSV(String list) {
@@ -881,7 +879,7 @@ public class DefaultAccess
                             filteredParms.add(element2);
                         }
                     }
-                    methodParms = filteredParms.toArray(new MethodParmDef[0]);
+                    methodParms = filteredParms.toArray(METHOD_PARM_DEF_TYPE);
                 }
             }
         } else {
@@ -905,7 +903,7 @@ public class DefaultAccess
                                  + methodParms[i].parmRequired + "\ntype: "
                                  + methodParms[i].parmType);
                     for (String element : methodParms[i].parmDomainValues) {
-                        logger.debug("domainValue: " + element);
+                        logger.debug("domainValue: {}", element);
                     }
                 }
             }
@@ -973,11 +971,9 @@ public class DefaultAccess
                                 }
                                 if (!isValidValue) {
                                     for (int i = 0; i < parmDomainValues.length; i++) {
-                                        if (i == parmDomainValues.length - 1) {
-                                            sb.append(parmDomainValues[i]);
-                                        } else {
-                                            sb.append(parmDomainValues[i]
-                                                      + ", ");
+                                        sb.append(parmDomainValues[i]);
+                                        if (i != parmDomainValues.length - 1) {
+                                            sb.append(", ");
                                         }
                                     }
                                     sb
@@ -1082,7 +1078,7 @@ public class DefaultAccess
     private String getReposBaseURL(String protocol, String port) {
         String reposBaseURL = null;
         String fedoraServerHost = getServer().getParameter("fedoraServerHost");
-        if (fedoraServerHost == null || fedoraServerHost.equals("")) {
+        if (fedoraServerHost == null || fedoraServerHost.isEmpty()) {
             logger.warn("Configuration parameter fedoraServerHost is empty.");
             try {
                 InetAddress hostIP = InetAddress.getLocalHost();
@@ -1096,6 +1092,7 @@ public class DefaultAccess
         return reposBaseURL;
     }
 
+    @Override
     public MIMETypedStream getDatastreamDissemination(Context context,
                                                       String PID,
                                                       String dsID,
@@ -1107,7 +1104,7 @@ public class DefaultAccess
                                                                 dsID,
                                                                 asOfDateTime);
         MIMETypedStream mimeTypedStream = null;
-        long startTime = new Date().getTime();
+        long startTime = (logger.isDebugEnabled()) ? new Date().getTime() : 0;
         DOReader reader =
                 m_manager.getReader(Server.USE_DEFINITIVE_STORE, context, PID);
 
@@ -1127,29 +1124,35 @@ public class DefaultAccess
             throw new DatastreamNotFoundException(message);
         }
 
-        if (ds.DSControlGrp.equalsIgnoreCase("E")) {
+        if (ds.isRepositoryManaged()) {
+            if (ds.DSSize <= 0) {
+                ds.DSSize = ds.getContentSize(context);
+            }
+            Property[] dsHeaders = getDatastreamHeaders(PID, ds);
+            if (ServerUtility.isStaleCache(context, dsHeaders)) {
+                if (isHEADRequest(context)) {
+                    mimeTypedStream = new MIMETypedStream(ds.DSMIME, NullInputStream.NULL_STREAM,
+                            getDatastreamHeaders(PID, ds), ds.DSSize);
+                } else {
+                    mimeTypedStream = new MIMETypedStream(ds.DSMIME, ds.getContentStream(context),
+                            dsHeaders, ds.DSSize);                    
+                }
+            } else {
+                mimeTypedStream = MIMETypedStream.getNotModified(dsHeaders);
+            }
+            String rangeHdr = context.getHeaderValue(HttpHeaders.RANGE);
+            // delimit Content-Range if necessary
+            if (rangeHdr != null) mimeTypedStream.setRange(rangeHdr);
+        } else if (ds.DSControlGrp.equalsIgnoreCase("E")) {
             DatastreamReferencedContent drc =
-                    (DatastreamReferencedContent) reader
-                            .GetDatastream(dsID, asOfDateTime);
+                    (DatastreamReferencedContent) ds;
             ContentManagerParams params = new ContentManagerParams(drc.DSLocation,
                                                                    drc.DSMIME, null, null);
             params.setContext(context);
             mimeTypedStream = m_externalContentManager.getExternalContent(params);
-        } else if (ds.DSControlGrp.equalsIgnoreCase("M")) {
-            DatastreamManagedContent dmc =
-                    (DatastreamManagedContent) reader
-                            .GetDatastream(dsID, asOfDateTime);
-
-            mimeTypedStream = new MIMETypedStream(ds.DSMIME, dmc.getContentStream(context), null,ds.DSSize);
-        } else if (ds.DSControlGrp.equalsIgnoreCase("X")) {
-            DatastreamXMLMetadata dxm =
-                    (DatastreamXMLMetadata) reader.GetDatastream(dsID,
-                                                                 asOfDateTime);
-            mimeTypedStream = new MIMETypedStream(ds.DSMIME, dxm.getContentStream(context), null, ds.DSSize);
         } else if (ds.DSControlGrp.equalsIgnoreCase("R")) {
             DatastreamReferencedContent drc =
-                    (DatastreamReferencedContent) reader
-                            .GetDatastream(dsID, asOfDateTime);
+                    (DatastreamReferencedContent) ds;
             // The dsControlGroupType of Redirect("R") is a special control type
             // used primarily for streaming media. Datastreams of this type are
             // not mediated (proxied by Fedora) and their physical dsLocation is
@@ -1159,31 +1162,44 @@ public class DefaultAccess
             // special fedora-specific MIME type to identify the stream as
             // a MIMETypedStream whose contents contain a URL to which the client
             // should be redirected.
-            try {
-                InputStream inStream =
-                        new ByteArrayInputStream(drc.DSLocation
-                                                         .getBytes("UTF-8"));
-                mimeTypedStream =
-                        new MIMETypedStream("application/fedora-redirect",
-                                            inStream,
-                                            null);
-            } catch (UnsupportedEncodingException uee) {
-                String message =
-                        "[DefaultAccess] An error has occurred. "
-                        + "The error was a \""
-                        + uee.getClass().getName() + "\"  . The "
-                        + "Reason was \"" + uee.getMessage()
-                        + "\"  . String value: " + drc.DSLocation
-                        + "  . ";
-                logger.error(message);
-                throw new GeneralException(message);
-            }
+            mimeTypedStream = MIMETypedStream.getRedirect(drc.DSLocation);
         }
-        long stopTime = new Date().getTime();
-        long interval = stopTime - startTime;
-        logger.debug("Roundtrip getDatastreamDissemination: " + interval
-                     + " milliseconds.");
+        if (logger.isDebugEnabled()) {
+            long stopTime = System.currentTimeMillis();
+            long interval = stopTime - startTime;
+            logger.debug("Roundtrip getDatastreamDissemination: {} milliseconds.", interval);
+        }
         return mimeTypedStream;
+    }
+    
+    /**
+     * Content-Length is determined elsewhere
+     * Content-Type is determined elsewhere
+     * Last-Modified
+     * ETag
+     * @param ds
+     * @return
+     */
+    private static Property[] getDatastreamHeaders(String pid, Datastream ds) {
+        Property[] result = new Property[3];
+        result[0] = new Property(HttpHeaders.ACCEPT_RANGES,"bytes");
+        result[1] = new Property(HttpHeaders.ETAG, Datastream.defaultETag(pid, ds));
+        result[2] = new Property(HttpHeaders.LAST_MODIFIED, DateUtil.formatDate(ds.DSCreateDT));
+        return result;
+    }
+    
+    /**
+     * determine whether the context is a HEAD http request
+     */
+    private static boolean isHEADRequest(Context context) {
+        if (context != null) {
+            String method =
+                    context.getEnvironmentValue(
+                            Constants.HTTP_REQUEST.METHOD.attributeId);
+            return "HEAD".equalsIgnoreCase(method);
+                    
+        }
+        return false;
     }
 
 }

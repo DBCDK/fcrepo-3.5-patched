@@ -5,7 +5,6 @@
 package org.fcrepo.server.storage.translation;
 
 import java.io.BufferedInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -17,11 +16,9 @@ import java.io.OutputStream;
 import java.io.Reader;
 import java.io.StringReader;
 import java.io.UnsupportedEncodingException;
-
 import java.net.URISyntaxException;
-
+import java.nio.ByteBuffer;
 import java.text.ParseException;
-
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
@@ -30,11 +27,8 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-import javax.xml.stream.XMLStreamException;
-
 import javax.activation.MimeType;
-
-import org.apache.commons.io.IOUtils;
+import javax.xml.stream.XMLStreamException;
 
 import org.apache.abdera.Abdera;
 import org.apache.abdera.ext.thread.ThreadHelper;
@@ -48,15 +42,11 @@ import org.apache.abdera.model.Person;
 import org.apache.abdera.parser.Parser;
 import org.apache.abdera.util.MimeTypeHelper;
 import org.apache.abdera.xpath.XPath;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import org.apache.commons.io.IOUtils;
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.MalformedPIDException;
 import org.fcrepo.common.PID;
 import org.fcrepo.common.xml.format.XMLFormat;
-
 import org.fcrepo.server.errors.ObjectIntegrityException;
 import org.fcrepo.server.errors.StreamIOException;
 import org.fcrepo.server.errors.ValidationException;
@@ -66,10 +56,11 @@ import org.fcrepo.server.storage.types.DatastreamReferencedContent;
 import org.fcrepo.server.storage.types.DatastreamXMLMetadata;
 import org.fcrepo.server.storage.types.DigitalObject;
 import org.fcrepo.server.validation.ValidationUtility;
-
 import org.fcrepo.utilities.DateUtility;
 import org.fcrepo.utilities.FileUtils;
 import org.fcrepo.utilities.NormalizedURI;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
@@ -140,8 +131,10 @@ public class AtomDODeserializer
                 m_tempDir = FileUtils.createTempDir("atomzip", null);
                 m_zin = new ZipInputStream(new BufferedInputStream(in));
                 ZipEntry entry;
+                // reusable this byte buffer
+                byte[] buf = new byte[4096];
                 while ((entry = m_zin.getNextEntry()) != null) {
-                    FileUtils.copy(m_zin, new FileOutputStream(new File(m_tempDir, entry.getName())));
+                    FileUtils.copy(m_zin, new FileOutputStream(new File(m_tempDir, entry.getName())), buf);
                 }
                 in = new FileInputStream(new File(m_tempDir, "atommanifest.xml"));
             } catch (FileNotFoundException e) {
@@ -254,13 +247,14 @@ public class AtomDODeserializer
         } else {
             try {
                 if (m_format.equals(ATOM_ZIP1_1)) {
-                    ByteArrayOutputStream bout = new ByteArrayOutputStream();
-                    FileUtils.copy(new FileInputStream(getContentSrcAsFile(entry.getContentSrc())),
-                            bout);
-                    ds.xmlContent = bout.toByteArray();
+                    File entryContent = getContentSrcAsFile(entry.getContentSrc());
+                    ByteBuffer byteBuffer = ByteBuffer.allocate((int)entryContent.length());
+                    FileUtils.copy(new FileInputStream(entryContent),
+                            byteBuffer);
+                    ds.xmlContent = byteBuffer.array();
 
                 } else {
-                    ds.xmlContent = entry.getContent().getBytes(m_encoding); //IOUtils.toByteArray(entry.getContentStream());
+                    ds.xmlContent = entry.getContent().getBytes(m_encoding);
                 }
             } catch (UnsupportedEncodingException e) {
                 throw new StreamIOException(e.getMessage(), e);
@@ -292,7 +286,7 @@ public class AtomDODeserializer
                 (DOTranslationUtility.normalizeDSLocationURLs(m_obj.getPid(),
                                                               ds,
                                                               m_transContext)).DSLocation;
-        ds.DSLocationType = "URL";
+        ds.DSLocationType = Datastream.DS_LOCATION_TYPE_URL;
         ds.DSMIME = entry.getContentMimeType().toString();
 
         return ds;
@@ -302,7 +296,7 @@ public class AtomDODeserializer
             throws StreamIOException, ObjectIntegrityException {
         Datastream ds = new DatastreamManagedContent();
         setDSCommonProperties(ds, entry);
-        ds.DSLocationType = "INTERNAL_ID";
+        ds.DSLocationType = Datastream.DS_LOCATION_TYPE_INTERNAL;
 
         ds.DSMIME = getDSMimeType(entry);
 
@@ -317,7 +311,8 @@ public class AtomDODeserializer
             // a NEW ingest file because the URL is replaced with an internal identifier
             // once the repository has sucked in the content for storage.
 
-            if (m_obj.isNew()) {
+        	// AtomZIP files can have a simple filename (nb, not file: )for the content location, so don't validate that
+            if (m_obj.isNew() && !m_format.equals(ATOM_ZIP1_1)) {
                 ValidationUtility
                         .validateURL(contentLocation.toString(),ds.DSControlGrp);
             }
@@ -481,7 +476,7 @@ public class AtomDODeserializer
     private String[] getDSAltIds(Entry entry) {
         List<Category> altIds = entry.getCategories(MODEL.ALT_IDS.uri);
         if (altIds.isEmpty()) {
-            return new String[0];
+            return EMPTY_STRING_ARRAY;
         } else {
             return altIds.get(0).getTerm().split(" ");
             // TODO we could handle size > 1
@@ -530,7 +525,10 @@ public class AtomDODeserializer
     private String getDSChecksumType(Entry entry) {
         List<Category> digestType = entry.getCategories(MODEL.DIGEST_TYPE.uri);
         if (digestType.isEmpty()) {
-            return Datastream.CHECKSUMTYPE_DISABLED;
+            String result = (Datastream.autoChecksum)
+                ? Datastream.getDefaultChecksumType()
+                : Datastream.CHECKSUMTYPE_DISABLED;
+                return result;
         } else {
             return digestType.get(0).getTerm();
         }
@@ -569,11 +567,11 @@ public class AtomDODeserializer
             if (logger.isDebugEnabled()) {
                 logger.debug("New Object: checking supplied checksum");
             }
-            if (checksum != null && !checksum.equals("")
+            if (checksum != null && !checksum.isEmpty()
                     && !checksum.equals(Datastream.CHECKSUM_NONE)) {
                 String tmpChecksum = ds.getChecksum();
                 if (logger.isDebugEnabled()) {
-                    logger.debug("checksum = " + tmpChecksum);
+                    logger.debug("checksum = {}", tmpChecksum);
                 }
                 if (!checksum.equals(tmpChecksum)) {
                     throw new ValidationException("Checksum Mismatch: "

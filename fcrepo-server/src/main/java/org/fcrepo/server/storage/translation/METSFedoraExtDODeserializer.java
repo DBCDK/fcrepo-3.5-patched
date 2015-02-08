@@ -21,9 +21,6 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 
-import javax.xml.parsers.SAXParser;
-import javax.xml.parsers.SAXParserFactory;
-
 import org.xml.sax.Attributes;
 import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
@@ -47,6 +44,7 @@ import org.fcrepo.server.utilities.StreamUtility;
 import org.fcrepo.server.validation.ValidationUtility;
 import org.fcrepo.utilities.Base64;
 import org.fcrepo.utilities.DateUtility;
+import org.fcrepo.utilities.XmlTransformUtility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -100,8 +98,6 @@ public class METSFedoraExtDODeserializer
     /** Hashtables to correlate audit record ids to datastreams */
     private HashMap<String, String> m_AuditIdToComponentId;
 
-    private SAXParser m_parser;
-
     private String m_characterEncoding;
 
     /** Namespace prefix-to-URI mapping info from SAX2 startPrefixMapping events. */
@@ -130,12 +126,14 @@ public class METSFedoraExtDODeserializer
 
     private String m_dsInfoType;
 
+    @SuppressWarnings("unused")
     private String m_dsOtherInfoType;
 
     private String m_dsLabel;
 
     private int m_dsMDClass;
 
+    @SuppressWarnings("unused")
     private long m_dsSize;
 
     private String m_dsLocation;
@@ -156,7 +154,7 @@ public class METSFedoraExtDODeserializer
 
     private String m_dsChecksumType;
 
-    private StringBuffer m_dsXMLBuffer;
+    private StringBuilder m_dsXMLBuffer;
 
     // are we reading binary in an FContent element? (base64-encoded)
     private boolean m_readingContent; // indicates reading element content
@@ -262,16 +260,6 @@ public class METSFedoraExtDODeserializer
         logger.debug("Deserializing " + m_format.uri + " for transContext: "
                 + transContext);
 
-        // initialize sax for this parse
-        try {
-            SAXParserFactory spf = SAXParserFactory.newInstance();
-            spf.setValidating(false);
-            spf.setNamespaceAware(true);
-            m_parser = spf.newSAXParser();
-        } catch (Exception e) {
-            throw new RuntimeException("Error initializing SAX parser", e);
-        }
-
         m_obj = obj;
         m_obj.setOwnerId("");
         m_obj.setLabel("");
@@ -279,7 +267,7 @@ public class METSFedoraExtDODeserializer
         m_transContext = transContext;
         initialize();
         try {
-            m_parser.parse(in, this);
+            XmlTransformUtility.parseWithoutValidating(in, this);
         } catch (IOException ioe) {
             throw new StreamIOException("Low-level stream IO problem occurred "
                     + "while SAX parsing this object.");
@@ -389,10 +377,9 @@ public class METSFedoraExtDODeserializer
                 m_dsId = grab(a, METS.uri, "ID");
                 m_dsState = grab(a, METS.uri, "STATUS");
                 String dsVersionable = grab(a, METS.uri, "VERSIONABLE");
-                if (dsVersionable != null && !dsVersionable.equals("")) {
+                if (dsVersionable != null && !dsVersionable.isEmpty()) {
                     m_dsVersionable =
-                            new Boolean(grab(a, METS.uri, "VERSIONABLE"))
-                                    .booleanValue();
+                            Boolean.parseBoolean(grab(a, METS.uri, "VERSIONABLE"));
                 } else {
                     m_dsVersionable = true;
                 }
@@ -400,10 +387,9 @@ public class METSFedoraExtDODeserializer
                 m_dsId = grab(a, METS.uri, "ID");
                 m_dsState = grab(a, METS.uri, "STATUS");
                 String dsVersionable = grab(a, METS.uri, "VERSIONABLE");
-                if (dsVersionable != null && !dsVersionable.equals("")) {
+                if (dsVersionable != null && !dsVersionable.isEmpty()) {
                     m_dsVersionable =
-                            new Boolean(grab(a, METS.uri, "VERSIONABLE"))
-                                    .booleanValue();
+                            Boolean.parseBoolean(grab(a, METS.uri, "VERSIONABLE"));
                 } else {
                     m_dsVersionable = true;
                 }
@@ -428,7 +414,7 @@ public class METSFedoraExtDODeserializer
                     m_dsMDClass = DatastreamXMLMetadata.DESCRIPTIVE;
                 }
                 String dateString = grab(a, METS.uri, "CREATED");
-                if (dateString != null && !dateString.equals("")) {
+                if (dateString != null && !dateString.isEmpty()) {
                     m_dsCreateDate =
                             DateUtility.convertStringToDate(dateString);
                 }
@@ -440,23 +426,22 @@ public class METSFedoraExtDODeserializer
                 m_dsFormatURI = grab(a, METS.uri, "FORMAT_URI");
                 String altIDs = grab(a, METS.uri, "ALT_IDS");
                 if (altIDs.length() == 0) {
-                    m_dsAltIDs = new String[0];
+                    m_dsAltIDs = EMPTY_STRING_ARRAY;
                 } else {
                     m_dsAltIDs = altIDs.split(" ");
                 }
                 m_dsChecksum = grab(a, METS.uri, "CHECKSUM");
                 m_dsChecksumType = grab(a, METS.uri, "CHECKSUMTYPE");
             } else if (localName.equals("xmlData")) {
-                m_dsXMLBuffer = new StringBuffer();
+                m_dsXMLBuffer = new StringBuilder();
                 m_xmlDataLevel = 0;
                 m_inXMLMetadata = true;
             } else if (localName.equals("fileGrp")) {
                 m_dsId = grab(a, METS.uri, "ID");
                 String dsVersionable = grab(a, METS.uri, "VERSIONABLE");
-                if (dsVersionable != null && !dsVersionable.equals("")) {
+                if (dsVersionable != null && !dsVersionable.isEmpty()) {
                     m_dsVersionable =
-                            new Boolean(grab(a, METS.uri, "VERSIONABLE"))
-                                    .booleanValue();
+                            Boolean.parseBoolean(grab(a, METS.uri, "VERSIONABLE"));
                 } else {
                     m_dsVersionable = true;
                 }
@@ -466,7 +451,7 @@ public class METSFedoraExtDODeserializer
                 m_dsMimeType = "";
                 m_dsControlGrp = "";
                 m_dsFormatURI = "";
-                m_dsAltIDs = new String[0];
+                m_dsAltIDs = EMPTY_STRING_ARRAY;
                 m_dsState = grab(a, METS.uri, "STATUS");
                 m_dsSize = -1;
                 m_dsChecksum = "";
@@ -474,14 +459,14 @@ public class METSFedoraExtDODeserializer
             } else if (localName.equals("file")) {
                 m_dsVersId = grab(a, METS.uri, "ID");
                 String dateString = grab(a, METS.uri, "CREATED");
-                if (dateString != null && !dateString.equals("")) {
+                if (dateString != null && !dateString.isEmpty()) {
                     m_dsCreateDate =
                             DateUtility.convertStringToDate(dateString);
                 }
                 m_dsMimeType = grab(a, METS.uri, "MIMETYPE");
                 m_dsControlGrp = grab(a, METS.uri, "OWNERID");
                 String ADMID = grab(a, METS.uri, "ADMID");
-                if (ADMID != null && !"".equals(ADMID)) {
+                if (ADMID != null && !ADMID.isEmpty()) {
                     ArrayList<String> al = new ArrayList<String>();
                     if (ADMID.indexOf(" ") != -1) {
                         String[] admIds = ADMID.split(" ");
@@ -494,7 +479,7 @@ public class METSFedoraExtDODeserializer
                     m_dsADMIDs.put(m_dsVersId, al);
                 }
                 String DMDID = grab(a, METS.uri, "DMDID");
-                if (DMDID != null && !"".equals(DMDID)) {
+                if (DMDID != null && !DMDID.isEmpty()) {
                     ArrayList<String> al = new ArrayList<String>();
                     if (DMDID.indexOf(" ") != -1) {
                         String[] dmdIds = DMDID.split(" ");
@@ -507,7 +492,7 @@ public class METSFedoraExtDODeserializer
                     m_dsDMDIDs.put(m_dsVersId, al);
                 }
                 String sizeString = grab(a, METS.uri, "SIZE");
-                if (sizeString != null && !sizeString.equals("")) {
+                if (sizeString != null && !sizeString.isEmpty()) {
                     try {
                         m_dsSize = Long.parseLong(sizeString);
                     } catch (NumberFormatException nfe) {
@@ -516,12 +501,12 @@ public class METSFedoraExtDODeserializer
                     }
                 }
                 String formatURI = grab(a, METS.uri, "FORMAT_URI");
-                if (formatURI != null && !formatURI.equals("")) {
+                if (formatURI != null && !formatURI.isEmpty()) {
                     m_dsFormatURI = formatURI;
                 }
                 String altIDs = grab(a, METS.uri, "ALT_IDS");
                 if (altIDs.length() == 0) {
-                    m_dsAltIDs = new String[0];
+                    m_dsAltIDs = EMPTY_STRING_ARRAY;
                 } else {
                     m_dsAltIDs = altIDs.split(" ");
                 }
@@ -532,7 +517,7 @@ public class METSFedoraExtDODeserializer
             } else if (localName.equals("FLocat")) {
                 m_dsLabel = grab(a, m_xlink.uri, "title");
                 String dsLocation = grab(a, m_xlink.uri, "href");
-                if (dsLocation == null || dsLocation.equals("")) {
+                if (dsLocation == null || dsLocation.isEmpty()) {
                     throw new SAXException("xlink:href must be specified in FLocat element");
                 }
 
@@ -547,7 +532,7 @@ public class METSFedoraExtDODeserializer
                         throw new SAXException(ve.getMessage());
                     }
                     // system will set dsLocationType for E and R datastreams...
-                    m_dsLocationType = "URL";
+                    m_dsLocationType = Datastream.DS_LOCATION_TYPE_URL;
                     m_dsInfoType = "DATA";
                     m_dsLocation = dsLocation;
                     instantiateDatastream(new DatastreamReferencedContent());
@@ -559,11 +544,13 @@ public class METSFedoraExtDODeserializer
                     if (m_obj.isNew()) {
                         try {
                             ValidationUtility.validateURL(dsLocation, m_dsControlGrp);
+                            m_dsLocationType = Datastream.DS_LOCATION_TYPE_URL;
                         } catch (ValidationException ve) {
                             throw new SAXException(ve.getMessage());
                         }
+                    } else {
+                        m_dsLocationType = Datastream.DS_LOCATION_TYPE_INTERNAL;
                     }
-                    m_dsLocationType = "INTERNAL_ID";
                     m_dsInfoType = "DATA";
                     m_dsLocation = dsLocation;
                     instantiateDatastream(new DatastreamManagedContent());
@@ -727,7 +714,7 @@ public class METSFedoraExtDODeserializer
                             byte elementBytes[] = Base64.decode(elementStr);
                             os.write(elementBytes);
                             os.close();
-                            m_dsLocationType = "INTERNAL_ID";
+                            m_dsLocationType = Datastream.DS_LOCATION_TYPE_INTERNAL;
                             m_dsLocation =
                                 DatastreamManagedContent.TEMP_SCHEME
                                             + m_binaryContentTempFile
@@ -780,7 +767,7 @@ public class METSFedoraExtDODeserializer
             //
             if (grab(a, METS.uri, "TYPE").equals("fedora:dsBindingMap")) {
                 String bmId = grab(a, METS.uri, "ID");
-                if (bmId == null || bmId.equals("")) {
+                if (bmId == null || bmId.isEmpty()) {
                     throw new SAXException("structMap with TYPE "
                             + "fedora:dsBindingMap must specify a non-empty "
                             + "ID attribute.");
@@ -860,7 +847,8 @@ public class METSFedoraExtDODeserializer
                             .convertStringToDate(grab(a, METS.uri, "CREATED"));
             dissem.dissLabel = grab(a, METS.uri, "LABEL");
         } else if (localName.equals("interfaceMD")) {
-            Disseminator dissem = m_dissems.get(m_structId);
+            // no-op?
+            // Disseminator dissem = m_dissems.get(m_structId);
         } else if (localName.equals("serviceBindMD")) {
             Disseminator dissem = m_dissems.get(m_structId);
             dissem.sDepID = grab(a, m_xlink.uri, "href");
@@ -871,7 +859,7 @@ public class METSFedoraExtDODeserializer
                                     String localName,
                                     String qName,
                                     Attributes a,
-                                    StringBuffer out) {
+                                    StringBuilder out) {
         out.append("<" + qName);
         // add the current qName's namespace to m_localPrefixMap
         // and m_prefixList if it's not already in m_localPrefixMap
@@ -890,17 +878,20 @@ public class METSFedoraExtDODeserializer
             String prefix = m_prefixList.remove(0);
             out.append(" xmlns");
             if (prefix.length() > 0) {
-                out.append(":");
+                out.append(':');
             }
-            out.append(prefix + "=\""
-                    + StreamUtility.enc(m_prefixMap.get(prefix))
-                    + "\"");
+            out.append(prefix + "=\"");
+            StreamUtility.enc(m_prefixMap.get(prefix), out);
+            out.append('"');
         }
         for (int i = 0; i < a.getLength(); i++) {
-            out.append(" " + a.getQName(i) + "=\""
-                    + StreamUtility.enc(a.getValue(i)) + "\"");
+            out.append(' ');
+            out.append(a.getQName(i));
+            out.append("=\"");
+            StreamUtility.enc(a.getValue(i), out);
+            out.append('"');
         }
-        out.append(">");
+        out.append('>');
     }
 
     private void instantiateDatastream(Datastream ds) throws SAXException {
@@ -920,15 +911,18 @@ public class METSFedoraExtDODeserializer
         ds.DSLocationType = m_dsLocationType;
         ds.DSInfoType = m_dsInfoType;
 
-        ds.DSChecksumType = m_dsChecksumType;
-        logger.debug("instantiate datastream: dsid = " + m_dsId
-                + "checksumType = " + m_dsChecksumType + "checksum = "
-                + m_dsChecksum);
+        if (m_dsChecksumType == null || m_dsChecksumType.isEmpty()){
+            ds.DSChecksumType = (Datastream.autoChecksum)
+                    ? Datastream.getDefaultChecksumType()
+                    : Datastream.CHECKSUMTYPE_DISABLED;
+        }
+        logger.debug("instantiate datastream: dsid = {} checksumType = {} checksum = {}",
+                m_dsId, m_dsChecksumType, m_dsChecksum);
         if (m_obj.isNew()) {
-            if (m_dsChecksum != null && !m_dsChecksum.equals("")
+            if (m_dsChecksum != null && !m_dsChecksum.isEmpty()
                     && !m_dsChecksum.equals(Datastream.CHECKSUM_NONE)) {
                 String tmpChecksum = ds.getChecksum();
-                logger.debug("checksum = " + tmpChecksum);
+                logger.debug("checksum = {}", tmpChecksum);
                 if (!m_dsChecksum.equals(tmpChecksum)) {
                     throw new SAXException(new ValidationException("Checksum Mismatch: "
                             + tmpChecksum));
@@ -960,7 +954,7 @@ public class METSFedoraExtDODeserializer
         ds.DSVersionID = m_dsVersId;
         ds.DSLabel = m_dsLabel;
         ds.DSCreateDT = m_dsCreateDate;
-        if (m_dsMimeType == null || m_dsMimeType.equals("")) {
+        if (m_dsMimeType == null || m_dsMimeType.isEmpty()) {
             ds.DSMIME = "text/xml";
         } else {
             ds.DSMIME = m_dsMimeType;
@@ -981,24 +975,24 @@ public class METSFedoraExtDODeserializer
             //LOOK! this sets bytes, not characters.  Do we want to set this?
             ds.DSSize = ds.xmlContent.length;
         } catch (Exception uee) {
-            logger.debug("Error processing inline xml content in SAX parse: "
-                    + uee.getMessage());
+            logger.debug("Error processing inline xml content in SAX parse: {}",
+                    uee.getMessage());
         }
 
-        logger.debug("instantiate datastream: dsid = " + m_dsId
-                + "checksumType = " + m_dsChecksumType + "checksum = "
-                + m_dsChecksum);
+        logger.debug("instantiate datastream: dsid = {} checksumType = {} checksum = {}",
+                m_dsId, m_dsChecksumType, m_dsChecksum);
         if (m_obj.isNew()) {
-            if (m_dsChecksum != null && !m_dsChecksum.equals("")
+            if (m_dsChecksum != null && !m_dsChecksum.isEmpty()
                     && !m_dsChecksum.equals(Datastream.CHECKSUM_NONE)) {
                 String tmpChecksum = ds.getChecksum();
-                logger.debug("checksum = " + tmpChecksum);
+                logger.debug("checksum = {}", tmpChecksum);
                 if (!m_dsChecksum.equals(tmpChecksum)) {
                     throw new SAXException(new ValidationException("Checksum Mismatch: "
                             + tmpChecksum));
                 }
             }
             ds.DSChecksumType = ds.getChecksumType();
+            ds.DSChecksum = m_dsChecksum;
         } else {
             ds.DSChecksum = m_dsChecksum;
         }
@@ -1067,7 +1061,7 @@ public class METSFedoraExtDODeserializer
             Iterator<AuditRecord> iter = m_obj.getAuditRecords().iterator();
             while (iter.hasNext()) {
                 AuditRecord au = iter.next();
-                if (au.componentID == null || au.componentID.equals("")) {
+                if (au.componentID == null || au.componentID.isEmpty()) {
                     // Before Fedora 2.0 audit records were associated with
                     // datastream version ids.  From now on, the datastream id
                     // will be posted as the component id in the audit record,
@@ -1075,7 +1069,7 @@ public class METSFedoraExtDODeserializer
                     // be derived via the datastream version dates and the audit
                     // record dates.
                     String dsVersId = m_AuditIdToComponentId.get(au.id);
-                    if (dsVersId != null && !dsVersId.equals("")) {
+                    if (dsVersId != null && !dsVersId.isEmpty()) {
                         au.componentID =
                                 dsVersId.substring(0, dsVersId.indexOf("."));
                     }
@@ -1186,7 +1180,7 @@ public class METSFedoraExtDODeserializer
         ds.DSState = "A";
         ds.DSLocation =
                 m_obj.getPid() + "+" + ds.DatastreamID + "+" + ds.DSVersionID;
-        ds.DSLocationType = "INTERNAL_ID";
+        ds.DSLocationType = Datastream.DS_LOCATION_TYPE_INTERNAL;
         ds.DSInfoType = "DATA";
         ds.DSMDClass = DatastreamXMLMetadata.TECHNICAL;
 
@@ -1242,7 +1236,7 @@ public class METSFedoraExtDODeserializer
         m_dsCreateDate = null;
         m_dsState = "";
         m_dsFormatURI = "";
-        m_dsAltIDs = new String[0];
+        m_dsAltIDs = EMPTY_STRING_ARRAY;
         m_dsSize = -1;
         m_dsLocationType = "";
         m_dsLocation = "";

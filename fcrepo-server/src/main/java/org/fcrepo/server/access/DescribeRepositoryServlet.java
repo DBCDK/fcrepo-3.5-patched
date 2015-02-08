@@ -13,21 +13,17 @@ import java.net.URLDecoder;
 import java.util.Enumeration;
 
 import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.xml.transform.Templates;
 import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
 
 import org.fcrepo.common.Constants;
 import org.fcrepo.server.Context;
 import org.fcrepo.server.ReadOnlyContext;
-import org.fcrepo.server.Server;
 import org.fcrepo.server.errors.GeneralException;
-import org.fcrepo.server.errors.InitializationException;
 import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.errors.StreamIOException;
 import org.fcrepo.server.errors.authorization.AuthzException;
@@ -67,7 +63,7 @@ import org.slf4j.LoggerFactory;
  * @author Ross Wayland
  */
 public class DescribeRepositoryServlet
-        extends HttpServlet
+        extends SpringAccessServlet
         implements Constants {
 
     private static final Logger logger =
@@ -80,14 +76,6 @@ public class DescribeRepositoryServlet
 
     /** Content type for xml. */
     private static final String CONTENT_TYPE_XML = "text/xml; charset=UTF-8";
-
-    /** Instance of the Fedora server. */
-    private static Server s_server = null;
-
-    /** Instance of the access subsystem. */
-    private static Access s_access = null;
-
-
 
     String ACTION_LABEL = "describe repository";
 
@@ -111,14 +99,14 @@ public class DescribeRepositoryServlet
             throws ServletException, IOException {
         boolean xml = false;
 
-        logger.debug("Got request: " + request.getRequestURL().toString() + "?"
-                + request.getQueryString());
+        logger.debug("Got request: {}?{}", request.getRequestURL(),
+                request.getQueryString());
 
         // Check for xml parameter.
         for (Enumeration<?> e = request.getParameterNames(); e.hasMoreElements();) {
             String name = URLDecoder.decode((String) e.nextElement(), "UTF-8");
             if (name.equalsIgnoreCase("xml")) {
-                xml = new Boolean(request.getParameter(name)).booleanValue();
+                xml = Boolean.parseBoolean(request.getParameter(name));
             }
         }
         Context context =
@@ -130,14 +118,14 @@ public class DescribeRepositoryServlet
             throw RootException.getServletException(ae,
                                                     request,
                                                     ACTION_LABEL,
-                                                    new String[0]);
+                                                    EMPTY_STRING_ARRAY);
         } catch (Throwable th) {
             throw new InternalError500Exception("",
                                                 th,
                                                 request,
                                                 ACTION_LABEL,
                                                 "",
-                                                new String[0]);
+                                                EMPTY_STRING_ARRAY);
         }
 
     }
@@ -155,7 +143,7 @@ public class DescribeRepositoryServlet
         try {
             pw = new PipedWriter();
             pr = new PipedReader(pw);
-            repositoryInfo = s_access.describeRepository(context);
+            repositoryInfo = m_access.describeRepository(context);
             if (repositoryInfo != null) {
                 // Repository info obtained.
                 // Serialize the RepositoryInfo object into XML
@@ -185,12 +173,10 @@ public class DescribeRepositoryServlet
                             new OutputStreamWriter(response.getOutputStream(),
                                                    "UTF-8");
                     File xslFile =
-                            new File(s_server.getHomeDir(),
+                            new File(m_server.getHomeDir(),
                                      "access/viewRepositoryInfo.xslt");
-                    TransformerFactory factory =
-                            XmlTransformUtility.getTransformerFactory();
                     Templates template =
-                            factory.newTemplates(new StreamSource(xslFile));
+                            XmlTransformUtility.getTemplates(xslFile);
                     Transformer transformer = template.newTransformer();
                     transformer.setParameter("fedora", context
                                              .getEnvironmentValue(FEDORA_APP_CONTEXT_NAME));
@@ -256,9 +242,9 @@ public class DescribeRepositoryServlet
             this.pw = pw;
             this.repositoryInfo = repositoryInfo;
             if (Constants.HTTP_REQUEST.SECURE.uri.equals(context
-                    .getEnvironmentValue(Constants.HTTP_REQUEST.SECURITY.uri))) {
+                    .getEnvironmentValue(Constants.HTTP_REQUEST.SECURITY.attributeId))) {
             } else if (Constants.HTTP_REQUEST.INSECURE.uri.equals(context
-                    .getEnvironmentValue(Constants.HTTP_REQUEST.SECURITY.uri))) {
+                    .getEnvironmentValue(Constants.HTTP_REQUEST.SECURITY.attributeId))) {
             }
         }
 
@@ -357,36 +343,6 @@ public class DescribeRepositoryServlet
     public void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         doGet(request, response);
-    }
-
-    /**
-     * <p>
-     * Initialize servlet.
-     * </p>
-     *
-     * @throws ServletException
-     *         If the servet cannot be initialized.
-     */
-    @Override
-    public void init() throws ServletException {
-        try {
-            s_server =
-                    Server.getInstance(new File(Constants.FEDORA_HOME), false);
-            s_access =
-                    (Access) s_server.getModule("org.fcrepo.server.access.Access");
-        } catch (InitializationException ie) {
-            throw new ServletException("Unable to get Fedora Server instance."
-                    + ie.getMessage());
-        }
-    }
-
-    /**
-     * <p>
-     * Cleans up servlet resources.
-     * </p>
-     */
-    @Override
-    public void destroy() {
     }
 
 }

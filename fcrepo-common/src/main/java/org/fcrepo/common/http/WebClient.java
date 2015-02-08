@@ -8,16 +8,25 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-
 import java.net.URL;
 
-import org.apache.commons.httpclient.ConnectTimeoutException;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
-import org.apache.commons.httpclient.UsernamePasswordCredentials;
-import org.apache.commons.httpclient.auth.AuthScope;
-import org.apache.commons.httpclient.methods.GetMethod;
-
+import org.apache.http.HttpHeaders;
+import org.apache.http.HttpHost;
+import org.apache.http.HttpStatus;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpHead;
+import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.conn.ConnectTimeoutException;
+import org.apache.http.conn.params.ConnRoutePNames;
+import org.apache.http.conn.scheme.PlainSocketFactory;
+import org.apache.http.conn.scheme.Scheme;
+import org.apache.http.conn.ssl.SSLSocketFactory;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.conn.PoolingClientConnectionManager;
+import org.apache.http.params.CoreConnectionPNames;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,37 +42,42 @@ public class WebClient {
     private static final Logger logger =
         LoggerFactory.getLogger(WebClient.class);
 
-    private static WebClientConfiguration wconfig= new WebClientConfiguration();
+    private final WebClientConfiguration wconfig;
 
-    private MultiThreadedHttpConnectionManager m_cManager;
+    private final PoolingClientConnectionManager cManager;
 
     /**
      * The proxy configuration for the web client.
      */
-    private static ProxyConfiguration proxy = new ProxyConfiguration();
+    private final ProxyConfiguration proxy;
 
 
     public WebClient() {
-        configureConnectionManager();
+        wconfig = new WebClientConfiguration();
+        proxy =  new ProxyConfiguration();
+        cManager = configureConnectionManager(wconfig);
     }
 
     public WebClient(WebClientConfiguration webconfig) {
         wconfig = webconfig;
-        configureConnectionManager();
+        proxy =  new ProxyConfiguration();
+        cManager = configureConnectionManager(wconfig);
     }
 
     public WebClient(ProxyConfiguration proxyconfig){
+        wconfig = new WebClientConfiguration();
         proxy = proxyconfig;
-        configureConnectionManager();
+        cManager = configureConnectionManager(wconfig);
     }
 
     public WebClient(WebClientConfiguration webconfig, ProxyConfiguration proxyconfig){
         wconfig = webconfig;
         proxy = proxyconfig;
-        configureConnectionManager();
+        cManager = configureConnectionManager(wconfig);
     }
 
-    private void configureConnectionManager(){
+    private PoolingClientConnectionManager configureConnectionManager(
+            WebClientConfiguration wconfig){
         logger.debug("User-Agent is '" + wconfig.getUserAgent() + "'");
         logger.debug("Max total connections is " + wconfig.getMaxTotalConn());
         logger.debug("Max connections per host is " + wconfig.getMaxConnPerHost());
@@ -72,11 +86,20 @@ public class WebClient {
         logger.debug("Follow redirects? " + wconfig.getFollowRedirects());
         logger.debug("Max number of redirects to follow is " + wconfig.getMaxRedirects());
 
-        m_cManager = new MultiThreadedHttpConnectionManager();
-        m_cManager.getParams().setDefaultMaxConnectionsPerHost(wconfig.getMaxConnPerHost());
-        m_cManager.getParams().setMaxTotalConnections(wconfig.getMaxTotalConn());
-        m_cManager.getParams().setConnectionTimeout(wconfig.getTimeoutSecs() * 1000);
-        m_cManager.getParams().setSoTimeout(wconfig.getSockTimeoutSecs() * 1000);
+        PoolingClientConnectionManager cManager = new PoolingClientConnectionManager();
+        cManager.setDefaultMaxPerRoute(wconfig.getMaxConnPerHost());
+        cManager.setMaxTotal(wconfig.getMaxTotalConn());
+        //TODO pick the ports up from configuration
+        cManager.getSchemeRegistry().register(
+                new Scheme("https", 443, SSLSocketFactory.getSocketFactory()));
+        cManager.getSchemeRegistry().register(
+                new Scheme("http", 80, PlainSocketFactory.getSocketFactory()));
+
+        return cManager;
+    }
+    
+    public void shutDown() {
+        cManager.shutdown();
     }
 
     public HttpClient getHttpClient(String hostOrUrl) throws IOException, ConnectTimeoutException {
@@ -98,21 +121,25 @@ public class WebClient {
             }
         }
 
-        HttpClient client = new HttpClient(m_cManager);
+        DefaultHttpClient client;
         if (host != null && creds != null) {
-            client.getState().setCredentials(new AuthScope(host,
+            client = new PreemptiveAuth(cManager);
+            client.getCredentialsProvider().setCredentials(new AuthScope(host,
                                                            AuthScope.ANY_PORT),
                                              creds);
-            client.getParams().setAuthenticationPreemptive(true);
+        } else {
+            client = new DefaultHttpClient(cManager);
         }
+        client.getParams().setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, wconfig.getTimeoutSecs() * 1000);
+        client.getParams().setIntParameter(CoreConnectionPNames.SO_TIMEOUT, wconfig.getSockTimeoutSecs() * 1000);
 
         if (proxy.isHostProxyable(host)) {
-            client.getHostConfiguration().setProxy(proxy.getProxyHost(),
-                                                   proxy.getProxyPort());
+            HttpHost proxyHost =
+                new HttpHost(proxy.getProxyHost(), proxy.getProxyPort(), "http");
+            client.getParams().setParameter(ConnRoutePNames.DEFAULT_PROXY, proxyHost);
             if (proxy.hasValidCredentials()) {
-                client.getState().setProxyCredentials(new AuthScope(proxy.getProxyHost(),
-                                                           proxy.getProxyPort(),
-                                                           null),
+                client.getCredentialsProvider().setCredentials(new AuthScope(proxy.getProxyHost(),
+                                                           proxy.getProxyPort()),
                                                       new UsernamePasswordCredentials(proxy.getProxyUser(),
                                                                              proxy.getProxyPassword()));
             }
@@ -130,11 +157,55 @@ public class WebClient {
                                boolean failIfNotOK,
                                String user,
                                String pass) throws IOException {
-        UsernamePasswordCredentials creds = null;
-        if (user != null && !user.equals("") && pass != null && !pass.equals(""))
-            creds = new UsernamePasswordCredentials(user, pass);
-        return get(url, failIfNotOK, creds);
+        return get(url, failIfNotOK, user, pass, null, null, null);
     }
+
+    public HttpInputStream get(String url,
+            boolean failIfNotOK,
+            String user,
+            String pass,
+            String ifNoneMatch,
+            String ifModifiedSince,
+            String range) throws IOException {
+        UsernamePasswordCredentials creds = null;
+        if (user != null && !user.isEmpty() && pass != null && !pass.isEmpty())
+            creds = new UsernamePasswordCredentials(user, pass);
+        return get(url, failIfNotOK, creds, ifNoneMatch, ifModifiedSince, range);
+}
+
+    public HttpInputStream head(String url, boolean failIfNotOK)
+            throws IOException {
+        return head(url, failIfNotOK, null);
+    }
+
+    public HttpInputStream head(String url,
+            boolean failIfNotOK,
+            String user,
+            String pass) throws IOException {
+        return head(url, failIfNotOK, user, pass, null, null, null);
+    }
+
+    public HttpInputStream head(String url,
+            boolean failIfNotOK,
+            String user,
+            String pass,
+            String ifNoneMatch,
+            String ifModifiedSince,
+            String range) throws IOException {
+        UsernamePasswordCredentials creds = null;
+        if (user != null && !user.isEmpty() && pass != null && !pass.isEmpty())
+            creds = new UsernamePasswordCredentials(user, pass);
+        return head(url, failIfNotOK, creds, ifNoneMatch, ifModifiedSince, range);
+     }
+
+    public HttpInputStream head(String url,
+            boolean failIfNotOK,
+            UsernamePasswordCredentials creds,
+            String ifNoneMatch,
+            String ifModifiedSince,
+            String range) throws IOException {
+        return execute(new HttpHead(url), url, failIfNotOK, creds, ifNoneMatch, ifModifiedSince, range);
+     }
 
     /**
      * Get an HTTP resource with the response as an InputStream, given a URL. If
@@ -158,41 +229,64 @@ public class WebClient {
                                boolean failIfNotOK,
                                UsernamePasswordCredentials creds)
             throws IOException {
+        return get(url, failIfNotOK, creds, null, null, null);
+    }
 
+    public HttpInputStream get(String url,
+                               boolean failIfNotOK,
+                               UsernamePasswordCredentials creds,
+                               String ifNoneMatch,
+                               String ifModifiedSince,
+                               String range)
+            throws IOException {
+        return execute(new HttpGet(url), url, failIfNotOK, creds, ifNoneMatch, ifModifiedSince, range);
+    }
+
+    public HttpInputStream head(String url,
+                     boolean failIfNotOK,
+                     UsernamePasswordCredentials creds)
+            throws IOException {
+        return head(url, failIfNotOK, creds, null, null, null);
+    }
+
+    private HttpInputStream execute(HttpUriRequest request,
+                                    String url,
+                                    boolean failIfNotOK,
+                                    UsernamePasswordCredentials creds,
+                                    String ifNoneMatch,
+                                    String ifModifiedSince,
+                                    String range)
+            throws IOException {
         HttpClient client;
-        GetMethod getMethod = new GetMethod(url);
 
-        if (wconfig.getUserAgent() != null) {
-            getMethod.setRequestHeader("User-Agent", wconfig.getUserAgent());
-        }
+        setHeaders(request, wconfig.getUserAgent(), ifNoneMatch, ifModifiedSince, range);
         if (creds != null && creds.getUserName() != null
                 && creds.getUserName().length() > 0) {
             client = getHttpClient(url, creds);
-            getMethod.setDoAuthentication(true);
         } else {
             client = getHttpClient(url);
         }
 
-        HttpInputStream in = new HttpInputStream(client, getMethod, url);
+        HttpInputStream in = new HttpInputStream(client, request);
         int status = in.getStatusCode();
         if (failIfNotOK) {
-            if (status != 200) {
+            if (status != HttpStatus.SC_OK && 
+                status != HttpStatus.SC_NOT_MODIFIED &&
+                status != HttpStatus.SC_PARTIAL_CONTENT &&
+                status != HttpStatus.SC_REQUESTED_RANGE_NOT_SATISFIABLE) {
                 //if (followRedirects && in.getStatusCode() == 302){
                 if (wconfig.getFollowRedirects() && 300 <= status && status <= 399) {
                     int count = 1;
                     while (300 <= status && status <= 399
                             && count <= wconfig.getMaxRedirects()) {
-                        if (in.getResponseHeader("location") == null) {
+                        if (in.getResponseHeader(HttpHeaders.LOCATION) == null) {
+                            in.close();
                             throw new IOException("Redirect HTTP response provided no location header.");
                         }
-                        url = in.getResponseHeader("location").getValue();
+                        url = in.getResponseHeader(HttpHeaders.LOCATION).getValue();
                         in.close();
-                        getMethod = new GetMethod(url);
-                        if (wconfig.getUserAgent() != null) {
-                            getMethod
-                                    .setRequestHeader("User-Agent", wconfig.getUserAgent());
-                        }
-                        in = new HttpInputStream(client, getMethod, url);
+                        setHeaders(request, wconfig.getUserAgent(), ifNoneMatch, ifModifiedSince, range);
+                        in = new HttpInputStream(client, request);
                         status = in.getStatusCode();
                         count++;
                     }
@@ -215,7 +309,7 @@ public class WebClient {
                         try {
                             in.close();
                         } catch (Exception e) {
-                            System.err.println("Can't close InputStream: "
+                            logger.error("Can't close InputStream: "
                                     + e.getMessage());
                         }
                     }
@@ -252,10 +346,28 @@ public class WebClient {
             try {
                 in.close();
             } catch (Exception e) {
-                System.err
-                        .println("Can't close InputStream: " + e.getMessage());
+                logger.error("Can't close InputStream: " + e.getMessage());
             }
         }
     }
 
+    private static void setHeaders(
+            HttpUriRequest request,
+            String ua,
+            String ifNoneMatch,
+            String ifModifiedSince,
+            String range) {
+        if (ifNoneMatch != null) {
+            request.setHeader(HttpHeaders.IF_NONE_MATCH, ifNoneMatch);
+        }
+        if (ifModifiedSince != null) {
+            request.setHeader(HttpHeaders.IF_MODIFIED_SINCE, ifModifiedSince);
+        }
+        if (range != null) {
+            request.setHeader(HttpHeaders.RANGE, range);
+        }
+        if (ua != null) {
+            request.setHeader(HttpHeaders.USER_AGENT, ua);
+        }
+    }
 }

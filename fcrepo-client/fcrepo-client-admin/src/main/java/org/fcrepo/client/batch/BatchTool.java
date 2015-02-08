@@ -96,21 +96,21 @@ public class BatchTool {
                 batchAdditions.process();
             }
 
-            Vector buildKeys = null;
+            Vector<String> buildKeys = null;
             if (miscProperties.getProperty(DISCRETE) == null
                     || !miscProperties.getProperty(DISCRETE).equals("yes")) {
-                buildKeys = new Vector();
+                buildKeys = new Vector<String>();
             } else {
                 batchXforms.process();
                 buildKeys = batchXforms.getKeys();
             }
 
-            Hashtable ingestMaps = null;
-            Vector ingestKeys = null;
+            Hashtable<String, String> ingestMaps = null;
+            Vector<String> ingestKeys = null;
             if (miscProperties.getProperty(EAT) == null
                     || !miscProperties.getProperty(EAT).equals("yes")) {
-                ingestMaps = new Hashtable();
-                ingestKeys = new Vector();
+                ingestMaps = new Hashtable<String, String>();
+                ingestKeys = new Vector<String>();
             } else {
                 batchIngest.process();
                 ingestMaps = batchIngest.getPidMaps();
@@ -125,11 +125,8 @@ public class BatchTool {
 
             String pidsFormat =
                     miscProperties.getProperty(BatchTool.PIDSFORMAT);
-            String objectFormat =
-                    miscProperties.getProperty(BatchTool.OBJECTFORMAT);
             PrintStream out = new PrintStream(new FileOutputStream(pidsPath)); //= System.err;
 
-            //System.out.println("pidsFormat = [" + pidsFormat + "]");
             if (pidsFormat.equals("xml")) {
                 out.println("<" + XMLREPORTROOT + ">");
             }
@@ -172,6 +169,7 @@ public class BatchTool {
                     }
                     //System.out.println("no exceptions");
                 } catch (Exception e) {
+                    out.close();
                     System.out.println(e.getMessage());
                     //System.out.println("exception = [" + e.getMessage() + "]");
                     Thread.dumpStack();
@@ -181,13 +179,13 @@ public class BatchTool {
                 if (pidsFormat.equals("xml")) {
                     //System.out.println("in loop, think it's xml i'm after]");
                     out.print("\t<map ");
-                    if (buildPath2file != null && !buildPath2file.equals("")) {
+                    if (buildPath2file != null && !buildPath2file.isEmpty()) {
                         out.print("path2spec=\"" + buildPath2file + "\" ");
                     }
-                    if (ingestPath2file != null && !ingestPath2file.equals("")) {
+                    if (ingestPath2file != null && !ingestPath2file.isEmpty()) {
                         out.print("path2object=\"" + ingestPath2file + "\" ");
                     }
-                    if (pid != null && !pid.equals("")) {
+                    if (pid != null && !pid.isEmpty()) {
                         out.print("pid=\"" + pid + "\" ");
                     }
                     //out.print("\t<map path2spec=\"" + buildPath2file + "\" path2object=\"" + ingestPath2file + "\" pid=\"" + pid + "\" />");
@@ -253,7 +251,7 @@ public class BatchTool {
     static final String OBJECTFORMAT = "object-format";
 
     static final boolean argOK(String value) {
-        return value != null && !value.equals("");
+        return value != null && !value.isEmpty();
     }
 
     public static final void main(String[] args) throws Exception {

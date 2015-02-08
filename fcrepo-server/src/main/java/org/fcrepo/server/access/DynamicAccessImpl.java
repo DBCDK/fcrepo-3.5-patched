@@ -53,6 +53,8 @@ import org.fcrepo.server.storage.types.Property;
  * @author Sandy Payette
  */
 public class DynamicAccessImpl {
+    
+    private static final String[] EMPTY_STRING_ARRAY = new String[0];
 
     private final Access m_access;
 
@@ -60,11 +62,11 @@ public class DynamicAccessImpl {
 
     private File reposHomeDir = null;
 
-    private Hashtable dynamicServiceToDeployment = null;
+    private Hashtable<String, Class<?>> dynamicServiceToDeployment = null;
 
     public DynamicAccessImpl(Access m_access,
                              File reposHomeDir,
-                             Hashtable dynamicSDefToDep) {
+                             Hashtable<String, Class<?>> dynamicSDefToDep) {
         dispatcher = new ServiceMethodDispatcher();
         this.m_access = m_access;
         this.reposHomeDir = reposHomeDir;
@@ -96,12 +98,12 @@ public class DynamicAccessImpl {
         // NOTE: AT THIS TIME THERE THERE IS JUST ONE LOADED, NAMELY,
         // THE DEFAULT DISSEMINATOR SDEF (sDefPID = fedora-system:3)
 
-        ArrayList sdefs = new ArrayList();
-        Iterator iter = dynamicServiceToDeployment.keySet().iterator();
+        ArrayList<String> sdefs = new ArrayList<String>();
+        Iterator<String> iter = dynamicServiceToDeployment.keySet().iterator();
         while (iter.hasNext()) {
             sdefs.add(iter.next());
         }
-        return (String[]) sdefs.toArray(new String[0]);
+        return sdefs.toArray(EMPTY_STRING_ARRAY);
     }
 
     /**
@@ -123,7 +125,7 @@ public class DynamicAccessImpl {
                                           String sDefPID,
                                           Date asOfDateTime)
             throws ServerException {
-        Class deploymentClass = (Class) dynamicServiceToDeployment.get(sDefPID);
+        Class<?> deploymentClass = dynamicServiceToDeployment.get(sDefPID);
         if (deploymentClass != null) {
             try {
                 Method method =
@@ -207,11 +209,11 @@ public class DynamicAccessImpl {
 
             String reposBaseURL =
                     getReposBaseURL(context
-                                            .getEnvironmentValue(Constants.HTTP_REQUEST.SECURITY.uri)
+                                            .getEnvironmentValue(Constants.HTTP_REQUEST.SECURITY.attributeId)
                                             .equals(Constants.HTTP_REQUEST.SECURE.uri) ? "https"
                                             : "http",
                                     context
-                                            .getEnvironmentValue(Constants.HTTP_REQUEST.SERVER_PORT.uri));
+                                            .getEnvironmentValue(Constants.HTTP_REQUEST.SERVER_PORT.attributeId));
 
             Object result =
                     dispatcher
@@ -264,7 +266,8 @@ public class DynamicAccessImpl {
             throws ServerException {
         String[] sDefPIDs = getServiceDefinitions(context, PID, asOfDateTime);
         Date versDateTime = asOfDateTime;
-        ArrayList objectMethods = new ArrayList();
+        ArrayList<ObjectMethodsDef> objectMethods =
+                new ArrayList<ObjectMethodsDef>();
         for (String element : sDefPIDs) {
             MethodDef[] methodDefs =
                     getMethods(context, PID, element, asOfDateTime);
@@ -278,9 +281,11 @@ public class DynamicAccessImpl {
                 objectMethods.add(method);
             }
         }
-        return (ObjectMethodsDef[]) objectMethods
-                .toArray(new ObjectMethodsDef[0]);
+        return objectMethods
+                .toArray(OBJ_METHOD_DEF_ARRAY_TYPE);
     }
+    private static final ObjectMethodsDef[] OBJ_METHOD_DEF_ARRAY_TYPE =
+            new ObjectMethodsDef[0];
 
     /**
      * Get the profile information for the digital object. This contain key

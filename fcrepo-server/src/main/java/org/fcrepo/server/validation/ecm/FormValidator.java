@@ -1,14 +1,14 @@
 package org.fcrepo.server.validation.ecm;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.storage.DOReader;
 import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.Validation;
 import org.fcrepo.server.validation.ecm.jaxb.DsTypeModel;
 import org.fcrepo.server.validation.ecm.jaxb.Form;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Created by IntelliJ IDEA.
@@ -18,7 +18,6 @@ import java.util.List;
  * To change this template use File | Settings | File Templates.
  */
 public class FormValidator {
-
 
     void checkFormAndMime(DsTypeModel typeModel, Datastream objectDatastream, Validation validation,
                           DOReader contentmodelReader) throws ServerException {

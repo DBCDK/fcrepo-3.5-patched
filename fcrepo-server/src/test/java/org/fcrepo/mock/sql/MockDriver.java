@@ -9,8 +9,6 @@ import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
-import java.sql.SQLFeatureNotSupportedException;
-
 import java.util.Properties;
 import java.util.logging.Logger;
 
@@ -62,9 +60,8 @@ public class MockDriver
         throw new RuntimeException("MockDriver.jdbcCompliant not implemented");
     }
 
-    public Logger getParentLogger()
-            throws SQLFeatureNotSupportedException {
-        throw new SQLFeatureNotSupportedException("MockDriver.getParentLogger not implemented");
+    public Logger getParentLogger() {                                               
+        throw new RuntimeException("MockDriver.getParentLogger not implemented");
     }
 
 }

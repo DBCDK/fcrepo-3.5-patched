@@ -44,7 +44,7 @@
         <include>org.apache.derby:derby:jar:*</include>
         <include>org.fcrepo:mulgara-core:jar:*</include>
         <include>mysql:mysql-connector-java:jar:*</include>
-        <include>postgresql:postgresql:jar:*</include>
+        <include>org.postgresql:postgresql:jar:*</include>
       </includes>
       <useProjectArtifact>false</useProjectArtifact>
       <outputDirectory>/resources</outputDirectory>
@@ -149,9 +149,11 @@
         <include>commons-betwixt:commons-betwixt:*</include>
         <include>commons-collections:commons-collections:jar:*</include>
         <include>commons-digester:commons-digester:jar:*</include>
+        <include>commons-pool:commons-pool:jar:*</include>
         <include>dom4j:dom4j:jar:*</include>
         <include>org.fcrepo:mulgara-core:jar:*</include>
-        <include>org.fcrepo:openrdf-sesame-onejar:jar:*</include>
+        <include>org.jboss.security:jboss-sunxacml:jar:*</include>
+        <include>org.openrdf.sesame:sesame*</include>
         <include>jaxen:jaxen:jar:*</include>
         <include>org.slf4j:slf4j-api:jar:*</include>
         <include>org.slf4j:jcl-over-slf4j:jar:*</include>
@@ -171,15 +173,6 @@
         </include>
       </includes>
       <outputDirectory>/lib</outputDirectory>
-    </dependencySet>
-
-    <dependencySet>
-      <useProjectArtifact>false</useProjectArtifact>
-      <includes>
-        <include>org.fcrepo:fcrepo-server:jar:cli-loader-main:*
-        </include>
-      </includes>
-      <outputDirectory>/server/bin</outputDirectory>
     </dependencySet>
 
     <dependencySet>
@@ -208,7 +201,7 @@
     <dependencySet>
       <useProjectArtifact>false</useProjectArtifact>
       <includes>
-        <include>org.fcrepo:apache-tomcat:zip:*</include>
+        <include>org.apache.tomcat:tomcat:zip:*</include>
       </includes>
       <outputDirectory>/resources</outputDirectory>
     </dependencySet>

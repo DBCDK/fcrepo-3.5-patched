@@ -18,35 +18,31 @@
 
 package org.fcrepo.server.security.xacml.pep.ws.operations;
 
+import java.lang.reflect.Method;
 import java.net.URI;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.sun.xacml.attr.AnyURIAttribute;
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.StringAttribute;
-import com.sun.xacml.ctx.RequestCtx;
-import com.sun.xacml.ctx.ResponseCtx;
-import com.sun.xacml.ctx.Result;
-import com.sun.xacml.ctx.Status;
+import javax.xml.ws.handler.soap.SOAPMessageContext;
 
-import org.apache.axis.MessageContext;
-import org.apache.axis.message.RPCParam;
-
+import org.fcrepo.common.Constants;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.pep.ContextHandler;
+import org.fcrepo.server.security.xacml.pep.PEPException;
+import org.fcrepo.server.security.xacml.pep.ResourceAttributes;
+import org.fcrepo.server.types.gen.FieldSearchResult;
+import org.fcrepo.server.types.gen.ObjectFields;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.fcrepo.common.Constants;
-
-import org.fcrepo.server.security.xacml.MelcoeXacmlException;
-import org.fcrepo.server.security.xacml.pep.PEPException;
-import org.fcrepo.server.security.xacml.util.ContextUtil;
-import org.fcrepo.server.types.gen.FieldSearchResult;
-import org.fcrepo.server.types.gen.ObjectFields;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
+import org.jboss.security.xacml.sunxacml.attr.StringAttribute;
+import org.jboss.security.xacml.sunxacml.ctx.ResponseCtx;
+import org.jboss.security.xacml.sunxacml.ctx.Result;
+import org.jboss.security.xacml.sunxacml.ctx.Status;
 
 
 /**
@@ -61,16 +57,14 @@ public class FieldSearchResultHandler
     private static final Logger logger =
             LoggerFactory.getLogger(FieldSearchResultHandler.class);
 
-    private final ContextUtil contextUtil = ContextUtil.getInstance();
-
     /**
      * Default constructor.
      *
      * @throws PEPException
      */
-    public FieldSearchResultHandler()
+    public FieldSearchResultHandler(ContextHandler contextHandler)
             throws PEPException {
-        super();
+        super(contextHandler);
     }
 
     /**
@@ -83,29 +77,26 @@ public class FieldSearchResultHandler
      * @return the new search result object without non-permissable items
      * @throws PEPException
      */
-    public FieldSearchResult filter(MessageContext context,
+    public FieldSearchResult filter(SOAPMessageContext context,
                                     FieldSearchResult result)
             throws PEPException {
-        ObjectFields[] objs = result.getResultList();
-        List<String> requests = new ArrayList<String>();
-        Map<String, ObjectFields> objects = new HashMap<String, ObjectFields>();
-
-        if (objs.length == 0) {
+        if (result == null || result.getResultList() == null || result.getResultList().getObjectFields() == null || result.getResultList().getObjectFields().isEmpty()) {
             return result;
         }
+        List<ObjectFields> objs = result.getResultList().getObjectFields();
+        RequestCtx[] requests = new RequestCtx[objs.size()];
+        int ix = 0;
+        Map<String, ObjectFields> objects = new HashMap<String, ObjectFields>();
 
         for (ObjectFields o : objs) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Checking: " + o.getPid());
-            }
+            logger.debug("Checking: {}", o.getPid());
 
             Map<URI, AttributeValue> actions =
                     new HashMap<URI, AttributeValue>();
-            Map<URI, AttributeValue> resAttr =
-                    new HashMap<URI, AttributeValue>();
+            Map<URI, AttributeValue> resAttr;
 
-            String pid = o.getPid();
-            if (pid != null && !"".equals(pid)) {
+            String pid = o.getPid() != null ? o.getPid().getValue() : null;
+            if (pid != null && !pid.isEmpty()) {
                 objects.put(pid, o);
 
                 try {
@@ -113,11 +104,11 @@ public class FieldSearchResultHandler
                             .put(Constants.ACTION.ID.getURI(),
                                  new StringAttribute(Constants.ACTION.LIST_OBJECT_IN_FIELD_SEARCH_RESULTS
                                          .getURI().toASCIIString()));
+                    actions.put(Constants.ACTION.API.getURI(),
+                                new StringAttribute(Constants.ACTION.APIA.getURI()
+                                        .toASCIIString()));
 
-                    resAttr.put(Constants.OBJECT.PID.getURI(),
-                                new StringAttribute(pid));
-                    resAttr.put(new URI(XACML_RESOURCE_ID),
-                                new AnyURIAttribute(new URI(pid)));
+                    resAttr = ResourceAttributes.getResources(pid);
 
                     RequestCtx req =
                             getContextHandler()
@@ -126,7 +117,7 @@ public class FieldSearchResultHandler
                                                   resAttr,
                                                   getEnvironment(context));
 
-                    requests.add(contextUtil.makeRequestCtx(req));
+                    requests[ix++] = req;
                 } catch (Exception e) {
                     logger.error(e.getMessage(), e);
                     throw new OperationHandlerException(e.getMessage(), e);
@@ -134,70 +125,57 @@ public class FieldSearchResultHandler
             }
         }
 
-        String response =
-                getContextHandler().evaluateBatch(requests
-                        .toArray(new String[requests.size()]));
-        ResponseCtx resCtx;
-        try {
-            resCtx = contextUtil.makeResponseCtx(response);
-        } catch (MelcoeXacmlException e) {
-            throw new PEPException(e);
-        }
+        ResponseCtx resCtx =
+                getContextHandler().evaluateBatch(requests);
 
         @SuppressWarnings("unchecked")
         Set<Result> results = resCtx.getResults();
 
         List<ObjectFields> resultObjects = new ArrayList<ObjectFields>();
         for (Result r : results) {
-            if (r.getResource() == null || "".equals(r.getResource())) {
+            String resource = r.getResource();
+            if (resource == null || resource.isEmpty()) {
                 logger.warn("This resource has no resource identifier in the xacml response results!");
             } else {
-                logger.debug("Checking: {}", r.getResource());
+                logger.debug("Checking: {}", resource);
             }
 
-            String[] ridComponents = r.getResource().split("\\/");
-            String rid = ridComponents[ridComponents.length - 1];
+            int lastSlash = resource.lastIndexOf('/');
+            String rid = resource.substring(lastSlash + 1);
 
             if (r.getStatus().getCode().contains(Status.STATUS_OK)
                     && r.getDecision() == Result.DECISION_PERMIT) {
                 ObjectFields tmp = objects.get(rid);
                 if (tmp != null) {
                     resultObjects.add(tmp);
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("Adding: " + r.getResource() + "[" + rid
-                                + "]");
-                    }
+                    logger.debug("Adding: {}[{}]", resource, rid);
                 } else {
-                    logger.warn("Not adding this object as no object found for this key: "
-                                    + r.getResource() + "[" + rid + "]");
+                    logger.warn("Not adding this object as no object found for this key: {}[{}]",
+                                    resource, rid);
                 }
             }
         }
-
-        result.setResultList(resultObjects
-                .toArray(new ObjectFields[resultObjects.size()]));
-
+        FieldSearchResult.ResultList rl = new FieldSearchResult.ResultList();
+        rl.getObjectFields().addAll(resultObjects);
+        result.setResultList(rl);
         return result;
     }
 
     /*
      * (non-Javadoc)
      * @see
-     * org.fcrepo.server.security.xacml.pep.ws.operations.OperationHandler#handleRequest(org.apache
-     * .axis.MessageContext)
+     * org.fcrepo.server.security.xacml.pep.ws.operations.OperationHandler#handleRequest(SOAPMessageContext)
      */
-    public RequestCtx handleRequest(MessageContext context)
+    @Override
+    public RequestCtx handleRequest(SOAPMessageContext context)
             throws OperationHandlerException {
         RequestCtx req = null;
 
-        Map<URI, AttributeValue> resAttr = new HashMap<URI, AttributeValue>();
+        Map<URI, AttributeValue> resAttr;
         Map<URI, AttributeValue> actions = new HashMap<URI, AttributeValue>();
 
         try {
-            resAttr.put(Constants.OBJECT.PID.getURI(),
-                        new StringAttribute("FedoraRepository"));
-            resAttr.put(new URI(XACML_RESOURCE_ID),
-                        new AnyURIAttribute(new URI("FedoraRepository")));
+            resAttr = ResourceAttributes.getRepositoryResources();
 
             actions.put(Constants.ACTION.ID.getURI(),
                         new StringAttribute(Constants.ACTION.FIND_OBJECTS
@@ -222,19 +200,21 @@ public class FieldSearchResultHandler
     /*
      * (non-Javadoc)
      * @see
-     * org.fcrepo.server.security.xacml.pep.ws.operations.OperationHandler#handleResponse(org.apache
-     * .axis.MessageContext)
+     * org.fcrepo.server.security.xacml.pep.ws.operations.OperationHandler#handleResponse(SOAPMessageContext)
      */
-    public RequestCtx handleResponse(MessageContext context)
+    @Override
+    public RequestCtx handleResponse(SOAPMessageContext context)
             throws OperationHandlerException {
         try {
-            FieldSearchResult result =
-                    (FieldSearchResult) getSOAPResponseObject(context);
-            result = filter(context, result);
-            RPCParam param =
-                    new RPCParam(context.getOperation().getReturnQName(),
-                                 result);
-            setSOAPResponseObject(context, param);
+            Object response = getSOAPResponseObject(context);
+            org.fcrepo.server.types.gen.FieldSearchResult result =
+                (org.fcrepo.server.types.gen.FieldSearchResult) callGetter("getResult",response);
+            result =
+                filter(context, result);
+            Method setter = response.getClass().getDeclaredMethod("setResult",
+                    org.fcrepo.server.types.gen.FieldSearchResult.class);
+            setter.invoke(response, result);
+            setSOAPResponseObject(context, response);
         } catch (Exception e) {
             logger.error("Error filtering Objects", e);
             throw new OperationHandlerException("Error filtering Objects", e);

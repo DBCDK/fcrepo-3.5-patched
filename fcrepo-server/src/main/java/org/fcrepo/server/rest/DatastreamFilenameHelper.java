@@ -25,11 +25,10 @@ import org.fcrepo.common.Constants;
 
 import org.fcrepo.server.Context;
 import org.fcrepo.server.Server;
-import org.fcrepo.server.access.Access;
-import org.fcrepo.server.errors.DatastreamNotFoundException;
-import org.fcrepo.server.management.Management;
+import org.fcrepo.server.storage.DOManager;
+import org.fcrepo.server.storage.DOReader;
 import org.fcrepo.server.storage.RDFRelationshipReader;
-import org.fcrepo.server.storage.types.DatastreamDef;
+import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.MIMETypedStream;
 import org.fcrepo.server.storage.types.Property;
 import org.fcrepo.server.storage.types.RelationshipTuple;
@@ -69,20 +68,22 @@ public class DatastreamFilenameHelper {
     // other characters that can cause problems: ; , % # $
     protected static Pattern ILLEGAL_FILENAME_REGEX= Pattern.compile("[\\\\/\\*\\?<>:\\|\";,%#\\$]+");
 
-    protected Management m_apiMService;
-    protected Access m_apiAService;
+    protected DOManager m_doManager;
 
     // MIMETYPE-to-extensions mappings
     protected static HashMap<String, String> m_extensionMappings;
 
     /**
      * Read configuration information from fedora.fcfg
+     * Uses the DOManager directly to access RELS-INT, as
+     * the client access is for a different DS and is authorized
+     * in the access modules upstream.
      *
      * @param fedoraServer
      * @param management
      * @param access
      */
-    public DatastreamFilenameHelper(Server fedoraServer, Management management, Access access) {
+    public DatastreamFilenameHelper(Server fedoraServer, DOManager manager) {
         m_datastreamContentDispositionInlineEnabled = fedoraServer.getParameter("datastreamContentDispositionInlineEnabled");
         m_datastreamFilenameSource = fedoraServer.getParameter("datastreamFilenameSource");
         m_datastreamExtensionMappingLabel = fedoraServer.getParameter("datastreamExtensionMappingLabel");
@@ -92,8 +93,7 @@ public class DatastreamFilenameHelper {
         m_datastreamDefaultFilename = fedoraServer.getParameter("datastreamDefaultFilename");
         m_datastreamDefaultExtension = fedoraServer.getParameter("datastreamDefaultExtension");
 
-        m_apiMService = management;
-        m_apiAService = access;
+        m_doManager = manager;
     }
     /**
      * Get the file extension for a given MIMETYPE from the extensions mappings
@@ -186,14 +186,14 @@ public class DatastreamFilenameHelper {
         // is downloading requested?
         if (download != null && download.equals("true")) {
             // generate an "attachment" content disposition header with the filename
-            filename = getFilename(context, pid, dsID, asOfDateTime, stream.MIMEType);
-            headerValue="attachment; filename=\"" + filename + "\"";
+            filename = getFilename(context, pid, dsID, asOfDateTime, stream.getMIMEType());
+            headerValue= attachmentHeader(filename);
         } else {
             // is the content disposition header enabled in the case of not downloading?
             if (m_datastreamContentDispositionInlineEnabled.equals("true")) {
                 // it is... generate the header with "inline"
-                filename = getFilename(context, pid, dsID, asOfDateTime, stream.MIMEType);
-                headerValue="inline; filename=\"" + filename + "\"";
+                filename = getFilename(context, pid, dsID, asOfDateTime, stream.getMIMEType());
+                headerValue= inlineHeader(filename);
             }
         }
         // create content disposition header to add
@@ -208,6 +208,18 @@ public class DatastreamFilenameHelper {
             stream.header = header;
         }
 
+    }
+
+    private static final String attachmentHeader(String filename) {
+        StringBuilder sb = new StringBuilder(filename.length() + 23);
+        sb.append("attachment; filename=\"").append(filename).append('"');
+        return sb.toString();
+    }
+    
+    private static final String inlineHeader(String filename) {
+        StringBuilder sb = new StringBuilder(filename.length() + 20);
+        sb.append("inline; filename=\"").append(filename).append('"');
+        return sb.toString();
     }
 
     /**
@@ -235,18 +247,18 @@ public class DatastreamFilenameHelper {
             // try and get filename and extension from specified source
             if (source.equals("rels")) {
                 filename = getFilenameFromRels(context, pid, dsid, MIMETYPE);
-                if (!filename.equals(""))
+                if (!filename.isEmpty())
                     extension = getExtension(filename, m_datastreamExtensionMappingRels, MIMETYPE);
             } else {
                 if (source.equals("id")) {
                     filename = getFilenameFromId(pid, dsid, MIMETYPE);
-                    if (!filename.equals(""))
+                    if (!filename.isEmpty())
                         extension = getExtension(filename, m_datastreamExtensionMappingId, MIMETYPE);
 
                 } else {
                     if (source.equals("label")) {
                         filename = getFilenameFromLabel(context, pid, dsid, asOfDateTime, MIMETYPE);
-                        if (!filename.equals(""))
+                        if (!filename.isEmpty())
                             extension = getExtension(filename, m_datastreamExtensionMappingLabel, MIMETYPE);
                     } else {
                         logger.warn("Unknown datastream filename source specified in datastreamFilenameSource in fedora.fcfg: " + source + ". Please specify zero or more of: rels id label");
@@ -254,17 +266,17 @@ public class DatastreamFilenameHelper {
                 }
             }
             // if we've got one by here, quit loop
-            if (!filename.equals(""))
+            if (!filename.isEmpty())
                 break;
         }
         // if not determined from above use the default
-        if (filename.equals("")) {
+        if (filename.isEmpty()) {
             filename = m_datastreamDefaultFilename;
             extension = getExtension(m_datastreamDefaultFilename, m_datastreamExtensionMappingDefault, MIMETYPE);
         }
 
         // clean up filename - remove illegal chars
-        if (extension.equals("")) {
+        if (extension.isEmpty()) {
             return ILLEGAL_FILENAME_REGEX.matcher(filename).replaceAll("");
         } else {
             return ILLEGAL_FILENAME_REGEX.matcher(filename + "." + extension).replaceAll("");
@@ -285,18 +297,22 @@ public class DatastreamFilenameHelper {
         String filename = "";
 
         // read rels directly from RELS-INT - can't use Management.getRelationships as this requires auth
-        MIMETypedStream relsInt;
-        try {
-            relsInt = m_apiAService.getDatastreamDissemination(context, pid, "RELS-INT", null);
-        } catch (DatastreamNotFoundException e) {
-            return ""; // no RELS-INT - so no filename
-        }
-        Set<RelationshipTuple> relsIntTuples = RDFRelationshipReader.readRelationships(relsInt.getStream());
+        DOReader reader = m_doManager.getReader(false, context, pid);
+        Datastream relsInt = reader.GetDatastream("RELS-INT", null);
+        if (relsInt == null) return "";
+//        try {
+//            relsInt = m_apiAService.getDatastreamDissemination(context, pid, "RELS-INT", null);
+//        } catch (DatastreamNotFoundException e) {
+//            return "";
+//        }
+        Set<RelationshipTuple> relsIntTuples = RDFRelationshipReader.readRelationships(relsInt.getContentStream());
 
+        if (relsIntTuples.size() == 0) return "";
         // find the tuple specifying the filename
         int matchingTuples = 0;
+        String dsSubject = Constants.FEDORA.uri + pid + "/" + dsid;
         for ( RelationshipTuple tuple : relsIntTuples ) {
-            if (tuple.subject.equals(Constants.FEDORA.uri + pid + "/" + dsid) && tuple.predicate.equals(FILENAME_REL)) {
+            if (tuple.subject.equals(dsSubject) && tuple.predicate.equals(FILENAME_REL)) {
                 // use the first found relationship by default (report warning later if there are more)
                 if (matchingTuples == 0) {
                     if (tuple.isLiteral) {
@@ -330,18 +346,10 @@ public class DatastreamFilenameHelper {
 
         // can't get datastream label directly from datastream as this is an API-M call
         // instead get list of datastream defs, as these contain labels
-        DatastreamDef[] datastreams = m_apiAService.listDatastreams(context, pid, asOfDateTime);
+        DOReader reader = m_doManager.getReader(false, context, pid);
+        Datastream ds = reader.GetDatastream(dsid, asOfDateTime);
 
-        String filename = "";
-        for ( DatastreamDef datastream : datastreams) {
-            if (datastream.dsID.equals(dsid)) {
-                filename = datastream.dsLabel;
-                break;
-            }
-        }
-        return filename;
-
-
+        return (ds == null) ? "" : ds.DSLabel;
     }
     /**
      * Get filename from datastream id
@@ -378,7 +386,7 @@ public class DatastreamFilenameHelper {
                     // look up extension from mapping
                     extension = getExtension(MIMETYPE);
                     // if not found in mappings, use the default
-                    if (extension.equals(""))
+                    if (extension.isEmpty())
                         extension = m_datastreamDefaultExtension;
                 } else {
                     // unknown mapping type

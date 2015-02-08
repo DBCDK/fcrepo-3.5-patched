@@ -5,18 +5,17 @@
 
 package org.fcrepo.test.integration.cma;
 
+import static org.fcrepo.common.Constants.FOXML1_1;
+
 import java.io.File;
 import java.io.PrintStream;
-
 import java.util.ArrayList;
 
 import org.fcrepo.client.FedoraClient;
 import org.fcrepo.client.utility.ingest.Ingest;
 import org.fcrepo.client.utility.ingest.IngestCounter;
 import org.fcrepo.server.types.gen.ObjectMethodsDef;
-import org.fcrepo.test.FedoraTestCase;
-
-import static org.fcrepo.common.Constants.FOXML1_1;
+import org.fcrepo.server.utilities.TypeUtility;
 
 public abstract class Util {
 
@@ -40,40 +39,41 @@ public abstract class Util {
                                           String pid,
                                           String sDef,
                                           String method) throws Exception {
-        return new String(client.getAPIA().getDissemination(pid,
-                                                            sDef,
-                                                            method,
-                                                            null,
-                                                            null).getStream(),
-                          "UTF-8");
+        return new String(TypeUtility.convertDataHandlerToBytes(client
+                .getAPIAMTOM().getDissemination(pid, sDef, method, null, null)
+                .getStream()), "UTF-8");
 
     }
 
-    public static void ingestTestObjects(String path) throws Exception {
-        File dir = null;
-
+    public static String resourcePath(String path) {
         String specificPath = File.separator + path;
-
-        System.out.println("Ingesting test objects in FOXML format from "
-                + specificPath);
-
         String base = "src/test/resources/";
 
         if (System.getProperty("fcrepo-integrationtest-core.classes") != null) {
             base = System.getProperty("fcrepo-integrationtest-core.classes");
         }
 
-        dir = new File(base + "test-objects/foxml" + specificPath);
+        return base + "test-objects/foxml" + specificPath;
+    }
+    public static int ingestTestObjects(FedoraClient client, String path) throws Exception {
+        File dir = null;
 
-        FedoraClient client = FedoraTestCase.getFedoraClient();
+        String specificPath = resourcePath(path);
 
+        System.out.println("Ingesting test objects in FOXML format from "
+                + specificPath);
+
+        dir = new File(specificPath);
+
+        IngestCounter counter = new IngestCounter();
         Ingest.multiFromDirectory(dir,
-                                  FOXML1_1.uri,
-                                  client.getAPIA(),
-                                  client.getAPIM(),
-                                  null,
-                                  new PrintStream(File.createTempFile("demo",
-                                                                      null)),
-                                  new IngestCounter());
+                FOXML1_1.uri,
+                client.getAPIAMTOM(),
+                client.getAPIMMTOM(),
+                null,
+                new PrintStream(File.createTempFile("demo",
+                        null)),
+                        counter);
+        return counter.successes;
     }
 }

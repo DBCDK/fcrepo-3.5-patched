@@ -20,10 +20,7 @@ package org.fcrepo.server.security.xacml.pdp;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-
 import java.net.URI;
-import java.net.URISyntaxException;
-
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -33,22 +30,24 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
-import com.sun.xacml.AbstractPolicy;
-import com.sun.xacml.EvaluationCtx;
-import com.sun.xacml.Indenter;
-import com.sun.xacml.MatchResult;
-import com.sun.xacml.TargetMatchGroup;
-import com.sun.xacml.combine.PolicyCombinerElement;
-import com.sun.xacml.combine.PolicyCombiningAlgorithm;
-import com.sun.xacml.ctx.Result;
-import com.sun.xacml.ctx.Status;
+import org.fcrepo.common.Constants;
+import org.fcrepo.common.policy.xacml1.XACML1PolicyCombiningNamespace;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.jboss.security.xacml.sunxacml.AbstractPolicy;
+import org.jboss.security.xacml.sunxacml.EvaluationCtx;
+import org.jboss.security.xacml.sunxacml.Indenter;
+import org.jboss.security.xacml.sunxacml.MatchResult;
+import org.jboss.security.xacml.sunxacml.TargetMatchGroup;
+import org.jboss.security.xacml.sunxacml.combine.PolicyCombinerElement;
+import org.jboss.security.xacml.sunxacml.combine.PolicyCombiningAlgorithm;
+import org.jboss.security.xacml.sunxacml.ctx.Result;
+import org.jboss.security.xacml.sunxacml.ctx.Status;
 
 public class HierarchicalLowestChildDenyOverridesPolicyAlg
         extends PolicyCombiningAlgorithm {
@@ -59,22 +58,15 @@ public class HierarchicalLowestChildDenyOverridesPolicyAlg
     DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 
     public static final String XACML_RESOURCE_ID =
-            "urn:oasis:names:tc:xacml:1.0:resource:resource-id";
+            Constants.XACML1_RESOURCE.ID.toString();
 
     public static final String algId =
-            "urn:oasis:names:tc:xacml:1.0:policy-combining-algorithm:hierarchical-lowest-child-deny-overrides";
+            XACML1PolicyCombiningNamespace.getInstance().HIER_LOWEST_DENY_OVERRIDES.uri;
 
-    private static URI identifierURI;
+    private static final URI identifierURI = XACML1PolicyCombiningNamespace.getInstance().HIER_LOWEST_DENY_OVERRIDES.getURI();
 
     private static RuntimeException earlyException;
 
-    static {
-        try {
-            identifierURI = new URI(algId);
-        } catch (URISyntaxException se) {
-            earlyException = new IllegalArgumentException(se);
-        }
-    }
 
     /**
      * Standard constructor.
@@ -86,7 +78,6 @@ public class HierarchicalLowestChildDenyOverridesPolicyAlg
             throw earlyException;
         }
 
-        factory = DocumentBuilderFactory.newInstance();
     }
 
     /**
@@ -115,18 +106,18 @@ public class HierarchicalLowestChildDenyOverridesPolicyAlg
     @Override
     @SuppressWarnings("unchecked")
     public Result combine(EvaluationCtx context,
-                          List parameters,
-                          List policyElements) {
+                          @SuppressWarnings("rawtypes") List parameters,
+                          @SuppressWarnings("rawtypes") List policyElements) {
         logger.info("Combining using: " + getIdentifier());
 
         boolean atLeastOneError = false;
         boolean atLeastOnePermit = false;
-        Set denyObligations = new HashSet();
+        Set<Set<?>> denyObligations = new HashSet<Set<?>>();
         Status firstIndeterminateStatus = null;
 
         Set<AbstractPolicy> matchedPolicies = new HashSet<AbstractPolicy>();
 
-        Iterator it = policyElements.iterator();
+        Iterator<?> it = policyElements.iterator();
         while (it.hasNext()) {
             AbstractPolicy policy =
                     ((PolicyCombinerElement) it.next()).getPolicy();
@@ -195,7 +186,7 @@ public class HierarchicalLowestChildDenyOverridesPolicyAlg
         Set<AbstractPolicy> applicablePolicies = new HashSet<AbstractPolicy>();
 
         for (AbstractPolicy policy : policies) {
-            String resourceId = null;
+            String resourceId = "";
 
             @SuppressWarnings("unchecked")
             List<TargetMatchGroup> tmg =
@@ -220,7 +211,7 @@ public class HierarchicalLowestChildDenyOverridesPolicyAlg
 
             int current;
 
-            if ("".equals(resourceId)) {
+            if (resourceId == null || resourceId.isEmpty()) {
                 current = 0;
             } else {
                 current = getLength(resourceId);
@@ -302,7 +293,7 @@ public class HierarchicalLowestChildDenyOverridesPolicyAlg
     }
 
     private int getLength(String resourceId) {
-        if (resourceId == null || "".equals(resourceId)) {
+        if (resourceId == null || resourceId.isEmpty()) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Length: " + resourceId + " " + 0);
             }

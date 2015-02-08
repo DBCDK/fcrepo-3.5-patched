@@ -5,114 +5,62 @@
 
 package org.fcrepo.server.storage.types;
 
-import org.fcrepo.common.rdf.SimpleLiteral;
-import org.fcrepo.common.rdf.SimpleTriple;
-import org.fcrepo.common.rdf.SimpleURIReference;
-import org.jrdf.graph.ObjectNode;
-import org.jrdf.graph.PredicateNode;
+import java.net.URISyntaxException;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
 import org.jrdf.graph.Triple;
 import org.trippi.TripleIterator;
 import org.trippi.TrippiException;
-
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.*;
 
 
 public class TupleArrayTripleIterator
         extends TripleIterator {
 
-    int size = 0;
-
-    int index = 0;
-
-    ArrayList<RelationshipTuple> m_TupleArray = null;
+    private static final HashMap<String, String> DEFAULT_NS = new HashMap<String, String>(2);
+    static {
+        DEFAULT_NS.put("rel", "info:fedora/fedora-system:def/relations-external#");
+        DEFAULT_NS.put("rdf", "http://www.w3.org/1999/02/22-rdf-syntax-ns#");
+    }
+    
+    Iterator<RelationshipTuple> m_tuples = null;
 
     Map<String, String> m_map = null;
-
-    public TupleArrayTripleIterator(ArrayList<RelationshipTuple> array,
+    
+    public TupleArrayTripleIterator(Iterator<RelationshipTuple> tuples,
                                     Map<String, String> map) {
-        m_TupleArray = array;
-        size = array.size();
+        m_tuples = tuples;
         m_map = map;
     }
 
-    public TupleArrayTripleIterator(ArrayList<RelationshipTuple> array) {
-        m_TupleArray = array;
-        size = array.size();
-        m_map = new HashMap<String, String>();
-        m_map.put("rel", "info:fedora/fedora-system:def/relations-external#");
-        m_map.put("rdf", "http://www.w3.org/1999/02/22-rdf-syntax-ns#");
+    public TupleArrayTripleIterator(List<RelationshipTuple> array,
+                                    Map<String, String> map) {
+        this(array.iterator(), map);
+    }
+
+    public TupleArrayTripleIterator(List<RelationshipTuple> array) {
+        this(array, DEFAULT_NS);
     }
 
     @Override
     public boolean hasNext() throws TrippiException {
-        return index < size;
+        return m_tuples.hasNext();
     }
 
     @Override
     public Triple next() throws TrippiException {
-        RelationshipTuple tuple = m_TupleArray.get(index++);
+        RelationshipTuple tuple = m_tuples.next();
         try {
-            Triple triple = new SimpleTriple(
-                    new SimpleURIReference(new URI(tuple.subject)),
-                    makePredicateResourceFromRel(tuple.predicate,
-                                                 m_map),
-                    makeObjectFromURIandLiteral(tuple.object,
-                                                tuple.isLiteral,
-                                                tuple.datatype));
-            return triple;
+            return tuple.toTriple(m_map);
         } catch (URISyntaxException e) {
             throw new TrippiException("Invalid URI in Triple", e);
         }
     }
 
-    public static ObjectNode makeObjectFromURIandLiteral(String objURI,
-                                                         boolean isLiteral,
-                                                         String literalType)
-            throws URISyntaxException {
-        ObjectNode obj = null;
-        if (isLiteral) {
-            if (literalType == null || literalType.length() == 0) {
-                obj = new SimpleLiteral(objURI);
-            } else {
-                obj = new SimpleLiteral(objURI, new URI(literalType));
-            }
-        } else {
-            obj = new SimpleURIReference(new URI(objURI));
-        }
-        return obj;
-    }
-
-    public static PredicateNode makePredicateResourceFromRel(String predicate,
-                                                             Map<String, String> map)
-            throws URISyntaxException {
-        URI predURI = makePredicateFromRel(predicate, map);
-        PredicateNode node = new SimpleURIReference(predURI);
-        return node;
-    }
-
-    public static URI makePredicateFromRel(String relationship, Map map)
-            throws URISyntaxException {
-        String predicate = relationship;
-        Set keys = map.keySet();
-        Iterator iter = keys.iterator();
-        while (iter.hasNext()) {
-            String key = (String) iter.next();
-            if (predicate.startsWith(key + ":")) {
-                predicate = predicate.replaceFirst(key + ":",
-                                                   (String) map.get(key));
-            }
-        }
-
-        URI retVal = null;
-        retVal = new URI(predicate);
-        return retVal;
-    }
-
     @Override
     public void close() throws TrippiException {
-        // TODO Auto-generated method stub
-
+        // no-op
     }
 }

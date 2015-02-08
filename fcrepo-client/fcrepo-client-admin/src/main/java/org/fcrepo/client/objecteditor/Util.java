@@ -1,25 +1,24 @@
 /* The contents of this file are subject to the license and copyright terms
- * detailed in the license directory at the root of the source tree (also 
+ * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
+
 package org.fcrepo.client.objecteditor;
 
 import java.awt.Container;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
-
 import java.io.IOException;
-
+import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
-
-import org.apache.axis.types.NonNegativeInteger;
 
 import org.fcrepo.client.Administrator;
 import org.fcrepo.client.objecteditor.types.DatastreamInputSpec;
@@ -28,9 +27,10 @@ import org.fcrepo.server.types.gen.ComparisonOperator;
 import org.fcrepo.server.types.gen.Condition;
 import org.fcrepo.server.types.gen.FieldSearchQuery;
 import org.fcrepo.server.types.gen.FieldSearchResult;
+import org.fcrepo.server.types.gen.FieldSearchResult.ResultList;
+import org.fcrepo.server.types.gen.ObjectFactory;
 import org.fcrepo.server.types.gen.ObjectFields;
-
-
+import org.fcrepo.server.utilities.TypeUtility;
 
 /**
  * Some static utility methods that might be needed across several classes in
@@ -38,100 +38,25 @@ import org.fcrepo.server.types.gen.ObjectFields;
  */
 public abstract class Util {
 
-    public static Map getSDefLabelMap() throws IOException {
-        try {
-            HashMap labelMap = new HashMap();
-            FieldSearchQuery query = new FieldSearchQuery();
-            Condition[] conditions = new Condition[1];
-            conditions[0] = new Condition();
-            conditions[0].setProperty("fType");
-            conditions[0].setOperator(ComparisonOperator.fromValue("eq"));
-            conditions[0].setValue("D");
-            query.setConditions(conditions);
-            String[] fields = new String[] {"pid", "label"};
-            if (true) {
-                /* FIXME: find some other way to do this */
-                throw new UnsupportedOperationException("This operation uses obsolete field search semantics");
-            }
-            FieldSearchResult result =
-                    Administrator.APIA
-                            .findObjects(fields,
-                                         new NonNegativeInteger("50"),
-                                         query);
-            while (result != null) {
-                ObjectFields[] resultList = result.getResultList();
-                for (ObjectFields element : resultList) {
-                    labelMap.put(element.getPid(), element.getLabel());
-                }
-                if (result.getListSession() != null) {
-                    result =
-                            Administrator.APIA.resumeFindObjects(result
-                                    .getListSession().getToken());
-                } else {
-                    result = null;
-                }
-            }
-            return labelMap;
-        } catch (Exception e) {
-            throw new IOException(e.getMessage());
-        }
+    public static Map<?,?> getSDefLabelMap() throws IOException {
+        throw new IOException("This operation uses obsolete field search semantics");
     }
 
     /**
      * Get a map of pid-to-label of service deployments that implement the
      * service defined by the indicated sDef.
      */
-    public static Map getDeploymentLabelMap(String sDefPID) throws IOException {
-        try {
-            HashMap labelMap = new HashMap();
-            FieldSearchQuery query = new FieldSearchQuery();
-            Condition[] conditions = new Condition[2];
-            conditions[0] = new Condition();
-            conditions[0].setProperty("fType");
-            conditions[0].setOperator(ComparisonOperator.fromValue("eq"));
-            conditions[0].setValue("M");
-            conditions[1] = new Condition();
-            conditions[1].setProperty("bDef");
-            conditions[1].setOperator(ComparisonOperator.fromValue("has"));
-            conditions[1].setValue(sDefPID);
-            query.setConditions(conditions);
-            String[] fields = new String[] {"pid", "label"};
-            if (true) {
-                /*
-                 * FIXME: find some other way to do this, if we care. it uses
-                 * fType and bDef, which are no longer in field search,
-                 */
-                throw new UnsupportedOperationException("This operation uses obsolete field search semantics");
-            }
-            FieldSearchResult result =
-                    Administrator.APIA
-                            .findObjects(fields,
-                                         new NonNegativeInteger("50"),
-                                         query);
-            while (result != null) {
-                ObjectFields[] resultList = result.getResultList();
-                for (ObjectFields element : resultList) {
-                    labelMap.put(element.getPid(), element.getLabel());
-                }
-                if (result.getListSession() != null) {
-                    result =
-                            Administrator.APIA.resumeFindObjects(result
-                                    .getListSession().getToken());
-                } else {
-                    result = null;
-                }
-            }
-            return labelMap;
-        } catch (Exception e) {
-            throw new IOException(e.getMessage());
-        }
+    public static Map<?,?> getDeploymentLabelMap(String sDefPID) throws IOException {
+        throw new IOException("This operation uses obsolete field search semantics");
     }
 
-    public static Map getInputSpecMap(Set deploymentPIDs) throws IOException {
-        HashMap specMap = new HashMap();
-        Iterator iter = deploymentPIDs.iterator();
+    public static Map<String, DatastreamInputSpec> getInputSpecMap(Set<String> deploymentPIDs)
+            throws IOException {
+        HashMap<String, DatastreamInputSpec> specMap =
+                new HashMap<String, DatastreamInputSpec>();
+        Iterator<String> iter = deploymentPIDs.iterator();
         while (iter.hasNext()) {
-            String pid = (String) iter.next();
+            String pid = iter.next();
             specMap.put(pid, getInputSpec(pid));
         }
         return specMap;
@@ -139,8 +64,6 @@ public abstract class Util {
 
     public static DatastreamInputSpec getInputSpec(String deploymentPID)
             throws IOException {
-        HashMap hash = new HashMap();
-        hash.put("itemID", "DSINPUTSPEC");
         /*
          * return DatastreamInputSpec.parse(
          * Administrator.DOWNLOADER.getDissemination( deploymentPID,
@@ -158,10 +81,8 @@ public abstract class Util {
      * Get the list of MethodDefinition objects defined by the indicated service
      * definition.
      */
-    public static java.util.List getMethodDefinitions(String sDefPID)
+    public static List<MethodDefinition> getMethodDefinitions(String sDefPID)
             throws IOException {
-        HashMap parms = new HashMap();
-        parms.put("itemID", "METHODMAP");
         return MethodDefinition.parse(Administrator.DOWNLOADER
                 .getDatastreamDissemination(sDefPID, "METHODMAP", null));
     }
@@ -172,21 +93,25 @@ public abstract class Util {
     public static ObjectFields getObjectFields(String pid, String[] fields)
             throws IOException {
         FieldSearchQuery query = new FieldSearchQuery();
-        Condition[] conditions = new Condition[1];
-        conditions[0] = new Condition();
-        conditions[0].setProperty("pid");
-        conditions[0].setOperator(ComparisonOperator.fromValue("eq"));
-        conditions[0].setValue(pid);
-        query.setConditions(conditions);
+        Condition condition = new Condition();
+        condition.setProperty("pid");
+        condition.setOperator(ComparisonOperator.fromValue("eq"));
+        condition.setValue(pid);
+        FieldSearchQuery.Conditions conds = new FieldSearchQuery.Conditions();
+        conds.getCondition().add(condition);
+        ObjectFactory factory = new ObjectFactory();
+        query.setConditions(factory.createFieldSearchQueryConditions(conds));
         FieldSearchResult result =
-                Administrator.APIA.findObjects(fields,
-                                               new NonNegativeInteger("1"),
-                                               query);
-        ObjectFields[] resultList = result.getResultList();
-        if (resultList == null || resultList.length == 0) {
+                Administrator.APIA
+                        .findObjects(TypeUtility.convertStringtoAOS(fields),
+                                     new BigInteger("1"),
+                                     query);
+        ResultList resultList = result.getResultList();
+        if (resultList == null || resultList.getObjectFields() == null
+                && resultList.getObjectFields().size() == 0) {
             throw new IOException("Object not found in repository");
         }
-        return resultList[0];
+        return resultList.getObjectFields().get(0);
     }
 
     /**

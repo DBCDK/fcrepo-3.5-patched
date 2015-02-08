@@ -4,34 +4,39 @@
  */
 package org.fcrepo.utilities;
 
+import static org.junit.Assert.assertEquals;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.util.zip.ZipFile;
 
-import org.fcrepo.utilities.FileUtils;
-import org.fcrepo.utilities.Zip;
+import org.junit.Before;
+import org.junit.ClassRule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
-import junit.framework.TestCase;
+public class TestZip {
 
-public class TestZip
-        extends TestCase {
+    @ClassRule
+    public static TemporaryFolder folder = new TemporaryFolder();
 
-    private final String TMP_DIR = System.getProperty("java.io.tmpdir");
+    private File TMP_DIR;
 
-    private final String ZIP_FILE = TMP_DIR + File.separator + "test" + System.nanoTime() + ".zip";
-    private final String TEST_STR = "test" + System.nanoTime();
+    private File SRC_DIR;
 
-    private final String TEST_DIR = TMP_DIR + File.separator + TEST_STR;
+    private File ZIP_FILE;
 
-    @Override
-    protected void setUp() throws Exception {
-        super.setUp();
-        FileUtils.delete(TEST_DIR);
-        File testDir = new File(TEST_DIR);
-        File foo = new File(testDir, "foo");
-        File bar = new File(testDir, "bar");
+    @Before
+    public void setUp() throws Exception {
+        TMP_DIR = folder.newFolder("TestZip");
+        SRC_DIR = new File(TMP_DIR, "src");
+        ZIP_FILE = new File(TMP_DIR, "test.zip");
+
+        File foo = new File(SRC_DIR, "foo");
+        File bar = new File(SRC_DIR, "bar");
         File baz = new File(bar, "baz");
         File footxt = new File(foo, "foo.txt");
         File bartxt = new File(bar, "bar.txt");
@@ -40,35 +45,31 @@ public class TestZip
         baz.mkdirs();
         FileWriter fw = new FileWriter(footxt);
         fw.write("foo");
-        fw.flush();
         fw.close();
 
         FileWriter bw = new FileWriter(bartxt);
         bw.write("bar");
-        bw.flush();
         bw.close();
     }
 
-    @Override
-    protected void tearDown() throws Exception {
-        super.tearDown();
-        //Zip.deleteDirectory(TEST_DIR);
-    }
-
+    @Test
     public void testZip() throws Exception {
-        File dir = new File(TMP_DIR + File.separator + TEST_STR);
-        //Zip.zip(ZIP_FILE, TMP_DIR + File.separator + "test");
-        Zip.zip(new File(ZIP_FILE), dir.listFiles());
+        Zip.zip(ZIP_FILE, SRC_DIR.listFiles());
+        ZipFile zf = new ZipFile(ZIP_FILE);
+        try {
+            assertEquals(5, zf.size());
+        } finally {
+            zf.close();
+        }
     }
 
+    @Test
     public void testUnzip() throws Exception {
-        File dir = new File(TMP_DIR + File.separator + TEST_STR);
-        Zip.zip(new File(ZIP_FILE), dir.listFiles());
         FileInputStream fis = new FileInputStream(ZIP_FILE);
-        Zip.unzip(fis, TEST_DIR);
+        Zip.unzip(fis, TMP_DIR);
 
         FileReader fr =
-                new FileReader(TEST_DIR + File.separator + "foo"
+                new FileReader(TMP_DIR + File.separator + "foo"
                         + File.separator + "foo.txt");
         BufferedReader buff = new BufferedReader(fr);
         boolean eof = false;
@@ -80,5 +81,6 @@ public class TestZip
                 assertEquals("foo", line);
             }
         }
+        buff.close();
     }
 }

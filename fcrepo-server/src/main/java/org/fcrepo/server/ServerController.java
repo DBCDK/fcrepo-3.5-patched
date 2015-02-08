@@ -12,19 +12,15 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.logging.Level;
 
 import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.fcrepo.common.Constants;
 import org.fcrepo.server.errors.DatastreamNotFoundException;
 import org.fcrepo.server.errors.GeneralException;
-import org.fcrepo.server.errors.ModuleInitializationException;
 import org.fcrepo.server.errors.ObjectNotFoundException;
 import org.fcrepo.server.errors.ServerException;
-import org.fcrepo.server.errors.ServerInitializationException;
 import org.fcrepo.server.errors.authorization.AuthzDeniedException;
 import org.fcrepo.server.errors.authorization.AuthzOperationalException;
 import org.fcrepo.server.errors.authorization.AuthzPermittedException;
@@ -34,17 +30,13 @@ import org.fcrepo.server.errors.servletExceptionExtensions.Forbidden403Exception
 import org.fcrepo.server.errors.servletExceptionExtensions.InternalError500Exception;
 import org.fcrepo.server.errors.servletExceptionExtensions.NotFound404Exception;
 import org.fcrepo.server.errors.servletExceptionExtensions.Ok200Exception;
-import org.fcrepo.server.errors.servletExceptionExtensions.Unavailable503Exception;
 import org.fcrepo.server.management.DefaultManagement;
 import org.fcrepo.server.management.ManagementModule;
-import org.fcrepo.server.search.FieldSearch;
 import org.fcrepo.server.security.Authorization;
-import org.fcrepo.server.storage.DOManager;
 import org.fcrepo.server.storage.DefaultDOManager;
 import org.fcrepo.server.utilities.PIDStreamIterableWrapper;
 import org.fcrepo.server.utilities.ServerUtilitySerializer;
 import org.fcrepo.server.utilities.status.ServerState;
-import org.fcrepo.server.utilities.status.ServerStatusFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,16 +48,14 @@ import org.slf4j.LoggerFactory;
  * @author Chris Wilper
  */
 public class ServerController
-        extends HttpServlet {
+        extends SpringServlet {
 
     private static final Logger logger =
         LoggerFactory.getLogger(DefaultManagement.class);
 
     private static final long serialVersionUID = 1L;
-
-    private static Server s_server;
-
-    private ServerStatusFile _status;
+    
+    private static final String[] EMPTY_STRING_ARRAY = new String[0];
 
     private static String PROTOCOL_FILE = "file:///";
 
@@ -79,7 +69,7 @@ public class ServerController
             throw new BadRequest400Exception(request,
                                              actionLabel,
                                              "no action",
-                                             new String[0]);
+                                             EMPTY_STRING_ARRAY);
         }
 
         if (action.equals("status")) {
@@ -92,7 +82,7 @@ public class ServerController
             modifyWriteAccessAction(request, response);
         }else {
             throw new BadRequest400Exception(request, actionLabel, "bad action:  "
-                                             + action, new String[0]);
+                                             + action, EMPTY_STRING_ARRAY);
         }
     }
 
@@ -101,55 +91,39 @@ public class ServerController
             Context context =
                     ReadOnlyContext.getContext(Constants.HTTP_REQUEST.REST.uri,
                                                request);
-            File fedoraHome = new File(Constants.FEDORA_HOME);
-            if (!Server.hasInstance(fedoraHome)) {
-                throw new Unavailable503Exception(request,
-                                                  actionLabel,
-                                                  "server not available",
-                                                  new String[0]);
-            }
-            Server server = null;
-            try {
-                server = Server.getInstance(fedoraHome, false);
-            } catch (Throwable t) {
+            if (m_server == null) {
                 throw new InternalError500Exception(request,
                                                     actionLabel,
-                                                    "error performing action0",
-                                                    new String[0]);
-            }
-            if (server == null) {
-                throw new InternalError500Exception(request,
-                                                    actionLabel,
-                                                    "error performing action1",
-                                                    new String[0]);
+                                                    "server not available",
+                                                    EMPTY_STRING_ARRAY);
             }
             try {
-                server.status(context);
+                m_server.status(context);
             } catch (AuthzOperationalException aoe) {
                 throw new Forbidden403Exception(request,
                                                 actionLabel,
                                                 "authorization failed",
-                                                new String[0]);
+                                                EMPTY_STRING_ARRAY);
             } catch (AuthzDeniedException ade) {
                 throw new Forbidden403Exception(request,
                                                 actionLabel,
                                                 "authorization denied",
-                                                new String[0]);
+                                                EMPTY_STRING_ARRAY);
             } catch (AuthzPermittedException ape) {
                 throw new Continue100Exception(request,
                                                actionLabel,
                                                "authorization permitted",
-                                               new String[0]);
+                                               EMPTY_STRING_ARRAY);
             } catch (Throwable t) {
                 throw new InternalError500Exception(request,
                                                     actionLabel,
                                                     "error performing action2",
-                                                    new String[0]);
+                                                    EMPTY_STRING_ARRAY);
             }
             throw new Ok200Exception(request,
                                      actionLabel,
                                      "server running",
-                                     new String[0]);
+                                     EMPTY_STRING_ARRAY);
 
         }
 
@@ -158,37 +132,20 @@ public class ServerController
             Context context =
                     ReadOnlyContext.getContext(Constants.HTTP_REQUEST.REST.uri,
                                                request);
-            File fedoraHome = new File(Constants.FEDORA_HOME);
-            if (!Server.hasInstance(fedoraHome)) {
-                throw new Unavailable503Exception(request,
-                                                  actionLabel,
-                                                  "server not available",
-                                                  new String[0]);
-            }
-            Server server = null;
-            try {
-                server = Server.getInstance(fedoraHome, false);
-            } catch (Throwable t) {
+            if (m_server == null) {
                 throw new InternalError500Exception(request,
                                                     actionLabel,
-                                                    "error performing action0",
-                                                    new String[0]);
-            }
-            if (server == null) {
-                throw new InternalError500Exception(request,
-                                                    actionLabel,
-                                                    "error performing action1",
-                                                    new String[0]);
+                                                    "server not available",
+                                                    EMPTY_STRING_ARRAY);
             }
             Authorization authModule = null;
             authModule =
-                    (Authorization) server
-                            .getModule("org.fcrepo.server.security.Authorization");
+                    m_server.getBean("org.fcrepo.server.security.Authorization", Authorization.class);
             if (authModule == null) {
                 throw new InternalError500Exception(request,
                                                     actionLabel,
-                                                    "error performing action2",
-                                                    new String[0]);
+                                                    "Required Authorization module not available",
+                                                    EMPTY_STRING_ARRAY);
             }
             try {
                 authModule.reloadPolicies(context);
@@ -196,27 +153,27 @@ public class ServerController
                 throw new Forbidden403Exception(request,
                                                 actionLabel,
                                                 "authorization failed",
-                                                new String[0]);
+                                                EMPTY_STRING_ARRAY);
             } catch (AuthzDeniedException ade) {
                 throw new Forbidden403Exception(request,
                                                 actionLabel,
                                                 "authorization denied",
-                                                new String[0]);
+                                                EMPTY_STRING_ARRAY);
             } catch (AuthzPermittedException ape) {
                 throw new Continue100Exception(request,
                                                actionLabel,
                                                "authorization permitted",
-                                               new String[0]);
+                                               EMPTY_STRING_ARRAY);
             } catch (Throwable t) {
                 throw new InternalError500Exception(request,
                                                     actionLabel,
                                                     "error performing action2",
-                                                    new String[0]);
+                                                    EMPTY_STRING_ARRAY);
             }
             throw new Ok200Exception(request,
                                      actionLabel,
                                      "server running",
-                                     new String[0]);
+                                     EMPTY_STRING_ARRAY);
 
         }
 
@@ -226,7 +183,7 @@ public class ServerController
         String parameter = request.getParameter(name);
         boolean res;
 
-        if (parameter == null || parameter.equals("")) {
+        if (parameter == null || parameter.isEmpty()) {
             res = defaultValue;
         } else {
             if (parameter.toLowerCase().equals("true") || parameter.toLowerCase().equals("yes")) {
@@ -251,30 +208,14 @@ public class ServerController
         Context context =
                 ReadOnlyContext.getContext(Constants.HTTP_REQUEST.REST.uri,
                                            request);
-        File fedoraHome = new File(Constants.FEDORA_HOME);
-        if (!Server.hasInstance(fedoraHome)) {
-            throw new Unavailable503Exception(request,
-                                              actionLabel,
-                                              "server not available",
-                                              new String[0]);
-        }
-        Server server = null;
-        try {
-            server = Server.getInstance(fedoraHome, false);
-        } catch (Throwable t) {
+        if (m_server == null) {
             throw new InternalError500Exception(request,
                                                 actionLabel,
-                                                "error performing action0",
-                                                new String[0]);
-        }
-        if (server == null) {
-            throw new InternalError500Exception(request,
-                                                actionLabel,
-                                                "error performing action1",
-                                                new String[0]);
+                                                "server not available",
+                                                EMPTY_STRING_ARRAY);
         }
         // FIXME: see FCREPO-765 Admin methods are currently in DefaultManagement and carried through to ManagementModule
-        ManagementModule apimDefault = (ManagementModule) server.getModule("org.fcrepo.server.management.Management");
+        ManagementModule apimDefault = (ManagementModule) m_server.getModule("org.fcrepo.server.management.Management");
 
         // FIXME: see FCREPO-765. tidy up output writing
 
@@ -349,13 +290,13 @@ public class ServerController
             throw new NotFound404Exception(request,
                                            actionLabel,
                                            e.getMessage(),
-                                           new String[0]);
+                                           EMPTY_STRING_ARRAY);
         } catch (DatastreamNotFoundException e) {
             logger.error("Datastream not found: " + pid + "/" + dsID + " - " + e.getMessage());
             throw new NotFound404Exception(request,
                                            actionLabel,
                                            e.getMessage(),
-                                           new String[0]);
+                                           EMPTY_STRING_ARRAY);
 
 
         } catch (GeneralException e) {
@@ -363,29 +304,29 @@ public class ServerController
             throw new InternalError500Exception(request,
                                                 actionLabel,
                                                 e.getMessage(),
-                                                new String[0]);
+                                                EMPTY_STRING_ARRAY);
         } catch (AuthzOperationalException aoe) {
             throw new Forbidden403Exception(request,
                                             actionLabel,
                                             "authorization failed",
-                                            new String[0]);
+                                            EMPTY_STRING_ARRAY);
         } catch (AuthzDeniedException ade) {
             throw new Forbidden403Exception(request,
                                             actionLabel,
                                             "authorization denied",
-                                            new String[0]);
+                                            EMPTY_STRING_ARRAY);
         } catch (AuthzPermittedException ape) {
             throw new Continue100Exception(request,
                                            actionLabel,
                                            "authorization permitted",
-                                           new String[0]);
+                                           EMPTY_STRING_ARRAY);
 
         } catch (ServerException e) {
-            logger.error(e.getMessage());
+            logger.error(e.getMessage(),e);
             throw new InternalError500Exception(request,
                                                 actionLabel,
                                                 "Unexpected error: " + e.getMessage(),
-                                                new String[0]);
+                                                EMPTY_STRING_ARRAY);
         }
 
     }
@@ -487,107 +428,28 @@ public class ServerController
 
     @Override
     public void init() throws ServletException {
-        File fedoraHomeDir = getFedoraHomeDir();
-        // get file for writing startup status
-        try {
-            _status = new ServerStatusFile(new File(fedoraHomeDir, "server"));
-        } catch (Throwable th) {
-            failStartup("Error initializing server status file", th);
-        }
-
-        try {
-            // Start the Fedora instance
-            _status.append(ServerState.STARTING,
-                           "Starting Fedora Server instance");
-            s_server = Server.getInstance(fedoraHomeDir);
-            _status.append(ServerState.STARTED, null);
-        } catch (Throwable th) {
-            String msg = "Fedora startup failed";
-            try {
-                _status.appendError(ServerState.STARTUP_FAILED, th);
-            } catch (Exception e) {
-            }
-            failStartup(msg, th);
-        }
-    }
-
-    /**
-     * Validates and returns the value of FEDORA_HOME.
-     *
-     * @return the FEDORA_HOME directory.
-     * @throws ServletException
-     *         if FEDORA_HOME (or fedora.home) was not set, does not denote an
-     *         existing directory, or is not writable by the current user.
-     */
-    private File getFedoraHomeDir() throws ServletException {
-
-        String fedoraHome = Constants.FEDORA_HOME;
-        if (fedoraHome == null) {
-            failStartup("FEDORA_HOME was not configured properly.  It must be "
-                    + "set via the fedora.home servlet init-param (preferred), "
-                    + "the fedora.home system property, or the FEDORA_HOME "
-                    + "environment variable.", null);
-        }
-        File fedoraHomeDir = new File(fedoraHome);
-        if (!fedoraHomeDir.isDirectory()) {
-            failStartup("The FEDORA_HOME directory, " + fedoraHomeDir.getPath()
-                    + " does not exist", null);
-        }
-        File writeTest = new File(fedoraHomeDir, "writeTest.tmp");
-        String writeErrorMessage =
-                "The FEDORA_HOME directory, " + fedoraHomeDir.getPath()
-                        + " is not writable by " + "the current user, "
-                        + System.getProperty("user.name");
-        try {
-            writeTest.createNewFile();
-            if (!writeTest.exists()) {
-                throw new IOException("");
-            }
-            writeTest.delete();
-        } catch (IOException e) {
-            failStartup(writeErrorMessage, null);
-        }
-
-        return fedoraHomeDir;
-    }
-
-    /**
-     * Prints a "FEDORA STARTUP ERROR" to STDERR along with the stacktrace of
-     * the Throwable (if given) and finally, throws a ServletException.
-     */
-    private void failStartup(String message, Throwable th)
-            throws ServletException {
-        System.err.println("\n**************************");
-        System.err.println("** FEDORA STARTUP ERROR **");
-        System.err.println("**************************\n");
-        System.err.println(message);
-        if (th == null) {
-            System.err.println();
-            throw new ServletException(message);
-        } else {
-            th.printStackTrace();
-            System.err.println();
-            throw new ServletException(message, th);
-        }
+        super.init();
     }
 
     @Override
     public void destroy() {
 
-        if (s_server != null) {
+        if (m_server != null) {
             try {
-                _status.append(ServerState.STOPPING,
+                m_status.append(ServerState.STOPPING,
                                "Shutting down Fedora Server and modules");
-                s_server.shutdown(null);
-                _status.append(ServerState.STOPPED, "Shutdown Successful");
+                m_server.shutdown(null);
+                m_status.append(ServerState.STOPPED, "Shutdown Successful");
             } catch (Throwable th) {
                 try {
-                    _status.appendError(ServerState.STOPPED_WITH_ERR, th);
+                    m_status.appendError(ServerState.STOPPED_WITH_ERR, th);
                 } catch (Exception e) {
                 }
             }
-            s_server = null;
+            m_server = null;
         }
+
+        super.destroy();
     }
 
     

@@ -4,21 +4,18 @@
  */
 package org.fcrepo.server.access.dissemination;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
-
+import java.net.URI;
 import java.sql.Timestamp;
-
 import java.util.Date;
 import java.util.Enumeration;
-import java.util.Hashtable;
 import java.util.Iterator;
 
+import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
 import javax.servlet.ServletOutputStream;
-import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -26,7 +23,7 @@ import org.fcrepo.common.Constants;
 import org.fcrepo.server.Context;
 import org.fcrepo.server.ReadOnlyContext;
 import org.fcrepo.server.Server;
-import org.fcrepo.server.errors.InitializationException;
+import org.fcrepo.server.SpringServlet;
 import org.fcrepo.server.errors.authorization.AuthzException;
 import org.fcrepo.server.errors.authorization.AuthzOperationalException;
 import org.fcrepo.server.errors.servletExceptionExtensions.RootException;
@@ -66,23 +63,22 @@ import org.slf4j.LoggerFactory;
  * @author Ross Wayland
  */
 public class DatastreamResolverServlet
-        extends HttpServlet {
+        extends SpringServlet {
 
     private static final Logger logger =
             LoggerFactory.getLogger(DatastreamResolverServlet.class);
 
     private static final long serialVersionUID = 1L;
+    
+    private static final String[] EMPTY_STRING_ARRAY = new String[0];
 
-    private static Server s_server;
-
-    private static DOManager m_manager;
-
-    private static Hashtable dsRegistry;
+    private DOManager m_manager;
 
     private static int datastreamMediationLimit;
 
     private static final String HTML_CONTENT_TYPE = "text/html";
 
+    @SuppressWarnings("unused")
     private static String fedoraServerHost;
 
     private static String fedoraServerPort;
@@ -96,45 +92,30 @@ public class DatastreamResolverServlet
      *         If the servlet cannot be initialized.
      */
     @Override
-    public void init() throws ServletException {
+    public void init(ServletConfig config) throws ServletException {
+        super.init(config);
         try {
-            s_server =
-                    Server.getInstance(new File(Constants.FEDORA_HOME), false);
-            fedoraServerPort = s_server.getParameter("fedoraServerPort");
+            fedoraServerPort = m_server.getParameter("fedoraServerPort");
             fedoraServerRedirectPort =
-                    s_server.getParameter("fedoraRedirectPort");
-            fedoraServerHost = s_server.getParameter("fedoraServerHost");
+                    m_server.getParameter("fedoraRedirectPort");
+            fedoraServerHost = m_server.getParameter("fedoraServerHost");
             m_manager =
-                    (DOManager) s_server
+                    (DOManager) m_server
                             .getModule("org.fcrepo.server.storage.DOManager");
             String expireLimit =
-                    s_server.getParameter("datastreamMediationLimit");
+                    m_server.getParameter("datastreamMediationLimit");
             if (expireLimit == null || expireLimit.equalsIgnoreCase("")) {
                 logger.info("datastreamMediationLimit unspecified, using default "
                         + "of 5 seconds");
                 datastreamMediationLimit = 5000;
             } else {
-                datastreamMediationLimit = new Integer(expireLimit).intValue();
-                logger.info("datastreamMediationLimit: "
-                        + datastreamMediationLimit);
+                datastreamMediationLimit = Integer.parseInt(expireLimit);
+                logger.info("datastreamMediationLimit: {}",
+                        datastreamMediationLimit);
             }
-        } catch (InitializationException ie) {
-            throw new ServletException("Unable to get an instance of Fedora server "
-                    + "-- " + ie.getMessage());
         } catch (Throwable th) {
             logger.error("Error initializing servlet", th);
         }
-    }
-
-    private static final boolean contains(String[] array, String item) {
-        boolean contains = false;
-        for (String element : array) {
-            if (element.equals(item)) {
-                contains = true;
-                break;
-            }
-        }
-        return contains;
     }
 
     public static final String ACTION_LABEL = "Resolve Datastream";
@@ -158,20 +139,15 @@ public class DatastreamResolverServlet
         String id = null;
         String dsPhysicalLocation = null;
         String dsControlGroupType = null;
-        String user = null;
-        String pass = null;
         MIMETypedStream mimeTypedStream = null;
         DisseminationService ds = null;
         Timestamp keyTimestamp = null;
         Timestamp currentTimestamp = null;
         PrintWriter out = null;
         ServletOutputStream outStream = null;
-        String requestURI =
-                request.getRequestURL().toString() + "?"
-                        + request.getQueryString();
 
-        id = request.getParameter("id").replaceAll("T", " ");
-        logger.debug("Datastream tempID=" + id);
+        id = request.getParameter("id").replace('T', ' ');
+        logger.debug("Datastream tempID={}", id);
 
         logger.debug("DRS doGet()");
 
@@ -190,25 +166,22 @@ public class DatastreamResolverServlet
                                    message);
                 return;
             }
-            id = id.replaceAll("T", " ").replaceAll("/", "").trim();
+            id = id.replace('T', ' ').replaceAll("/", "").trim();
 
             // Get in-memory hashtable of mappings from Fedora server.
-            ds = new DisseminationService();
-            dsRegistry = DisseminationService.dsRegistry;
-            DatastreamMediation dm = (DatastreamMediation) dsRegistry.get(id);
+            ds = new DisseminationService(m_server);
+            DatastreamMediation dm = DisseminationService.dsRegistry.get(id);
             if (dm == null) {
                 StringBuffer entries = new StringBuffer();
-                Iterator eIter = dsRegistry.keySet().iterator();
+                Iterator<String> eIter = DisseminationService.dsRegistry.keySet().iterator();
                 while (eIter.hasNext()) {
-                    entries.append("'" + (String) eIter.next() + "' ");
+                    entries.append("'" + eIter.next() + "' ");
                 }
                 throw new IOException("Cannot find datastream in temp registry by key: "
                         + id + "\n" + "Reg entries: " + entries.toString());
             }
             dsPhysicalLocation = dm.dsLocation;
             dsControlGroupType = dm.dsControlGroupType;
-            user = dm.callUsername;
-            pass = dm.callPassword;
             if (logger.isDebugEnabled()) {
                 logger.debug("**************************** DatastreamResolverServlet dm.dsLocation: {}", dm.dsLocation);
                 logger.debug("**************************** DatastreamResolverServlet dm.dsControlGroupType: {}", dm.dsControlGroupType);
@@ -292,8 +265,8 @@ public class DatastreamResolverServlet
             }
             keyTimestamp = Timestamp.valueOf(ds.extractTimestamp(id));
             currentTimestamp = new Timestamp(new Date().getTime());
-            logger.debug("dsPhysicalLocation=" + dsPhysicalLocation
-                    + "dsControlGroupType=" + dsControlGroupType);
+            logger.debug("dsPhysicalLocation={} dsControlGroupType={}",
+                    dsPhysicalLocation, dsControlGroupType);
 
             // Deny mechanism requests that fall outside the specified time
             // interval.
@@ -301,8 +274,8 @@ public class DatastreamResolverServlet
             // parameter
             // named "datastreamMediationLimit" which is in milliseconds.
             long diff = currentTimestamp.getTime() - keyTimestamp.getTime();
-            logger.debug("Timestamp diff for mechanism's reponse: " + diff
-                    + " ms.");
+            logger.debug("Timestamp diff for mechanism's reponse: {} ms.",
+                    diff);
             if (diff > datastreamMediationLimit) {
                 out = response.getWriter();
                 response.setContentType(HTML_CONTENT_TYPE);
@@ -342,11 +315,11 @@ public class DatastreamResolverServlet
                  * request.getUserPrincipal(); if (principal == null) { // no
                  * principal to grok roles from!! } else { try { roles =
                  * ReadOnlyContext.getRoles(principal); } catch (Throwable t) { } }
-                 * if (roles == null) { roles = new String[0]; }
+                 * if (roles == null) { roles = EMPTY_STRING_ARRAY; }
                  */
                 //XXXXXXXXXXXXXXXXXXXXXXxif (contains(roles, targetRole)) {
-                logger.debug("DatastreamResolverServlet: user=="
-                        + request.getRemoteUser());
+                logger.debug("DatastreamResolverServlet: user=={}",
+                        request.getRemoteUser());
                 /*
                  * if
                  * (((ExtendedHttpServletRequest)request).isUserInRole(targetRole)) {
@@ -371,9 +344,9 @@ public class DatastreamResolverServlet
                     logger.debug("context.getSubjectValue(targetRole)="
                             + context.getSubjectValue(targetRole));
                 }
-                Iterator it = context.subjectAttributes();
-                while (it.hasNext()) {
-                    String name = (String) it.next();
+                Iterator<String> subjectNames = context.subjectAttributes();
+                while (subjectNames.hasNext()) {
+                    String name = subjectNames.next();
                     int n = context.nSubjectValues(name);
                     switch (n) {
                         case 0:
@@ -393,9 +366,9 @@ public class DatastreamResolverServlet
                             }
                     }
                 }
-                it = context.environmentAttributes();
+                Iterator<URI> it = context.environmentAttributes();
                 while (it.hasNext()) {
-                    String name = (String) it.next();
+                    URI name = it.next();
                     String value = context.getEnvironmentValue(name);
                     logger.debug("another environment attribute from context "
                             + name + "=" + value);
@@ -416,25 +389,26 @@ public class DatastreamResolverServlet
                 // testing to see what's in request header that might be of
                 // interest
                 if (logger.isDebugEnabled()) {
-                    for (Enumeration e = request.getHeaderNames(); e
+                    for (@SuppressWarnings("unchecked")
+                    Enumeration<String> e = request.getHeaderNames(); e
                             .hasMoreElements();) {
-                        String name = (String) e.nextElement();
-                        Enumeration headerValues = request.getHeaders(name);
+                        String name = e.nextElement();
+                        @SuppressWarnings("unchecked")
+                        Enumeration<String> headerValues = request.getHeaders(name);
                         StringBuffer sb = new StringBuffer();
                         while (headerValues.hasMoreElements()) {
-                            sb.append((String) headerValues.nextElement());
+                            sb.append(headerValues.nextElement());
                         }
                         String value = sb.toString();
-                        logger
-                                .debug("DATASTREAMRESOLVERSERVLET REQUEST HEADER CONTAINED: "
-                                        + name + " : " + value);
+                        logger.debug("DATASTREAMRESOLVERSERVLET REQUEST HEADER CONTAINED: {} : {}",
+                            name, value);
                     }
                 }
 
                 // Datastream is ReferencedExternalContent so dsLocation is a
                 // URL string
                 ExternalContentManager externalContentManager =
-                        (ExternalContentManager) s_server
+                        (ExternalContentManager) m_server
                                 .getModule("org.fcrepo.server.storage.ExternalContentManager");
                 ContentManagerParams params = new ContentManagerParams(dsPhysicalLocation);
                 params.setContext(context);
@@ -444,7 +418,7 @@ public class DatastreamResolverServlet
                 // ReadOnlyContext.getContext(Constants.HTTP_REQUEST.REST.uri,
                 // request));
                 outStream = response.getOutputStream();
-                response.setContentType(mimeTypedStream.MIMEType);
+                response.setContentType(mimeTypedStream.getMIMEType());
                 Property[] headerArray = mimeTypedStream.header;
                 if (headerArray != null) {
                     for (int i = 0; i < headerArray.length; i++) {
@@ -453,11 +427,8 @@ public class DatastreamResolverServlet
                                         .equalsIgnoreCase("content-type")) {
                             response.addHeader(headerArray[i].name,
                                                headerArray[i].value);
-                            logger
-                                    .debug("THIS WAS ADDED TO DATASTREAMRESOLVERSERVLET RESPONSE HEADER FROM ORIGINATING PROVIDER "
-                                            + headerArray[i].name
-                                            + " : "
-                                            + headerArray[i].value);
+                            logger.debug("THIS WAS ADDED TO DATASTREAMRESOLVERSERVLET RESPONSE HEADER FROM ORIGINATING PROVIDER {} : {}",
+                                            headerArray[i].name, headerArray[i].value);
                         }
                     }
                 }
@@ -491,8 +462,8 @@ public class DatastreamResolverServlet
                 PID = s[0];
                 dsID = s[1];
                 dsVersionID = s[2];
-                logger.debug("PID=" + PID + ", dsID=" + dsID + ", dsVersionID="
-                        + dsVersionID);
+                logger.debug("PID={}, dsID={}, dsVersionID={}",
+                        PID, dsID, dsVersionID);
 
                 DOReader doReader =
                         m_manager.getReader(Server.USE_DEFINITIVE_STORE,
@@ -500,7 +471,7 @@ public class DatastreamResolverServlet
                                             PID);
                 Datastream d =
                         doReader.getDatastream(dsID, dsVersionID);
-                logger.debug("Got datastream: " + d.DatastreamID);
+                logger.debug("Got datastream: {}", d.DatastreamID);
                 InputStream is = d.getContentStream(context);
                 int bytestream = 0;
                 response.setContentType(d.DSMIME);
@@ -526,7 +497,7 @@ public class DatastreamResolverServlet
             throw RootException.getServletException(ae,
                                                     request,
                                                     ACTION_LABEL,
-                                                    new String[0]);
+                                                   EMPTY_STRING_ARRAY);
         } catch (Throwable th) {
             logger.error("Error resolving datastream", th);
             String message =
@@ -542,7 +513,7 @@ public class DatastreamResolverServlet
             if (outStream != null) {
                 outStream.close();
             }
-            dsRegistry.remove(id);
+            DisseminationService.dsRegistry.remove(id);
         }
     }
 

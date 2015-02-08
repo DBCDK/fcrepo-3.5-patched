@@ -19,7 +19,7 @@ import org.fcrepo.client.utility.validate.process.PidfileIterator;
 
 import org.fcrepo.common.Constants;
 
-import org.fcrepo.server.management.FedoraAPIM;
+import org.fcrepo.server.management.FedoraAPIMMTOM;
 
 
 /**
@@ -27,9 +27,9 @@ import org.fcrepo.server.management.FedoraAPIM;
  */
 public class AutoPurger {
 
-    private final FedoraAPIM m_apim;
+    private final FedoraAPIMMTOM m_apim;
 
-    public AutoPurger(FedoraAPIM apim)
+    public AutoPurger(FedoraAPIMMTOM apim)
             throws MalformedURLException, ServiceException {
         m_apim = apim;
     }
@@ -44,7 +44,7 @@ public class AutoPurger {
         purgeFromList(m_apim, pFile, logMessage);
     }
 
-    public static void purgeFromList(FedoraAPIM skeleton,
+    public static void purgeFromList(FedoraAPIMMTOM skeleton,
                                File pFile,
                                String logMessage) {
         PidfileIterator p_iter = new PidfileIterator(pFile);
@@ -64,7 +64,7 @@ public class AutoPurger {
         System.out.println(objs_purged + " objects successfully purged.");
     }
 
-    public static void purge(FedoraAPIM skeleton,
+    public static void purge(FedoraAPIMMTOM skeleton,
                              String pid,
                              String logMessage) throws RemoteException, IOException {
         skeleton.purgeObject(pid, logMessage, false);
@@ -132,7 +132,7 @@ public class AutoPurger {
 
                 String context = Constants.FEDORA_DEFAULT_APP_CONTEXT;
 
-                if (args.length == 7 && !args[6].equals("")) {
+                if (args.length == 7 && !args[6].isEmpty()) {
                     context = args[6];
                 }
                 // ******************************************
@@ -141,7 +141,8 @@ public class AutoPurger {
                         protocol + "://" + hostName + ":" + portNum + "/"
                         + context;
                 FedoraClient fc = new FedoraClient(baseURL, args[1], args[2]);
-                AutoPurger a = new AutoPurger(fc.getAPIM());
+                AutoPurger a = new AutoPurger(fc.getAPIMMTOM());
+                fc.shutdown();
                 //*******************************************
 
                 /* Single PID:  just purge it */

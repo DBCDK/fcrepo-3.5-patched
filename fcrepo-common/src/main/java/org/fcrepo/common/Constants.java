@@ -4,6 +4,8 @@
  */
 package org.fcrepo.common;
 
+import java.net.URI;
+
 import org.fcrepo.common.policy.ActionNamespace;
 import org.fcrepo.common.policy.DatastreamNamespace;
 import org.fcrepo.common.policy.DisseminatorNamespace;
@@ -14,6 +16,13 @@ import org.fcrepo.common.policy.ResourceNamespace;
 import org.fcrepo.common.policy.ServiceDefinitionNamespace;
 import org.fcrepo.common.policy.ServiceDeploymentNamespace;
 import org.fcrepo.common.policy.SubjectNamespace;
+import org.fcrepo.common.policy.XacmlName;
+import org.fcrepo.common.policy.xacml1.XACML1ActionNamespace;
+import org.fcrepo.common.policy.xacml1.XACML1Namespace;
+import org.fcrepo.common.policy.xacml1.XACML1PolicyNamespace;
+import org.fcrepo.common.policy.xacml2.XACML2PolicySchemaNamespace;
+import org.fcrepo.common.policy.xacml1.XACML1ResourceNamespace;
+import org.fcrepo.common.policy.xacml1.XACML1SubjectNamespace;
 import org.fcrepo.common.rdf.DublinCoreNamespace;
 import org.fcrepo.common.rdf.FedoraModelNamespace;
 import org.fcrepo.common.rdf.FedoraNamespace;
@@ -109,7 +118,7 @@ public interface Constants {
      * The default lookup key name for application server related context
      * values.
      */
-    public static final String FEDORA_APP_CONTEXT_NAME = "FEDORA_CONTEXT_NAME";
+    public static final URI FEDORA_APP_CONTEXT_NAME = URI.create("FEDORA_CONTEXT_NAME");
 
     /**
      * The default application server context of fedora.
@@ -175,6 +184,9 @@ public interface Constants {
     //---
     // XACML Namespaces
     //---
+
+
+    public static final XacmlName FEDORA_REPOSITORY_PID = new XacmlName(null,"FedoraRepository");
 
     /**
      * The Fedora Action XACML namespace;
@@ -244,6 +256,24 @@ public interface Constants {
      */
     public static final SubjectNamespace SUBJECT =
             SubjectNamespace.getInstance();
+
+    public static final XACML1Namespace XACML1 =
+            XACML1Namespace.getInstance();
+
+    public static final XACML1ActionNamespace XACML1_ACTION =
+            XACML1ActionNamespace.getInstance();
+
+    public static final XACML1PolicyNamespace XACML1_POLICY =
+            XACML1PolicyNamespace.getInstance();
+    
+    public static final XACML2PolicySchemaNamespace XACML2_POLICY_SCHEMA =
+            XACML2PolicySchemaNamespace.getInstance();
+
+    public static final XACML1SubjectNamespace XACML1_SUBJECT =
+            XACML1SubjectNamespace.getInstance();
+
+    public static final XACML1ResourceNamespace XACML1_RESOURCE =
+            XACML1ResourceNamespace.getInstance();
 
     //---
     // XML Namespaces
@@ -537,7 +567,7 @@ public interface Constants {
      */
     public static final FedoraObjectProfile1_0Format OBJ_PROFILE1_0 =
             FedoraObjectProfile1_0Format.getInstance();
-    
+
     /**
      * The Fedora Object Validation 1.0 XML format;
      * <code>info:fedora/fedora-system:FedoraObjectValidation-1.0</code>
@@ -684,6 +714,9 @@ public interface Constants {
      */
     public static final XACMLPolicy1_0Format XACML_POLICY1_0 =
             XACMLPolicy1_0Format.getInstance();
+    
+    /** an empty array of strings */
+    public static final String [] EMPTY_STRING_ARRAY = new String[0];
 
     //---
     // Static helpers
@@ -716,6 +749,7 @@ public interface Constants {
                 } else {
                     value = System.getenv("FEDORA_HOME");
                 }
+                if (value != null) value = value.trim();
             }
             return value;
         }

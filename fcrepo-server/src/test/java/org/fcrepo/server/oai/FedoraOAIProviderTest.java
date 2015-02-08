@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 import org.fcrepo.oai.DateGranularitySupport;
 import org.fcrepo.oai.DeletedRecordSupport;
 import org.fcrepo.oai.Header;
@@ -130,8 +131,10 @@ public class FedoraOAIProviderTest
     };
 
     private static FedoraOAIProvider getInstance(MockFieldSearch fs) {
+        Set<String> emptySet = Collections.emptySet();
+
         FedoraOAIProvider provider = new FedoraOAIProvider("repositoryName", "repositoryDomain","localName",
-                "/context/oai", Collections.emptySet(), Collections.emptySet(), "namespaceID",
+                "/context/oai", emptySet, emptySet, "namespaceID",
                 101, 102, 103, fs);
         return provider;
     }

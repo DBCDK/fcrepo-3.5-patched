@@ -4,31 +4,29 @@
  */
 package org.fcrepo.server.storage.translation;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-
+import java.io.PrintWriter;
 import java.util.Date;
 import java.util.Iterator;
 
 import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-
-import com.sun.org.apache.xml.internal.serialize.OutputFormat;
-import com.sun.org.apache.xml.internal.serialize.XMLSerializer;
-
-import org.w3c.dom.Document;
 
 import org.fcrepo.common.Constants;
 import org.fcrepo.server.storage.types.BasicDigitalObject;
 import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.DigitalObject;
 import org.fcrepo.utilities.LogConfig;
+import org.fcrepo.utilities.ReadableByteArrayOutputStream;
+import org.fcrepo.utilities.XmlTransformUtility;
+import org.fcrepo.utilities.xml.XercesXmlSerializers;
+import org.trippi.io.TripleIteratorFactory;
+import org.w3c.dom.Document;
 
 
 
@@ -56,13 +54,13 @@ public class ConvertObjectSerialization {
 
     private final String m_outExt;
 
-    public ConvertObjectSerialization(DODeserializer deserializer,
-                                      DOSerializer serializer,
+    public ConvertObjectSerialization(Class<DODeserializer> deserializer,
+                                      Class<DOSerializer> serializer,
                                       boolean pretty,
                                       String inExt,
                                       String outExt) {
-        m_deserializer = deserializer;
-        m_serializer = serializer;
+        m_deserializer = getInstance(deserializer);
+        m_serializer = getInstance(serializer);
         m_pretty = pretty;
         m_inExt = inExt;
         m_outExt = outExt;
@@ -94,30 +92,28 @@ public class ConvertObjectSerialization {
 
     private void prettyPrint(DigitalObject obj, OutputStream destination)
             throws Exception {
-        ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
+        ReadableByteArrayOutputStream outBuf =
+                new ReadableByteArrayOutputStream(4096);
         m_serializer.serialize(obj,
                                outBuf,
                                ENCODING,
                                DOTranslationUtility.AS_IS);
-        InputStream inBuf = new ByteArrayInputStream(outBuf.toByteArray());
-        prettyPrint(inBuf, destination);
+        outBuf.close();
+        prettyPrint(outBuf.toInputStream(), destination);
     }
 
     private static void prettyPrint(InputStream source,
                                     OutputStream destination)
             throws Exception {
-        OutputFormat fmt = new OutputFormat("XML", ENCODING, true);
-        fmt.setIndent(2);
-        fmt.setLineWidth(80);
-        fmt.setPreserveSpace(false);
-        XMLSerializer ser = new XMLSerializer(destination, fmt);
-        DocumentBuilderFactory factory =
-                DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(true);
-        DocumentBuilder builder = factory.newDocumentBuilder();
-        Document doc = builder.parse(source);
-        ser.serialize(doc);
-        destination.close();
+        BufferedWriter outWriter = new BufferedWriter(new PrintWriter(destination));
+        DocumentBuilder builder = XmlTransformUtility.borrowDocumentBuilder();
+        try {
+            Document doc = builder.parse(source);
+            XercesXmlSerializers.writeConsoleWithDocType(doc, outWriter);
+            outWriter.close();
+        } finally {
+            XmlTransformUtility.returnDocumentBuilder(builder);
+        }
     }
 
     /**
@@ -197,7 +193,7 @@ public class ConvertObjectSerialization {
      *
      * @param args command-line args.
      */
-    public static void main(String[] args) {
+    public static void main(String[] args) throws ClassNotFoundException {
         LogConfig.initMinimal();
         if (args.length < 4 || args.length > 7) {
             die("Expected 4 to 7 arguments", true);
@@ -208,8 +204,10 @@ public class ConvertObjectSerialization {
         }
         File destDir = new File(args[1]);
 
-        DODeserializer deserializer = (DODeserializer) getInstance(args[2]);
-        DOSerializer serializer = (DOSerializer) getInstance(args[3]);
+        @SuppressWarnings("unchecked")
+        Class<DODeserializer> deserializer = (Class<DODeserializer>) Class.forName(args[2]);
+        @SuppressWarnings("unchecked")
+        Class<DOSerializer> serializer = (Class<DOSerializer>) Class.forName(args[3]);
 
         // So DOTranslationUtility works...
         System.setProperty("fedora.hostname", "localhost");
@@ -231,11 +229,13 @@ public class ConvertObjectSerialization {
                                                inExt,
                                                outExt);
         converter.convert(sourceDir, destDir);
+
+        TripleIteratorFactory.defaultInstance().shutdown();
     }
 
-    private static Object getInstance(String className) {
+    private static <T> T getInstance(Class<T> className) {
         try {
-            return Class.forName(className).newInstance();
+            return className.newInstance();
         } catch (Exception e) {
             e.printStackTrace();
             die("Unable to instantiate: " + className, false);

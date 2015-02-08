@@ -97,7 +97,7 @@ public class AutoBatchBuildIngest
                 errors = true;
             }
 
-            if (args.length == 10 && !args[9].equals("")){
+            if (args.length == 10 && !args[9].isEmpty()){
                 context = "/" + args[9];
             }
             // Verify format of template file to see if it is a METS or FOXML template
@@ -124,7 +124,7 @@ public class AutoBatchBuildIngest
                 System.out.println("\n*** Format of template files is: "
                         + objectFormat + " . Generated objects will be in "
                         + objectFormat + " format.\n");
-                AutoBatchBuildIngest autoBatch =
+                // check that the constructor works
                         new AutoBatchBuildIngest(args[0],
                                                  args[1],
                                                  args[2],

@@ -5,103 +5,100 @@
 
 package org.fcrepo.test.api;
 
+import static junit.framework.Assert.assertEquals;
+import static junit.framework.Assert.assertFalse;
+import static junit.framework.Assert.assertNotNull;
+import static junit.framework.Assert.assertNull;
+import static junit.framework.Assert.assertTrue;
+import static junit.framework.Assert.fail;
+import static org.apache.http.HttpStatus.SC_CREATED;
+import static org.apache.http.HttpStatus.SC_INTERNAL_SERVER_ERROR;
+import static org.apache.http.HttpStatus.SC_MOVED_TEMPORARILY;
+import static org.apache.http.HttpStatus.SC_NOT_FOUND;
+import static org.apache.http.HttpStatus.SC_NOT_MODIFIED;
+import static org.apache.http.HttpStatus.SC_OK;
+import static org.apache.http.HttpStatus.SC_UNAUTHORIZED;
+import static org.custommonkey.xmlunit.XMLAssert.assertXMLEqual;
+import static org.custommonkey.xmlunit.XMLAssert.assertXpathExists;
+
 import java.io.ByteArrayInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.StringReader;
 import java.io.UnsupportedEncodingException;
-
-import java.net.URL;
+import java.net.URI;
 import java.net.URLEncoder;
-
+import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
-
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TimeZone;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import javax.xml.parsers.SAXParser;
-import javax.xml.parsers.SAXParserFactory;
-import javax.xml.transform.Source;
-import javax.xml.transform.stream.StreamSource;
-import javax.xml.validation.Schema;
-import javax.xml.validation.SchemaFactory;
-import javax.xml.validation.Validator;
+import junit.framework.JUnit4TestAdapter;
 
-import org.apache.axis.types.NonNegativeInteger;
-
-import org.apache.commons.httpclient.Header;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.HttpMethod;
-import org.apache.commons.httpclient.UsernamePasswordCredentials;
-import org.apache.commons.httpclient.auth.AuthScope;
-import org.apache.commons.httpclient.methods.DeleteMethod;
-import org.apache.commons.httpclient.methods.EntityEnclosingMethod;
-import org.apache.commons.httpclient.methods.GetMethod;
-import org.apache.commons.httpclient.methods.PostMethod;
-import org.apache.commons.httpclient.methods.PutMethod;
-import org.apache.commons.httpclient.methods.StringRequestEntity;
-import org.apache.commons.httpclient.methods.multipart.FilePart;
-import org.apache.commons.httpclient.methods.multipart.MultipartRequestEntity;
-import org.apache.commons.httpclient.methods.multipart.Part;
-import org.apache.commons.httpclient.methods.multipart.StringPart;
-
+import org.antlr.stringtemplate.StringTemplate;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
-
+import org.apache.http.Header;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpHeaders;
+import org.apache.http.HttpResponse;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpDelete;
+import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpHead;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpPut;
+import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.entity.mime.MultipartEntity;
+import org.apache.http.entity.mime.content.AbstractContentBody;
+import org.apache.http.entity.mime.content.FileBody;
+import org.apache.http.entity.mime.content.StringBody;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.util.EntityUtils;
 import org.custommonkey.xmlunit.Diff;
 import org.custommonkey.xmlunit.NamespaceContext;
 import org.custommonkey.xmlunit.SimpleNamespaceContext;
 import org.custommonkey.xmlunit.XMLUnit;
-
+import org.fcrepo.client.FedoraClient;
+import org.fcrepo.common.Constants;
+import org.fcrepo.common.Models;
+import org.fcrepo.common.PID;
+import org.fcrepo.server.access.FedoraAPIAMTOM;
+import org.fcrepo.server.management.FedoraAPIMMTOM;
+import org.fcrepo.server.types.gen.Datastream;
+import org.fcrepo.server.types.gen.FieldSearchQuery;
+import org.fcrepo.server.types.gen.FieldSearchResult;
+import org.fcrepo.server.types.gen.ObjectFields;
+import org.fcrepo.server.types.mtom.gen.MIMETypedStream;
+import org.fcrepo.server.utilities.MD5Utility;
+import org.fcrepo.server.utilities.TypeUtility;
+import org.fcrepo.test.FedoraServerTestCase;
 import org.jrdf.graph.Triple;
-
+import org.junit.After;
+import org.junit.AfterClass;
+import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
-
+import org.junit.runner.JUnitCore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.trippi.RDFFormat;
 import org.trippi.TripleIterator;
 import org.trippi.TrippiException;
 import org.trippi.io.TripleIteratorFactory;
 
-import org.xml.sax.ErrorHandler;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
-import org.xml.sax.SAXParseException;
-import org.xml.sax.XMLReader;
-
-import org.antlr.stringtemplate.StringTemplate;
-
-import junit.framework.TestSuite;
-
-import org.fcrepo.common.Constants;
-import org.fcrepo.common.Models;
-import org.fcrepo.common.PID;
-
-import org.fcrepo.server.access.FedoraAPIA;
-import org.fcrepo.server.management.FedoraAPIM;
-import org.fcrepo.server.types.gen.Datastream;
-import org.fcrepo.server.types.gen.FieldSearchQuery;
-import org.fcrepo.server.types.gen.FieldSearchResult;
-import org.fcrepo.server.types.gen.MIMETypedStream;
-import org.fcrepo.server.types.gen.ObjectFields;
-
-import org.fcrepo.test.DemoObjectTestSetup;
-import org.fcrepo.test.FedoraServerTestCase;
-
-import static org.apache.commons.httpclient.HttpStatus.SC_CREATED;
-import static org.apache.commons.httpclient.HttpStatus.SC_INTERNAL_SERVER_ERROR;
-import static org.apache.commons.httpclient.HttpStatus.SC_MOVED_TEMPORARILY;
-import static org.apache.commons.httpclient.HttpStatus.SC_NOT_FOUND;
-import static org.apache.commons.httpclient.HttpStatus.SC_OK;
-import static org.apache.commons.httpclient.HttpStatus.SC_UNAUTHORIZED;
 
 /**
  * Tests of the REST API. Tests assume a running instance of Fedora with the
@@ -115,10 +112,17 @@ import static org.apache.commons.httpclient.HttpStatus.SC_UNAUTHORIZED;
  */
 public class TestRESTAPI
         extends FedoraServerTestCase {
+    
+    private static final String TEXT_XML = "text/xml";
 
-    private FedoraAPIA apia;
+    private static final Logger LOGGER =
+        LoggerFactory.getLogger(TestRESTAPI.class);
 
-    private FedoraAPIM apim;
+    private static FedoraClient s_client;
+    
+    private FedoraAPIAMTOM apia;
+
+    private FedoraAPIMMTOM apim;
 
     // used for determining test configuration
     private static String authAccessProperty = "fedora.authorize.access";
@@ -135,7 +139,7 @@ public class TestRESTAPI
 
     private static String DEMO_MIN_PID;
 
-    private final PID pid = PID.getInstance("demo:REST");
+    private final static PID DEMO_REST_PID = PID.getInstance("demo:REST");
 
     private static final String REST_RESOURCE_PATH =
             System.getProperty("fcrepo-integrationtest-core.classes") != null ? System
@@ -143,26 +147,25 @@ public class TestRESTAPI
                     + "rest"
                     : "src/test/resources/rest";
 
-    private static String DS1RelsFilename =
+    private static final String DS1RelsFilename =
             "Datastream 1 filename from rels.extension";
 
-    private static String DS2LabelFilename = "Datastream 2 filename from label";
+    private static final String DS2LabelFilename = "Datastream 2 filename from label";
 
-    private static String DS3LabelFilename = "Datastream 3 filename from label";
+    private static final String DS3LabelFilename = "Datastream 3 filename from label";
 
-    private static String DodgyChars = "\\/*?&lt;&gt;:|";
+    private static final String DodgyChars = "\\/*?&lt;&gt;:|";
 
-    private static String DS4LabelFilenameOriginal =
+    private static final  String DS4LabelFilenameOriginal =
             "Datastream 4 filename " + DodgyChars + "from label";
 
     // this one in foxml
-    private static String DS4LabelFilename = "Datastream 4 filename from label"; // this should be the cleaned version
+    // this should be the cleaned version
+    private static final String DS4LabelFilename = "Datastream 4 filename from label";
 
-    private static String DS5ID = "DS5";
+    private static final String DS5ID = "DS5";
 
-    private static String DS6ID = "DS6.xml";
-
-    protected String url;
+    private static final String DS6ID = "DS6.xml";
 
     // note: since we are explicitly formatting the date as "Z" (literal), need to ensure the formatter operates in GMT/UTC
     static SimpleDateFormat df;
@@ -170,21 +173,34 @@ public class TestRESTAPI
         df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
         df.setTimeZone(TimeZone.getTimeZone("GMT"));
     }
+    
+    private static final ValidatorHelper validator =
+            new ValidatorHelper();
 
     private static final Date now = new Date();
 
     private static final String datetime = df.format(now);
 
-    // date/time strings 1 second earlier/later than now
-    private static final String laterDateTime =
-            df.format(new Date(now.getTime() + (1000 * 600))); // + 10 min
+    // tests for this must not be dependent on which object, so we will
+    // use a constant that predates the system objects
     private static final String earlierDateTime =
-            df.format(new Date(now.getTime() - (1000 * 600))); // - 10 min
+            "2001-01-01T00:00:00.000Z";
 
+    @SuppressWarnings("unused")
     private boolean chunked = false;
+    
+    protected static FedoraClient initClient() throws Exception {
+        s_client = getFedoraClient();
+        return s_client;
+    }
+    
+    protected static void stopClient() {
+        s_client.shutdown();
+        s_client = null;
+    }
 
-    @Override
-    public void setUp() throws Exception {
+    @BeforeClass
+    public static void bootStrap() throws Exception {
         Map<String, String> nsMap = new HashMap<String, String>();
         nsMap.put("management",
                   "http://www.fedora.info/definitions/1/0/management/");
@@ -192,42 +208,84 @@ public class TestRESTAPI
         NamespaceContext ctx = new SimpleNamespaceContext(nsMap);
         XMLUnit.setXpathNamespaceContext(ctx);
 
-        DEMO_MIN =
+        initClient();
+
+        ingestImageManipulationDemoObjects(s_client);
+        ingestDocumentTransformDemoObjects(s_client);
+        
+        if (DEMO_MIN == null) DEMO_MIN =
                 FileUtils.readFileToString(new File(REST_RESOURCE_PATH
                         + "/demo_min.xml"), "UTF-8");
-        DEMO_MIN_PID =
+        if (DEMO_MIN_PID == null) DEMO_MIN_PID =
                 FileUtils.readFileToString(new File(REST_RESOURCE_PATH
                         + "/demo_min_pid.xml"), "UTF-8");
+        if (DEMO_REST == null) {
+            StringTemplate tpl =
+                    new StringTemplate(FileUtils
+                                       .readFileToString(new File(REST_RESOURCE_PATH
+                                                                  + "/demo_rest.xml"), "UTF-8"));
+            tpl.setAttribute("MODEL_DOWNLOAD_FILENAME",
+                             MODEL.DOWNLOAD_FILENAME.localName);
+            tpl.setAttribute("DS1_RELS_FILENAME", DS1RelsFilename);
+            tpl.setAttribute("MODEL_URI", MODEL.uri);
+            tpl.setAttribute("DATETIME", datetime);
+            tpl.setAttribute("FEDORA_BASE_URL", getBaseURL());
+            tpl.setAttribute("DS2_LABEL_FILENAME", DS2LabelFilename);
+            tpl.setAttribute("DS3_LABEL_FILENAME", DS3LabelFilename);
+            tpl.setAttribute("DS4_LABEL_FILENAME_ORIGINAL",
+                             DS4LabelFilenameOriginal);
 
-        StringTemplate tpl =
-                new StringTemplate(FileUtils
-                        .readFileToString(new File(REST_RESOURCE_PATH
-                                + "/demo_rest.xml"), "UTF-8"));
-        tpl.setAttribute("MODEL_DOWNLOAD_FILENAME",
-                         MODEL.DOWNLOAD_FILENAME.localName);
-        tpl.setAttribute("DS1_RELS_FILENAME", DS1RelsFilename);
-        tpl.setAttribute("MODEL_URI", MODEL.uri);
-        tpl.setAttribute("DATETIME", datetime);
-        tpl.setAttribute("FEDORA_BASE_URL", getBaseURL());
-        tpl.setAttribute("DS2_LABEL_FILENAME", DS2LabelFilename);
-        tpl.setAttribute("DS3_LABEL_FILENAME", DS3LabelFilename);
-        tpl.setAttribute("DS4_LABEL_FILENAME_ORIGINAL",
-                         DS4LabelFilenameOriginal);
-
-        DEMO_REST = tpl.toString();
-        apia = getFedoraClient().getAPIA();
-        apim = getFedoraClient().getAPIM();
-        apim.ingest(DEMO_REST.getBytes("UTF-8"),
-                    FOXML1_1.uri,
-                    "ingesting new foxml object");
-
+            DEMO_REST = tpl.toString();
+            DEMO_REST_FOXML = DEMO_REST.getBytes("UTF-8");
+        }
+    }
+    
+    @AfterClass
+    public static void cleanUp() throws Exception {
+        purgeDemoObjects(s_client);
+        stopClient();
+        XMLUnit.setXpathNamespaceContext(SimpleNamespaceContext.EMPTY_CONTEXT);
     }
 
-    @Override
-    public void tearDown() throws Exception {
-        XMLUnit.setXpathNamespaceContext(SimpleNamespaceContext.EMPTY_CONTEXT);
+    @Before
+    public void setUp() throws Exception {
+        apia = s_client.getAPIAMTOM();
+        apim = s_client.getAPIMMTOM();
+        apim.ingest(TypeUtility.convertBytesToDataHandler(DEMO_REST_FOXML),
+                    FOXML1_1.uri, "TestRESTAPI.setUp: ingesting new foxml object " + DEMO_REST_PID);
+    }
 
-        apim.purgeObject(pid.toString(), "", false);
+    @After
+    public void tearDown() throws Exception {
+        apim.purgeObject(DEMO_REST_PID.toString(), "TestRESTAPI.tearDown: purging " + DEMO_REST_PID, false);
+    }
+    
+    protected static byte[] readBytes(HttpResponse response) {
+        byte[] body = new byte[0];
+        if (response.getEntity() != null) {
+            try {
+                body = EntityUtils.toByteArray(response.getEntity());
+            } catch (IOException ioe) {
+                ioe.printStackTrace();
+            }
+        }
+        return body;
+    }
+
+    protected static String readString(HttpResponse response) {
+        return readString(response, Charset.forName("UTF-8"));
+    }
+    
+    protected static String readString(HttpResponse response, Charset charset) {
+        String body = null;
+        if (response.getEntity() != null) {
+            try {
+                body = EntityUtils.toString(response.getEntity(), charset);
+            } catch (IOException ioe) {
+                ioe.printStackTrace();
+            }
+        }
+        return (body != null) ? body : "";
     }
 
     /**
@@ -254,15 +312,144 @@ public class TestRESTAPI
         return authorizeAccess;
 
     }
+    
+    protected void verifyDELETEStatusOnly(URI url, int expected, boolean authenticate) throws Exception {
+        HttpDelete get = new HttpDelete(url);
+        HttpResponse response = getOrDelete(get, authenticate, false);
+        int status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(expected, status);        
+    }
+
+    protected void verifyGETStatusOnly(URI url, int expected, boolean authenticate, boolean validate) throws Exception {
+        HttpGet get = new HttpGet(url);
+        HttpResponse response = getOrDelete(get, authenticate, validate);
+        int status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(expected, status);        
+    }
+
+    protected void verifyGETStatusOnly(URI url, int expected, boolean validate) throws Exception {
+        verifyGETStatusOnly(url, expected, getAuthAccess(), validate);        
+    }
+
+    protected void verifyGETStatusOnly(URI url, int expected) throws Exception {
+        verifyGETStatusOnly(url, expected, false);        
+    }
+    
+    protected String verifyGETStatusString(URI url, int expected,
+            boolean authenticate, boolean validate)
+            throws Exception {
+        HttpGet get = new HttpGet(url);
+        HttpResponse response = getOrDelete(get, authenticate, validate);
+        int status = response.getStatusLine().getStatusCode();
+        String result = readString(response);
+        assertEquals(expected, status);      
+        return result;
+    }
+
+    protected byte[] verifyGETStatusBytes(URI url, int expected,
+            boolean authenticate, boolean validate)
+            throws Exception {
+        HttpGet get = new HttpGet(url);
+        HttpResponse response = getOrDelete(get, authenticate, validate);
+        int status = response.getStatusLine().getStatusCode();
+        byte[] result = readBytes(response);
+        assertEquals(expected, status);      
+        return result;
+    }
+    
+    protected static StringEntity getStringEntity(
+        String content, String contentType) {
+        if (content == null) {
+            return null;
+        }
+        
+        StringEntity entity =
+            new StringEntity(content, Charset.forName("UTF-8"));
+        if (contentType != null) {
+            entity.setContentType(contentType);
+        }
+        return entity;
+    }
+    
+    protected void verifyPOSTStatusOnly(URI url, int expected,
+        StringEntity content, boolean authenticate) throws Exception {
+        HttpPost post = new HttpPost(url);
+        HttpResponse response = putOrPost(post, content, authenticate);
+        int status = response.getStatusLine().getStatusCode();
+        if (status == SC_MOVED_TEMPORARILY) {
+            String original = url.toString();
+            url = URI.create(response.getFirstHeader(HttpHeaders.LOCATION).getValue());
+            if (!original.equals(url.toString())) {
+                EntityUtils.consumeQuietly(response.getEntity());
+                post = new HttpPost(url);
+                response = putOrPost(post, content, true);
+                status = response.getStatusLine().getStatusCode();
+            }
+        }
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(expected, status);        
+    }
+
+    protected void verifyPOSTStatusOnly(URI url, int expected,
+            StringEntity content, boolean authenticate, boolean validate) throws Exception {
+            HttpPost post = new HttpPost(url);
+            HttpResponse response = putOrPost(post, content, authenticate);
+            int status = response.getStatusLine().getStatusCode();
+            if (status == SC_MOVED_TEMPORARILY) {
+                String original = url.toString();
+                url = URI.create(response.getFirstHeader(HttpHeaders.LOCATION).getValue());
+                if (!original.equals(url.toString())) {
+                    EntityUtils.consumeQuietly(response.getEntity());
+                    post = new HttpPost(url);
+                    response = putOrPost(post, content, true);
+                    status = response.getStatusLine().getStatusCode();
+                }
+            }
+            if (validate) {
+                validateResponse(url, response);
+            } else {
+                EntityUtils.consumeQuietly(response.getEntity());
+            }
+            assertEquals(expected, status);        
+        }
+
+    protected void verifyPUTStatusOnly(URI url, int expected,
+            StringEntity content, boolean authenticate) throws Exception {
+            HttpPut put = new HttpPut(url);
+            HttpResponse response = putOrPost(put, content, authenticate);
+            int status = response.getStatusLine().getStatusCode();
+            if (status == SC_MOVED_TEMPORARILY) {
+                String original = url.toString();
+                url = URI.create(response.getFirstHeader(HttpHeaders.LOCATION).getValue());
+                if (!original.equals(url.toString())) {
+                    EntityUtils.consumeQuietly(response.getEntity());
+                    put = new HttpPut(url);
+                    response = putOrPost(put, content, true);
+                    status = response.getStatusLine().getStatusCode();
+                }
+            }
+            EntityUtils.consumeQuietly(response.getEntity());
+            assertEquals(expected, status);        
+        }
+
+    protected void verifyNoAuthFailOnAPIAAuth(URI url) throws Exception {
+        if (this.getAuthAccess()) {
+            HttpGet get = new HttpGet(url);
+            HttpResponse response = getOrDelete(get, false, false);
+            int status = response.getStatusLine().getStatusCode();
+            EntityUtils.consumeQuietly(response.getEntity());
+            assertEquals(SC_UNAUTHORIZED, status);
+        }
+    }
 
     @Test
     public void testGetWADL() throws Exception {
-        url = "/objects/application.wadl";
+        URI url = getURI("/objects/application.wadl");
 
-        if (getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+        verifyNoAuthFailOnAPIAAuth(url);
+        verifyGETStatusOnly(url, SC_OK);
     }
 
     //public void testDescribeRepository() throws Exception {}
@@ -271,19 +458,22 @@ public class TestRESTAPI
 
     @Test
     public void testGetObjectProfile() throws Exception {
-        url = String.format("/objects/%s", pid.toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+        URI url = getURI(String.format("/objects/%s", DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        int status = 0;
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        assertEquals(SC_OK, status);
 
-        url = String.format("/objects/%s?format=xml", pid.toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        HttpResponse response = get(getAuthAccess());
-        assertEquals(SC_OK, response.getStatusCode());
-        String responseXML = new String(response.responseBody, "UTF-8");
+        url = getURI(String.format("/objects/%s?format=xml", DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        get = new HttpGet(url);
+        response = getOrDelete(get, getAuthAccess(), true);
+        status = response.getStatusLine().getStatusCode();
+        String responseXML = readString(response);
+        assertEquals(SC_OK, status);
         assertTrue(responseXML.contains("<objLabel>"));
         assertTrue(responseXML.contains("<objOwnerId>"));
         assertTrue(responseXML.contains("<objCreateDate>"));
@@ -292,319 +482,381 @@ public class TestRESTAPI
         assertTrue(responseXML.contains("<objItemIndexViewURL>"));
         assertTrue(responseXML.contains("<objState>"));
 
-        url =
+        url = getURI(
                 String.format("/objects/%s?asOfDateTime=%s",
-                              pid.toString(),
-                              datetime);
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+                              DEMO_REST_PID.toString(),
+                              datetime));
+        verifyNoAuthFailOnAPIAAuth(url);
+        verifyGETStatusOnly(url, SC_OK);
 
         // sanity check
-        url = String.format("/objects/%s", "demo:BOGUS_PID");
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_NOT_FOUND, get(getAuthAccess()).getStatusCode());
+        url = getURI(String.format("/objects/%s", "demo:BOGUS_PID"));
+        verifyNoAuthFailOnAPIAAuth(url);
+        verifyGETStatusOnly(url, SC_NOT_FOUND);
     }
 
+    @Test
     public void testListMethods() throws Exception {
-        url = String.format("/objects/%s/methods", pid.toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+        URI url = getURI(String.format("/objects/%s/methods", DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        verifyGETStatusOnly(url, SC_OK);
 
-        url = String.format("/objects/%s/methods?format=xml", pid.toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+        url = getURI(
+                String.format("/objects/%s/methods?format=xml", DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        verifyGETStatusOnly(url, SC_OK);
 
-        url =
-                String.format("/objects/%s/methods?asOfDateTime=%s", pid
-                        .toString(), datetime);
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+        url = getURI(
+                String.format("/objects/%s/methods?asOfDateTime=%s", DEMO_REST_PID
+                        .toString(), datetime));
+        verifyNoAuthFailOnAPIAAuth(url);
+        verifyGETStatusOnly(url, SC_OK);
     }
 
+    @Test
     public void testListMethodsForSDep() throws Exception {
-        url =
-                String.format("/objects/%s/methods/fedora-system:3", pid
-                        .toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+        URI url = getURI(
+            String.format("/objects/%s/methods/fedora-system:3",
+                DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        int status = 0;
+        get = new HttpGet(url);
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, status);
 
-        url =
+        url = getURI(
                 String.format("/objects/%s/methods/fedora-system:3?format=xml",
-                              pid.toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        HttpResponse response = get(getAuthAccess());
-        assertEquals(SC_OK, response.getStatusCode());
-        String responseXML = new String(response.responseBody, "UTF-8");
+                    DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        get = new HttpGet(url);
+        response = getOrDelete(get, getAuthAccess(), true);
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+        String responseXML = readString(response);
         assertTrue(responseXML.contains("sDef=\"fedora-system:3\""));
 
-        url =
-                String
-                        .format("/objects/%s/methods/fedora-system:3?asOfDateTime=%s",
-                                pid.toString(),
-                                datetime);
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+        url = getURI(
+            String.format("/objects/%s/methods/fedora-system:3?asOfDateTime=%s",
+                DEMO_REST_PID.toString(),
+                datetime));
+        verifyNoAuthFailOnAPIAAuth(url);
+        get = new HttpGet(url);
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, status);
     }
 
     //
     // GETs on built-in Service Definition methods
     //
 
+    @Test
     public void testGETMethodBuiltInBadMethod() throws Exception {
-        url =
-                String
-                        .format("/objects/%s/methods/fedora-system:3/noSuchMethod",
-                                pid.toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertFalse(SC_OK == get(getAuthAccess()).getStatusCode());
+        URI url = getURI(
+            String.format("/objects/%s/methods/fedora-system:3/noSuchMethod",
+            DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        int status = 0;
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertFalse(SC_OK == status);
     }
 
+    @Test
     public void testGETMethodBuiltInBadUserArg() throws Exception {
-        url =
-                String
-                        .format("/objects/%s/methods/fedora-system:3/viewMethodIndex?noSuchArg=foo",
-                                pid.toString());
-        assertFalse(SC_OK == get(getAuthAccess()).getStatusCode());
+        URI url = getURI(
+            String.format("/objects/%s/methods/fedora-system:3/viewMethodIndex?noSuchArg=foo",
+            DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response = getOrDelete(get, getAuthAccess(), false);
+        int status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertFalse(SC_OK == status);
     }
 
+    @Test
     public void testGETMethodBuiltInNoArg() throws Exception {
-        url =
-                String
-                        .format("/objects/%s/methods/fedora-system:3/viewMethodIndex",
-                                pid.toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+        URI url = getURI(
+            String.format("/objects/%s/methods/fedora-system:3/viewMethodIndex",
+            DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        int status = 0;
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, status);
     }
 
     //
     // GETs on custom Service Definition methods
     //
 
+    @Test
     public void testGETMethodCustomBadMethod() throws Exception {
-        url = "/objects/demo:14/methods/demo:12/noSuchMethod";
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertFalse(SC_OK == get(getAuthAccess()).getStatusCode());
+        URI url = getURI("/objects/demo:14/methods/demo:12/noSuchMethod");
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        int status = 0;
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertFalse(SC_OK == status);
     }
 
+    @Test
     public void testGETMethodCustomBadUserArg() throws Exception {
-        url =
-                "/objects/demo:14/methods/demo:12/getDocumentStyle1?noSuchArg=foo";
-        assertFalse(SC_OK == get(getAuthAccess()).getStatusCode());
+        URI url = getURI(
+                "/objects/demo:14/methods/demo:12/getDocumentStyle1?noSuchArg=foo");
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response = getOrDelete(get, getAuthAccess(), false);
+        int status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertFalse(SC_OK == status);
     }
 
+    @Test
     public void testGETMethodCustomNoArg() throws Exception {
-        url = "/objects/demo:14/methods/demo:12/getDocumentStyle1";
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+        URI url = getURI("/objects/demo:14/methods/demo:12/getDocumentStyle1");
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        int status = 0;
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, status);
     }
 
+    @Test
     public void testGETMethodCustomGoodUserArg() throws Exception {
-        url = "/objects/demo:29/methods/demo:27/resizeImage?width=50";
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        HttpResponse response = get(getAuthAccess());
-        assertEquals(SC_OK, response.getStatusCode());
+        URI url = getURI("/objects/demo:29/methods/demo:27/resizeImage?width=50");
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        int status = 0;
+        response = getOrDelete(get, getAuthAccess(), true);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, status);
         // imageManip service does not return content length
         //assertEquals(1486, response.getResponseBody().length);
         //assertEquals("1486", response.getResponseHeader("Content-Length").getValue());
-        assertEquals("image/jpeg", response.getResponseHeader("Content-Type")
+        assertEquals("image/jpeg", response.getFirstHeader(HttpHeaders.CONTENT_TYPE)
                 .getValue());
     }
 
+    @Test
     public void testGETMethodCustomGoodUserArgGoodDate() throws Exception {
-        url =
+        URI url = getURI(
                 "/objects/demo:29/methods/demo:27/resizeImage?width=50&asOfDateTime="
-                        + datetime;
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        HttpResponse response = get(getAuthAccess());
-        assertEquals(SC_OK, response.getStatusCode());
+                        + datetime);
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        int status = 0;
+        response = getOrDelete(get, getAuthAccess(), true);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, status);
         // imageManip service does not return content length
         //assertEquals(1486, response.getResponseBody().length);
         //assertEquals("1486", response.getResponseHeader("Content-Length").getValue());
-        assertEquals("image/jpeg", response.getResponseHeader("Content-Type")
+        assertEquals("image/jpeg", response.getFirstHeader(HttpHeaders.CONTENT_TYPE)
                 .getValue());
     }
 
+    @Test
     public void testGETMethodCustomUserArgBadDate() throws Exception {
-        url =
-                "/objects/demo:14/methods/demo:12/getDocumentStyle1?width=50&asOfDateTime=badDate";
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertFalse(SC_OK == get(getAuthAccess()).getStatusCode());
+        URI url = getURI(
+                "/objects/demo:14/methods/demo:12/getDocumentStyle1?width=50&asOfDateTime=badDate");
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        int status = 0;
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertFalse(SC_OK == status);
     }
 
-    public void testGETMethodCustomUserArgEarlyDate() throws Exception {
-        url =
-                "/objects/demo:14/methods/demo:12/getDocumentStyle1?width=50&asOfDateTime=1999-11-21T16:38:32.200Z";
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_NOT_FOUND, get(getAuthAccess()).getStatusCode());
+   @Test
+   public void testGETMethodCustomUserArgEarlyDate() throws Exception {
+        URI url = getURI(
+                "/objects/demo:14/methods/demo:12/getDocumentStyle1?width=50&asOfDateTime=1999-11-21T16:38:32.200Z");
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        int status = 0;
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_NOT_FOUND, status);
     }
 
+   @Test
     public void testGETMethodCustomGoodDate() throws Exception {
-        url =
+        URI url = getURI(
                 "/objects/demo:14/methods/demo:12/getDocumentStyle1?asOfDateTime="
-                        + datetime;
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+                        + datetime);
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        int status = 0;
+        response = getOrDelete(get, getAuthAccess(), true);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, status);
     }
 
+   @Test
     public void testGETMethodCustomBadDate() throws Exception {
-        url =
-                "/objects/demo:14/methods/demo:12/getDocumentStyle1?asOfDateTime=badDate";
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertFalse(SC_OK == get(getAuthAccess()).getStatusCode());
+        URI url = getURI(
+                "/objects/demo:14/methods/demo:12/getDocumentStyle1?asOfDateTime=badDate");
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        int status = 0;
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertFalse(SC_OK == status);
     }
 
+   @Test
     public void testGETMethodCustomEarlyDate() throws Exception {
-        url =
-                "/objects/demo:14/methods/demo:12/getDocumentStyle1?asOfDateTime=1999-11-21T16:38:32.200Z";
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_NOT_FOUND, get(getAuthAccess()).getStatusCode());
+        URI url = getURI(
+                "/objects/demo:14/methods/demo:12/getDocumentStyle1?asOfDateTime=1999-11-21T16:38:32.200Z");
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        int status = 0;
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_NOT_FOUND, status);
     }
 
+   @Test
     public void testListDatastreams() throws Exception {
-        url = String.format("/objects/%s/datastreams", pid.toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+        URI url = getURI(String.format("/objects/%s/datastreams", DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        verifyGETStatusOnly(url, SC_OK, true, true);
 
-        url =
-                String.format("/objects/%s/datastreams?format=xml", pid
-                        .toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+        url = getURI(
+                String.format("/objects/%s/datastreams?format=xml", DEMO_REST_PID
+                        .toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        verifyGETStatusOnly(url, SC_OK, true, true);
 
-        url =
-                String.format("/objects/%s/datastreams?asOfDateTime=%s", pid
-                        .toString(), datetime);
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+
+        url = getURI(
+                String.format("/objects/%s/datastreams?asOfDateTime=%s", DEMO_REST_PID
+                        .toString(), datetime));
+        verifyNoAuthFailOnAPIAAuth(url);
+        verifyGETStatusOnly(url, SC_OK, true, true);
+
+        url = getURI(
+                String.format("/objects/%s/datastreams?format=xml&profiles=true", DEMO_REST_PID
+                        .toString()));
+        // this will always require authN with the profiles option on,
+        // as it is an apim function
+        verifyGETStatusOnly(url, SC_UNAUTHORIZED, false, false);
+        String responseString = verifyGETStatusString(url, SC_OK, true, true);
+        assertTrue(responseString.indexOf("datastreamProfile") > -1);
     }
 
     // if an object is marked as deleted, only administrators have access (default XACML policy)
     // see FCREPO-753: this also tests that preemptive auth can still take place when api-a auth is not required
+   @Test
     public void testDeletedObject() throws Exception {
         // only test if api-a auth is disabled (configA)
         if (!this.getAuthAccess()) {
 
             // mark object as deleted
-            apim.modifyObject(pid.toString(),
+            String modResponse =
+                    apim.modifyObject(DEMO_REST_PID.toString(),
                               "D",
                               null,
                               null,
                               "Mark object as deleted");
 
+            LOGGER.info(modResponse);
             // verify no unauth access
-            url = String.format("/objects/%s/datastreams", pid.toString());
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-            // verify auth access for administrator
-            assertEquals(SC_OK, get(true).getStatusCode());
-
+            URI url = getURI(
+                    String.format("/objects/%s/datastreams", DEMO_REST_PID.toString()));
+            LOGGER.info("Testing object marked deleted at {}", url);
+            verifyGETStatusString(url, SC_UNAUTHORIZED, false, false);
+            verifyGETStatusString(url, SC_OK, true, true);
         }
 
     }
 
+   @Test
     public void testGetDatastreamProfile() throws Exception {
         // Datastream profile in HTML format
-        url = String.format("/objects/%s/datastreams/RELS-EXT", pid.toString());
-        assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        HttpResponse response = get(true);
-        assertEquals(SC_OK, response.getStatusCode());
-        String responseXML = new String(response.responseBody, "UTF-8");
+        URI url = getURI(
+                String.format("/objects/%s/datastreams/RELS-EXT", DEMO_REST_PID.toString()));
+        verifyGETStatusString(url, SC_UNAUTHORIZED, false, false);
+        String responseXML = verifyGETStatusString(url, SC_OK, true, true);
         assertTrue(responseXML.contains("<html>"));
 
         // Datastream profile in XML format
-        url =
+        url = getURI(
                 String.format("/objects/%s/datastreams/RELS-EXT?format=xml",
-                              pid.toString());
-        assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        response = get(true);
-        assertEquals(SC_OK, response.getStatusCode());
-        responseXML = new String(response.responseBody, "UTF-8");
+                              DEMO_REST_PID.toString()));
+        verifyGETStatusString(url, SC_UNAUTHORIZED, false, false);
+        responseXML = verifyGETStatusString(url, SC_OK, true, true);
         assertTrue(responseXML.contains("<dsLabel>"));
 
         // Datastream profile as of the current date-time (XML format)
-        url =
+        url = getURI(
                 String
                         .format("/objects/%s/datastreams/RELS-EXT?asOfDateTime=%s&format=xml",
-                                pid.toString(),
-                                datetime);
-        assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
+                                DEMO_REST_PID.toString(),
+                                datetime));
+        verifyGETStatusString(url, SC_UNAUTHORIZED, false, false);
         // FIXME: validation disabled
         // response is currently not schema-valid, see fcrepo-866, fcrepo-612
         // -> get(true) once fixed to enable validation
-        response = get(true, false);
-        assertEquals(SC_OK, response.getStatusCode());
-        responseXML = new String(response.responseBody, "UTF-8");
+        responseXML = verifyGETStatusString(url, SC_OK, true, false);
         assertTrue(responseXML.contains("<dsLabel>"));
 
         // sanity check
-        url =
-                String.format("/objects/%s/datastreams/BOGUS_DSID", pid
-                        .toString());
-        assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        assertEquals(SC_NOT_FOUND, get(true).getStatusCode());
+        url = getURI(
+                String.format("/objects/%s/datastreams/BOGUS_DSID", DEMO_REST_PID
+                        .toString()));
+        verifyGETStatusString(url, SC_UNAUTHORIZED, false, false);
+        verifyGETStatusString(url, SC_NOT_FOUND, true, true);
     }
 
+   @Test
     public void testGetDatastreamHistory() throws Exception {
 
         // Ingest minimal object
-        url = "/objects/new";
-        assertEquals(SC_UNAUTHORIZED, post(DEMO_MIN_PID, false).getStatusCode());
-        HttpResponse response = post(DEMO_MIN_PID, true);
-        assertEquals(SC_CREATED, response.getStatusCode());
+        URI url = getURI("/objects/new");
+        StringEntity entity = getStringEntity(DEMO_MIN_PID, TEXT_XML);
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        verifyPOSTStatusOnly(url, SC_CREATED, entity, true);
 
         // Get history in XML format
         url =
-                String
-                        .format("/objects/demo:1234/datastreams/DS1/history?format=xml");
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        response = get(true);
-        assertEquals(SC_OK, response.getStatusCode());
-        String responseXML = new String(response.responseBody, "UTF-8");
+              getURI(String
+                        .format("/objects/demo:1234/datastreams/DS1/history?format=xml"));
+        verifyNoAuthFailOnAPIAAuth(url);
+        
+        String responseXML = verifyGETStatusString(url, SC_OK, true, true);
 
         String control =
                 FileUtils.readFileToString(new File(REST_RESOURCE_PATH
@@ -619,87 +871,99 @@ public class TestRESTAPI
         assertTrue(xmldiff.toString(), xmldiff.identical());
 
         // Sanity check
-        url = "/objects/demo:1234/datastreams/BOGUS_DSID";
-        assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        assertEquals(SC_NOT_FOUND, get(true).getStatusCode());
+        url = getURI("/objects/demo:1234/datastreams/BOGUS_DSID");
+        verifyGETStatusString(url, SC_UNAUTHORIZED, false, false);
+        // APIM function requires authentication
+        verifyGETStatusOnly(url, SC_NOT_FOUND, true, false);
 
         // Clean up
-        url = "/objects/demo:1234";
-        assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());
-        assertEquals(SC_OK, delete(true).getStatusCode());
+        url = getURI("/objects/demo:1234");
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
     }
 
+   @Test
     public void testGetDatastreamDissemination() throws Exception {
-        url =
-                String.format("/objects/%s/datastreams/RELS-EXT/content", pid
-                        .toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        HttpResponse response = get(getAuthAccess());
-        assertEquals(SC_OK, response.getStatusCode());
-        Header length = response.getResponseHeader("content-length");
+        URI url =
+                getURI(String.format("/objects/%s/datastreams/RELS-EXT/content", DEMO_REST_PID
+                        .toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        HttpGet get = new HttpGet(url);
+        HttpResponse response = getOrDelete(get, getAuthAccess(), false);
+        int status = response.getStatusLine().getStatusCode();
+        Header length = response.getFirstHeader(HttpHeaders.CONTENT_LENGTH);
+        String responseXML = readString(response);
+        assertEquals(SC_OK, status);
         assertNotNull(length);
         assertNotNull(length.getValue());
         long lengthlong = Long.parseLong(length.getValue());
         assertTrue(lengthlong > 0);
-        String responseXML = new String(response.responseBody, "UTF-8");
         assertTrue(responseXML.contains("rdf:Description"));
 
         url =
-                String
+                getURI(String
                         .format("/objects/%s/datastreams/RELS-EXT/content?asOfDateTime=%s",
-                                pid.toString(),
-                                datetime);
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        response = get(getAuthAccess());
-        assertEquals(SC_OK, response.getStatusCode());
-        length = response.getResponseHeader("content-length");
+                                DEMO_REST_PID.toString(),
+                                datetime));
+        verifyNoAuthFailOnAPIAAuth(url);
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        length = response.getFirstHeader(HttpHeaders.CONTENT_LENGTH);
+        responseXML = readString(response);
+        assertEquals(SC_OK, status);
         assertNotNull(length);
         assertNotNull(length.getValue());
         lengthlong = Long.parseLong(length.getValue());
         assertTrue(lengthlong > 0);
 
-        responseXML = new String(response.responseBody, "UTF-8");
         assertTrue(responseXML.contains("rdf:Description"));
 
         // sanity check
         url =
-                String.format("/objects/%s/datastreams/BOGUS_DSID/content", pid
-                        .toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_NOT_FOUND, get(getAuthAccess()).getStatusCode());
+                getURI(String.format("/objects/%s/datastreams/BOGUS_DSID/content", DEMO_REST_PID
+                        .toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        verifyGETStatusString(url, SC_NOT_FOUND, getAuthAccess(), false);
     }
 
+   @Test
     public void testFindObjects() throws Exception {
-        url =
-                String
+        URI url =
+                getURI(String
                         .format("/objects?pid=true&terms=%s&query=&resultFormat=xml",
-                                pid.toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
+                                DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
         // FIXME: findObjects should have a schema?  remove "false" to enable validation
-        assertEquals(SC_OK, get(getAuthAccess(), false).getStatusCode());
+        verifyGETStatusOnly(url, SC_OK, false);
+    }
+
+    /**
+     * test case for FCREPO-867. Since all SQL statements have been switched to
+     * PreparedStatement it's safe to use a singlequote in a search query.
+     * @throws Exception
+     */
+   @Test
+    public void testFindObjectWithSingleQuote() throws Exception {
+        URI url =
+                getURI(String
+                        .format("/objects?pid=true&description=true&terms='Coliseum'&query&maxResults=20&resultFormat=xml",
+                                DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        // FIXME: findObjects should have a schema?  remove "false" to enable validation
+        String xmlResult = verifyGETStatusString(url, SC_OK, getAuthAccess(), false);
+//        System.out.println("ResponseBody: " + xmlResult);
+        assertTrue(xmlResult.indexOf("<pid>demo:REST</pid>") > 0);
     }
 
     public void testFindObjectsForTermWithApostrophe() throws Exception {
         String term = URLEncoder.encode("haven't", "UTF-8");
-        url =
-                String
+        URI url =
+                getURI(String
                         .format("/objects?pid=true&terms=%s&query=&resultFormat=xml",
-                                term);
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
+                                term));
+        verifyNoAuthFailOnAPIAAuth(url);
         // FIXME: findObjects should have a schema?  remove "false" to enable validation
-        HttpResponse resp=get(getAuthAccess(), false);
-        String xmlResult=new String(resp.getResponseBody());
-        assertEquals(SC_OK, resp.getStatusCode());
+        String xmlResult = verifyGETStatusString(url, SC_OK, getAuthAccess(), false);
         assertTrue(xmlResult.indexOf("<pid>demo:SmileyBeerGlass</pid>") > 0);
         assertTrue(xmlResult.indexOf("<pid>demo:SmileyPens</pid>") > 0);
         assertTrue(xmlResult.indexOf("<pid>demo:SmileyPens_M</pid>") > 0);
@@ -708,17 +972,13 @@ public class TestRESTAPI
 
     public void testFindObjectsForQueryWithApostrophe() throws Exception {
         String query = URLEncoder.encode("description~haven\\'t", "UTF-8");
-        url =
-                String
+        URI url =
+                getURI(String
                         .format("/objects?pid=true&terms=&query=%s&resultFormat=xml",
-                                query);
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
+                                query));
+        verifyNoAuthFailOnAPIAAuth(url);
         // FIXME: findObjects should have a schema?  remove "false" to enable validation
-        HttpResponse resp=get(getAuthAccess(), false);
-        String xmlResult=new String(resp.getResponseBody());
-        assertEquals(SC_OK, resp.getStatusCode());
+        String xmlResult = verifyGETStatusString(url, SC_OK, getAuthAccess(), false);
         assertTrue(xmlResult.indexOf("<pid>demo:SmileyBeerGlass</pid>") > 0);
         assertTrue(xmlResult.indexOf("<pid>demo:SmileyPens</pid>") > 0);
         assertTrue(xmlResult.indexOf("<pid>demo:SmileyPens_M</pid>") > 0);
@@ -737,53 +997,46 @@ public class TestRESTAPI
      * assertEquals(SC_CREATED, response.getStatusCode()); } }
      */
 
+   @Test
     public void testResumeFindObjects() throws Exception {
-        url = "/objects?pid=true&query=pid~*&resultFormat=xml";
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        // FIXME: resumeFindObjects should have a schema?  remove "false" to enable validdation
-        HttpResponse response = get(getAuthAccess(), false);
-        assertEquals(SC_OK, response.getStatusCode());
-
-        String responseXML = new String(response.responseBody, "UTF-8");
+       // there are only the system objects and 8 demo objects, so maxResults must be constrained
+        URI url = getURI("/objects?pid=true&query=&resultFormat=xml&maxResults=4");
+        verifyNoAuthFailOnAPIAAuth(url);
+        // FIXME: resumeFindObjects should have a schema?  remove "false" to enable validation
+        String responseXML = verifyGETStatusString(url, SC_OK, getAuthAccess(), false);
         String sessionToken =
                 responseXML.substring(responseXML.indexOf("<token>") + 7,
                                       responseXML.indexOf("</token>"));
 
         url =
-                String
-                        .format("/objects?pid=true&query=pid~*&format=xml&sessionToken=%s",
-                                sessionToken);
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+                getURI(String
+                        .format("/objects?pid=true&query=&resultFormat=xml&sessionToken=%s",
+                                sessionToken));
+        verifyNoAuthFailOnAPIAAuth(url);
+        verifyGETStatusOnly(url, SC_OK);
     }
 
+   @Test
     public void testFindObjectsBadSyntax() throws Exception {
-        //url = "/objects?pid=true&query=label%3D%3F&maxResults=20";
+        //URI url = getURI("/objects?pid=true&query=label%3D%3F&maxResults=20");
         // Above query will not fail with FieldSearchLucene
-        url = "/objects?pid=true&query=label%3D~&maxResults=20";
+        URI url = getURI("/objects?pid=true&query=label%3D~&maxResults=20");
         // Try > 100 times; will hang if the connection isn't properly released
         for (int i = 0; i < 101; i++) {
-            assertEquals(SC_INTERNAL_SERVER_ERROR, get(getAuthAccess())
-                    .getStatusCode());
+            verifyGETStatusOnly(url, SC_INTERNAL_SERVER_ERROR, false);
         }
+        
     }
 
+   @Test
     public void testGetObjectHistory() throws Exception {
-        url = String.format("/objects/%s/versions", pid.toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+        URI url = getURI(String.format("/objects/%s/versions", DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        verifyGETStatusOnly(url, SC_OK);
 
-        url = String.format("/objects/%s/versions?format=xml", pid.toString());
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        assertEquals(SC_OK, get(getAuthAccess()).getStatusCode());
+        url = getURI(String.format("/objects/%s/versions?format=xml", DEMO_REST_PID.toString()));
+        verifyNoAuthFailOnAPIAAuth(url);
+        verifyGETStatusOnly(url, SC_OK);
     }
 
     private String extractPid(String source) {
@@ -792,185 +1045,226 @@ public class TestRESTAPI
         if (m.find() && m.groupCount() == 1) {
             pid = m.group(1);
         }
+        pid = pid.replaceAll("\n", "").replaceAll("\r", "").replaceAll("%3A", ":");
         return pid;
     }
 
     // API-M
 
+    @Test
     public void testIngest() throws Exception {
         // Create new empty object
-        url = String.format("/objects/new");
-        assertEquals(SC_UNAUTHORIZED, post("", false).getStatusCode());
-        HttpResponse response = post("", true);
-        assertEquals(SC_CREATED, response.getStatusCode());
+        URI url = getURI(String.format("/objects/new"));
+        StringEntity entity = getStringEntity("", TEXT_XML);
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        HttpPost post = new HttpPost(url);
+        HttpResponse response = putOrPost(post, entity, true);
+
+        String responseBody = readString(response);
+        assertEquals(SC_CREATED, response.getStatusLine().getStatusCode());
 
         String emptyObjectPid =
-                extractPid(response.getResponseHeader("Location").getValue());
+                extractPid(response.getFirstHeader(HttpHeaders.LOCATION).getValue());
         assertNotNull(emptyObjectPid);
-        emptyObjectPid =
-                emptyObjectPid.replaceAll("\n", "").replaceAll("\r", "")
-                        .replaceAll("%3A", ":");
         // PID should be returned as a header and as the response body
-        String responseBody = new String(response.getResponseBody(), "UTF-8");
         assertTrue(responseBody.equals(emptyObjectPid));
 
         // Delete empty object
-        url = String.format("/objects/%s", emptyObjectPid);
-        assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());
-        assertEquals(SC_OK, delete(true).getStatusCode());
+        url = getURI(String.format("/objects/%s", emptyObjectPid));
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
 
         // Ensure that GETs of the deleted object immediately give 404s (See FCREPO-594)
-        assertEquals(SC_NOT_FOUND, get(getAuthAccess()).getStatusCode());
+        verifyGETStatusOnly(url, SC_NOT_FOUND);
 
         // Create new empty object with a PID namespace specified
-        url = String.format("/objects/new?namespace=test");
-        assertEquals(SC_UNAUTHORIZED, post("", false).getStatusCode());
-        response = post("", true);
-        assertEquals(SC_CREATED, response.getStatusCode());
+        url = getURI(String.format("/objects/new?namespace=test"));
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        post = new HttpPost(url);
+        response = putOrPost(post, entity, true);
+
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_CREATED, response.getStatusLine().getStatusCode());
 
         emptyObjectPid =
-                extractPid(response.getResponseHeader("Location").getValue());
+                extractPid(response.getFirstHeader(HttpHeaders.LOCATION).getValue());
         assertTrue(emptyObjectPid.startsWith("test"));
 
         // Delete empty "test" object
-        url = String.format("/objects/%s", emptyObjectPid);
-        assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());
-        assertEquals(SC_OK, delete(true).getStatusCode());
+        url = getURI(String.format("/objects/%s", emptyObjectPid));
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
+
+        // Create new empty object with a state of 'I' (inactive) specified
+        url = getURI(String.format("/objects/new?state=I"));
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        post = new HttpPost(url);
+        response = putOrPost(post, entity, true);
+
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_CREATED, response.getStatusLine().getStatusCode());
+        emptyObjectPid =
+                extractPid(response.getFirstHeader(HttpHeaders.LOCATION).getValue());
+        
+        url = getURI(String.format("/objects/%s?format=xml", emptyObjectPid));
+        HttpGet get = new HttpGet(url);
+        // always authenticate since type I should be hidden
+        response = getOrDelete(get, true, true);
+        int status = response.getStatusLine().getStatusCode();
+        String responseXML = readString(response);
+        assertEquals(SC_OK, status);
+        assertTrue(responseXML.contains("<objState>I</objState>"));
+
+        // Delete empty "test" object
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
 
         // Delete the demo:REST object (ingested as part of setup)
-        url = String.format("/objects/%s", pid.toString());
-        assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());
-        assertEquals(SC_OK, delete(true).getStatusCode());
+        url = getURI(String.format("/objects/%s", DEMO_REST_PID.toString()));
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
 
         // Create a new empty demo:REST object with parameterized ownerId
-        url = String.format("/objects/%s?ownerId=%s", pid.toString(), DEMO_OWNERID);
-        assertEquals(SC_UNAUTHORIZED, post((String)null, false).getStatusCode());
-        response = post((String)null, true);
-        assertEquals(SC_CREATED, response.getStatusCode());
-        Header locationHeader = response.getResponseHeader("location");
+        url = getURI(String.format("/objects/%s?ownerId=%s", DEMO_REST_PID.toString(), DEMO_OWNERID));
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, null, false);
+        post = new HttpPost(url);
+        response = putOrPost(post, entity, true);
+
+        responseBody = readString(response);
+        assertEquals(SC_CREATED, response.getStatusLine().getStatusCode());
+        Header locationHeader = response.getFirstHeader(HttpHeaders.LOCATION);
         assertNotNull(locationHeader);
-        assertTrue(locationHeader.getValue().contains(URLEncoder.encode(pid
+        assertTrue(locationHeader.getValue().contains(URLEncoder.encode(DEMO_REST_PID
                 .toString(), "UTF-8")));
-        responseBody = new String(response.getResponseBody(), "UTF-8");
-        assertTrue(responseBody.equals(pid.toString()));
+        assertTrue(responseBody.equals(DEMO_REST_PID.toString()));
         // verify ownerId
-        response = get(true);
-        responseBody = new String(response.getResponseBody(), "UTF-8");
+        responseBody = verifyGETStatusString(url, SC_OK, true, true);
         assertTrue(responseBody.indexOf(DEMO_OWNERID) > 0);
 
         // Delete the demo:REST object (ingested as part of setup)
-        url = String.format("/objects/%s", pid.toString());
-        assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());
-        assertEquals(SC_OK, delete(true).getStatusCode());
+        url = getURI(String.format("/objects/%s", DEMO_REST_PID.toString()));
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
 
         // Ingest the demo:REST object
-        url = String.format("/objects/%s", pid.toString());
-        assertEquals(SC_UNAUTHORIZED, post(DEMO_REST, false).getStatusCode());
-        response = post(DEMO_REST, true);
-        assertEquals(SC_CREATED, response.getStatusCode());
-        locationHeader = response.getResponseHeader("location");
+        url = getURI(String.format("/objects/%s", DEMO_REST_PID.toString()));
+        entity = getStringEntity(DEMO_REST, TEXT_XML);
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        post = new HttpPost(url);
+        response = putOrPost(post, entity, true);
+        responseBody = readString(response);
+        assertEquals(SC_CREATED, response.getStatusLine().getStatusCode());
+        locationHeader = response.getFirstHeader(HttpHeaders.LOCATION);
         assertNotNull(locationHeader);
-        assertTrue(locationHeader.getValue().contains(URLEncoder.encode(pid
+        assertTrue(locationHeader.getValue().contains(URLEncoder.encode(DEMO_REST_PID
                 .toString(), "UTF-8")));
-        responseBody = new String(response.getResponseBody(), "UTF-8");
-        assertTrue(responseBody.equals(pid.toString()));
+        assertTrue(responseBody.equals(DEMO_REST_PID.toString()));
 
         // Ingest minimal object with no PID
-        url = String.format("/objects/new");
-        assertEquals(SC_UNAUTHORIZED, post(DEMO_MIN, false).getStatusCode());
-        response = post(DEMO_MIN, true);
-        assertEquals(SC_CREATED, response.getStatusCode());
+        url = getURI(String.format("/objects/new"));
+        entity = getStringEntity(DEMO_MIN, TEXT_XML);
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        post = new HttpPost(url);
+        response = putOrPost(post, entity, true);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_CREATED, response.getStatusLine().getStatusCode());
 
         // Delete minimal object
         String minimalObjectPid =
-                extractPid(response.getResponseHeader("Location").getValue());
-        url = String.format("/objects/%s", minimalObjectPid);
-        assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());
-        assertEquals(SC_OK, delete(true).getStatusCode());
+                extractPid(response.getFirstHeader(HttpHeaders.LOCATION).getValue());
+        url = getURI(String.format("/objects/%s", minimalObjectPid));
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
     }
 
     // Tests FCREPO-509
 
+    @Test
     public void testIngestWithParameterPid() throws Exception {
 
         // Ingest minimal object with PID, use "new" as path parameter -> must succeed
-        url = String.format("/objects/new");
-        assertEquals(SC_UNAUTHORIZED, post(DEMO_MIN_PID, false).getStatusCode());
-        HttpResponse response = post(DEMO_MIN_PID, true);
-        assertEquals(SC_CREATED, response.getStatusCode());
+        URI url = getURI(String.format("/objects/new"));
+        StringEntity entity = getStringEntity(DEMO_MIN_PID, TEXT_XML);
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        verifyPOSTStatusOnly(url, SC_CREATED, entity, true);
 
         // clean up
-        url = String.format("/objects/%s", "demo:1234");
-        assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());
-        assertEquals(SC_OK, delete(true).getStatusCode());
+        url = getURI(String.format("/objects/%s", "demo:1234"));
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
 
         // Ingest minimal object with PID, use a different PID than the one
         // specified in the foxml -> must fail
-        url = String.format("/objects/%s", "demo:234");
-        assertEquals(SC_UNAUTHORIZED, post(DEMO_MIN_PID, false).getStatusCode());
-        response = post(DEMO_MIN_PID, true);
-        assertEquals(SC_INTERNAL_SERVER_ERROR, response.getStatusCode());
+        url = getURI(String.format("/objects/%s", "demo:234"));
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        verifyPOSTStatusOnly(url, SC_INTERNAL_SERVER_ERROR, entity, true);
 
         // Ingest minimal object with PID equals to the PID specified in the foxml
-        url = String.format("/objects/%s", "demo:1234");
-        assertEquals(SC_UNAUTHORIZED, post(DEMO_MIN_PID, false).getStatusCode());
-        response = post(DEMO_MIN_PID, true);
-        assertEquals(SC_CREATED, response.getStatusCode());
+        url = getURI(String.format("/objects/%s", "demo:1234"));
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        verifyPOSTStatusOnly(url, SC_CREATED, entity, true);
 
         // clean up
-        url = String.format("/objects/%s", "demo:1234");
-        assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());
-        assertEquals(SC_OK, delete(true).getStatusCode());
+        url = getURI(String.format("/objects/%s", "demo:1234"));
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
 
         // Ingest minimal object with no PID, specify a PID parameter in the request
-        url = String.format("/objects/%s", "demo:234");
-        assertEquals(SC_UNAUTHORIZED, post(DEMO_MIN, false).getStatusCode());
-        response = post(DEMO_MIN, true);
-        assertEquals(SC_CREATED, response.getStatusCode());
+        url = getURI(String.format("/objects/%s", "demo:234"));
+        entity = getStringEntity(DEMO_MIN, TEXT_XML);
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        verifyPOSTStatusOnly(url, SC_CREATED, entity, true);
 
         // clean up
-        url = String.format("/objects/%s", "demo:234");
-        assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());
-        assertEquals(SC_OK, delete(true).getStatusCode());
+        url = getURI(String.format("/objects/%s", "demo:234"));
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
 
     }
 
+    @Test
     public void testModifyObject() throws Exception {
-        url = String.format("/objects/%s?label=%s", pid.toString(), "foo");
-        assertEquals(SC_UNAUTHORIZED, put("", false).getStatusCode());
-        HttpResponse response = put("", true);
-        assertEquals(SC_OK, response.getStatusCode());
-        assertEquals("foo", apia.getObjectProfile(pid.toString(), null)
+        URI url = getURI(String.format("/objects/%s?label=%s", DEMO_REST_PID.toString(), "foo"));
+        StringEntity entity = getStringEntity("", TEXT_XML);
+        verifyPUTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        verifyPUTStatusOnly(url, SC_OK, entity, true);
+        assertEquals("foo", apia.getObjectProfile(DEMO_REST_PID.toString(), null)
                 .getObjLabel());
     }
 
+    @Test
     public void testGetObjectXML() throws Exception {
-        url = String.format("/objects/%s/objectXML", pid.toString());
-        assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        assertEquals(SC_OK, get(true).getStatusCode());
+        URI url = getURI(String.format("/objects/%s/objectXML", DEMO_REST_PID.toString()));
+        verifyGETStatusString(url, SC_UNAUTHORIZED, false, true);
+        verifyGETStatusString(url, SC_OK, true, true);
     }
 
+    @Test
     public void testValidate() throws Exception {
         String[] resultFields = {"pid"};
-        NonNegativeInteger maxResults = new NonNegativeInteger("" + 1000);
-        FieldSearchQuery query = new FieldSearchQuery(null, "*");
+        java.math.BigInteger maxResults = new java.math.BigInteger("" + 1000);
+        FieldSearchQuery query = new FieldSearchQuery();
+        org.fcrepo.server.types.gen.ObjectFactory factory = new org.fcrepo.server.types.gen.ObjectFactory();
+        query.setTerms(factory.createFieldSearchQueryTerms("*"));
         FieldSearchResult result =
-                apia.findObjects(resultFields, maxResults, query);
+                apia.findObjects(TypeUtility.convertStringtoAOS(resultFields),
+                                 maxResults,
+                                 query);
 
-        ObjectFields[] fields = result.getResultList();
-        String thispid = "";
+        List<ObjectFields> fields = result.getResultList().getObjectFields();
+        String pid = "";
+        URI url = null;
         for (ObjectFields objectFields : fields) {
-            thispid = objectFields.getPid();
-            url =
-                    String.format("/objects/%s/validate", URLEncoder.encode(thispid
-                            .toString(), "UTF-8"));
-            HttpResponse getTrue = get(true);
-            assertEquals(thispid.toString(), SC_UNAUTHORIZED, get(false)
-                    .getStatusCode());
-            assertEquals(thispid.toString(), SC_OK, getTrue.getStatusCode());
-            String responseXML = getTrue.getResponseBodyString();
-            assertXpathExists("/management:validation[@valid='true']",
-                              responseXML);
+            if (objectFields != null) {
+                pid = objectFields.getPid() != null ? objectFields.getPid().getValue() : "";
+                url = getURI(
+                        String.format("/objects/%s/validate", pid.toString()));
+                verifyGETStatusString(
+                        url, SC_UNAUTHORIZED, false, false);
+                String responseXML = verifyGETStatusString(
+                        url, SC_OK, true, true);
+                assertXpathExists("/management:validation[@valid='true']", responseXML);
+            }
         }
         // test with asOfDateTime set (just on the last object validated above)
 
@@ -979,14 +1273,14 @@ public class TestRESTAPI
         // demo:REST has its datastream date/time values set to now (new Date()).
 
         // after ingest time - should pass
-        url =
-                String.format("/objects/%s/validate?asOfDateTime=%s", pid
-                              .toString(), laterDateTime);
-        HttpResponse getTrue = get(true);
-        assertEquals(pid.toString(), SC_UNAUTHORIZED, get(false)
-                     .getStatusCode());
-        assertEquals(pid.toString(), SC_OK, getTrue.getStatusCode());
-        String responseXML = getTrue.getResponseBodyString();
+        url = getURI(
+                String.format("/objects/%s/validate?asOfDateTime=%s",
+                              pid.toString(),
+                              df.format(new Date())));
+        verifyGETStatusString(
+                url, SC_UNAUTHORIZED, false, false);
+        String responseXML = verifyGETStatusString(
+                url, SC_OK, true, true);
         assertXpathExists("/management:validation[@valid='true']", responseXML);
 
 
@@ -996,13 +1290,12 @@ public class TestRESTAPI
         // before ingest time - should fail
         // (DC datastream version won't exist for example)
         url =
-            String.format("/objects/%s/validate?asOfDateTime=%s", pid
-                          .toString(), earlierDateTime);
-        getTrue = get(true);
-        assertEquals(pid.toString(), SC_UNAUTHORIZED, get(false)
-                     .getStatusCode());
-        assertEquals(pid.toString(), SC_OK, getTrue.getStatusCode());
-        responseXML = getTrue.getResponseBodyString();
+            getURI(String.format("/objects/%s/validate?asOfDateTime=%s", pid
+                          .toString(), earlierDateTime));
+        verifyGETStatusString(
+                url, SC_UNAUTHORIZED, false, false);
+        responseXML = verifyGETStatusString(
+                url, SC_OK, true, true);
         assertXpathExists("/management:validation[@valid='false']", responseXML);
 
         // original - testing at exact ingets time - fails under postgres
@@ -1021,118 +1314,146 @@ public class TestRESTAPI
 
     }
 
+    @Test
     public void testExportObject() throws Exception {
-        url = String.format("/objects/%s/export", pid.toString());
-        assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        assertEquals(SC_OK, get(true).getStatusCode());
+        URI url = getURI(String.format("/objects/%s/export", DEMO_REST_PID.toString()));
+        verifyGETStatusString(
+                url, SC_UNAUTHORIZED, false, false);
+        verifyGETStatusString(
+                url, SC_OK, true, true);
 
         url =
-                String.format("/objects/%s/export?context=public", pid
-                        .toString());
-        assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        assertEquals(SC_OK, get(true).getStatusCode());
+            getURI(
+                String.format("/objects/%s/export?context=public", DEMO_REST_PID
+                        .toString()));
+        verifyGETStatusString(
+                url, SC_UNAUTHORIZED, false, false);
+        verifyGETStatusString(
+                url, SC_OK, true, true);
     }
 
+    @Test
     public void testPurgeObject() throws Exception {
-        url = String.format("/objects/%s", "demo:TEST_PURGE");
-        assertEquals(SC_UNAUTHORIZED, post("", false).getStatusCode());
-        assertEquals(SC_CREATED, post("", true).getStatusCode());
-        url = String.format("/objects/demo:TEST_PURGE");
-        assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());
-        assertEquals(SC_OK, delete(true).getStatusCode());
+        URI url = getURI("/objects/demo:TEST_PURGE");
+        StringEntity entity = getStringEntity("", TEXT_XML);
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        verifyPOSTStatusOnly(url, SC_CREATED, entity, true);
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
     }
 
+    @Test
     public void testAddDatastream() throws Exception {
         // inline (X) datastream
         String xmlData = "<foo>bar</foo>";
-        String dsPath = "/objects/" + pid + "/datastreams/FOO";
-        url = dsPath + "?controlGroup=X&dsLabel=bar";
-        assertEquals(SC_UNAUTHORIZED, post(xmlData, false).getStatusCode());
-        HttpResponse response = post(xmlData, true);
-        assertEquals(SC_CREATED, response.getStatusCode());
-        Header locationHeader = response.getResponseHeader("location");
+        String dsPath = "/objects/" + DEMO_REST_PID + "/datastreams/FOO";
+        URI url = getURI(dsPath + "?controlGroup=X&dsLabel=foo");
+        StringEntity entity = getStringEntity(xmlData, TEXT_XML);
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        HttpPost post = new HttpPost(url);
+        HttpResponse response = putOrPost(post, entity, true);
+        String expected = readString(response);
+        assertEquals(SC_CREATED, response.getStatusLine().getStatusCode());
+        Header locationHeader = response.getFirstHeader(HttpHeaders.LOCATION);
         assertNotNull(locationHeader);
-        assertEquals(new URL(url.substring(0, url.indexOf('?'))).toString(),
-                     locationHeader.getValue());
-        assertEquals("text/xml", response.getResponseHeader("Content-Type")
+        assertEquals(getURI(dsPath),
+                     URI.create(locationHeader.getValue()));
+        assertEquals(TEXT_XML, response.getFirstHeader(HttpHeaders.CONTENT_TYPE)
                 .getValue());
-        url = dsPath + "?format=xml";
-        assertEquals(response.getResponseBodyString(), get(true)
-                .getResponseBodyString());
+        url = getURI(dsPath + "?format=xml");
+        String actual = verifyGETStatusString(url, SC_OK, true, true);
+        assertEquals(expected, actual);
 
         // managed (M) datastream
         String mimeType = "text/plain";
-        dsPath = "/objects/" + pid + "/datastreams/BAR";
-        url = dsPath + "?controlGroup=M&dsLabel=bar&mimeType=" + mimeType;
+        Datastream ds = apim.getDatastream(DEMO_REST_PID.toString(),"BAR",null);
+        assertNull(ds);
+        dsPath = "/objects/" + DEMO_REST_PID + "/datastreams/BAR";
+        url = getURI(dsPath + "?controlGroup=M&dsLabel=bar&mimeType=" + mimeType);
         File temp = File.createTempFile("test", null);
         DataOutputStream os = new DataOutputStream(new FileOutputStream(temp));
         os.write(42);
         os.close();
-        assertEquals(SC_UNAUTHORIZED, post(temp, false).getStatusCode());
-        response = post(temp, true);
-        assertEquals(SC_CREATED, response.getStatusCode());
-        locationHeader = response.getResponseHeader("location");
+        response = post(url, temp, false);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_UNAUTHORIZED, response.getStatusLine().getStatusCode());
+        response = post(url, temp, true);
+        expected = readString(response);
+        assertEquals(SC_CREATED, response.getStatusLine().getStatusCode());
+        locationHeader = response.getFirstHeader(HttpHeaders.LOCATION);
         assertNotNull(locationHeader);
-        assertEquals(new URL(url.substring(0, url.indexOf('?'))).toString(),
-                     locationHeader.getValue());
-        assertEquals("text/xml", response.getResponseHeader("Content-Type")
+        assertEquals(getURI(dsPath),
+                     URI.create(locationHeader.getValue()));
+        assertEquals(TEXT_XML, response.getFirstHeader(HttpHeaders.CONTENT_TYPE)
                 .getValue());
-        url = dsPath + "?format=xml";
-        assertEquals(response.getResponseBodyString(), get(true)
-                .getResponseBodyString());
-        Datastream ds = apim.getDatastream(pid.toString(), "BAR", null);
+        url = getURI(dsPath + "?format=xml");
+        actual = verifyGETStatusString(url, SC_OK, true, true);
+        assertEquals(expected, actual);
+        ds = apim.getDatastream(DEMO_REST_PID.toString(), "BAR", null);
+        assertNotNull(ds);
         assertEquals(ds.getMIMEType(), mimeType);
     }
 
+    @Test
     public void testModifyDatastreamByReference() throws Exception {
         // Create BAR datastream
-        url =
-                String
-                        .format("/objects/%s/datastreams/BAR?controlGroup=M&dsLabel=bar",
-                                pid.toString());
+        URI url = getURI(
+            String.format(
+                "/objects/%s/datastreams/BAR?controlGroup=M&dsLabel=testModifyDatastreamByReference(bar)",
+                DEMO_REST_PID.toString()));
         File temp = File.createTempFile("test", null);
         DataOutputStream os = new DataOutputStream(new FileOutputStream(temp));
         os.write(42);
         os.close();
-        assertEquals(SC_UNAUTHORIZED, post(temp, false).getStatusCode());
-        assertEquals(SC_CREATED, post(temp, true).getStatusCode());
+        HttpResponse response = post(url, temp, false);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_UNAUTHORIZED, response.getStatusLine().getStatusCode());
+        response = post(url, temp, true);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_CREATED, response.getStatusLine().getStatusCode());
 
         // Update the content of the BAR datastream (using PUT)
-        url = String.format("/objects/%s/datastreams/BAR", pid.toString());
-        assertEquals(SC_UNAUTHORIZED, put(temp, false).getStatusCode());
-        HttpResponse response = put(temp, true);
-        assertEquals(SC_OK, response.getStatusCode());
-        assertEquals("text/xml", response.getResponseHeader("Content-Type")
+        url = getURI(
+                String.format("/objects/%s/datastreams/BAR", DEMO_REST_PID.toString()));
+        assertEquals(SC_UNAUTHORIZED, put(url, temp, false)
+                .getStatusLine().getStatusCode());
+        response = put(url, temp, true);
+        String expected = readString(response);
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+        assertEquals(TEXT_XML, response.getFirstHeader(HttpHeaders.CONTENT_TYPE)
                 .getValue());
-        url = url + "?format=xml";
-        assertEquals(response.getResponseBodyString(), get(true)
-                .getResponseBodyString());
+        url = getURI(url.toString() + "?format=xml");
+        String actual = verifyGETStatusString(url, SC_OK, true, true);
+        assertEquals(expected, actual);
 
         // Ensure 404 on attempt to update BOGUS_DS via PUT
-        url = "/objects/" + pid + "/datastreams/BOGUS_DS";
-        assertEquals(SC_NOT_FOUND, put(temp, true).getStatusCode());
+        url = getURI("/objects/" + DEMO_REST_PID + "/datastreams/BOGUS_DS");
+        response = put(url, temp, true);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_NOT_FOUND, response.getStatusLine().getStatusCode());
 
         // Update the content of the BAR datastream (using POST)
-        url = String.format("/objects/%s/datastreams/BAR", pid.toString());
-        response = post(temp, true);
-        assertEquals(SC_CREATED, response.getStatusCode());
-        Header locationHeader = response.getResponseHeader("location");
+        url = getURI(String.format("/objects/%s/datastreams/BAR", DEMO_REST_PID.toString()));
+        response = post(url, temp, true);
+        expected = readString(response);
+        assertEquals(SC_CREATED, response.getStatusLine().getStatusCode());
+        Header locationHeader = response.getFirstHeader(HttpHeaders.LOCATION);
         assertNotNull(locationHeader);
-        assertEquals(url, locationHeader.getValue());
-        assertEquals("text/xml", response.getResponseHeader("Content-Type")
+        assertEquals(url.toString(), locationHeader.getValue());
+        assertEquals(TEXT_XML, response.getFirstHeader(HttpHeaders.CONTENT_TYPE)
                 .getValue());
-        url = url + "?format=xml";
-        assertEquals(response.getResponseBodyString(), get(true)
-                .getResponseBodyString());
+        url = getURI(url.toString() + "?format=xml");
+        actual = verifyGETStatusString(url, SC_OK, true, true);
+        assertEquals(expected, actual);
 
         // Update the label of the BAR datastream
         String newLabel = "tikibar";
         url =
-                String.format("/objects/%s/datastreams/BAR?dsLabel=%s", pid
-                        .toString(), newLabel);
-        assertEquals(SC_UNAUTHORIZED, put(false).getStatusCode());
-        assertEquals(SC_OK, put(true).getStatusCode());
-        assertEquals(newLabel, apim.getDatastream(pid.toString(), "BAR", null)
+                getURI(String.format("/objects/%s/datastreams/BAR?dsLabel=%s", DEMO_REST_PID
+                        .toString(), newLabel));
+        verifyPUTStatusOnly(url, SC_UNAUTHORIZED, null, false);
+        verifyPUTStatusOnly(url, SC_OK, null, true);
+        assertEquals(newLabel, apim.getDatastream(DEMO_REST_PID.toString(), "BAR", null)
                 .getLabel());
 
         // Update the location of the EXTDS datastream (E type datastream)
@@ -1140,23 +1461,25 @@ public class TestRESTAPI
                 "http://" + getHost() + ":" + getPort() + "/"
                         + getFedoraAppServerContext() + "/get/demo:REST/DC";
         url =
+            getURI(
                 String.format("/objects/%s/datastreams/EXTDS?dsLocation=%s",
-                              pid.toString(),
-                              newLocation);
-        assertEquals(SC_UNAUTHORIZED, put(false).getStatusCode());
-        assertEquals(SC_OK, put(true).getStatusCode());
+                              DEMO_REST_PID.toString(),
+                              newLocation));
+        verifyPUTStatusOnly(url, SC_UNAUTHORIZED, null, false);
+        verifyPUTStatusOnly(url, SC_OK, null, true);
 
-        assertEquals(newLocation, apim.getDatastream(pid.toString(),
+        assertEquals(newLocation, apim.getDatastream(DEMO_REST_PID.toString(),
                                                      "EXTDS",
                                                      null).getLocation());
         String dcDS =
-                new String(apia.getDatastreamDissemination(pid.toString(),
-                                                           "DC",
-                                                           null).getStream());
+                new String(TypeUtility.convertDataHandlerToBytes(apia
+                        .getDatastreamDissemination(DEMO_REST_PID.toString(), "DC", null)
+                        .getStream()));
         String extDS =
-                new String(apia.getDatastreamDissemination(pid.toString(),
-                                                           "EXTDS",
-                                                           null).getStream());
+                new String(TypeUtility.convertDataHandlerToBytes(apia
+                        .getDatastreamDissemination(DEMO_REST_PID.toString(),
+                                                    "EXTDS",
+                                                    null).getStream()));
         assertEquals(dcDS, extDS);
 
         // Update DS1 by reference (X type datastream)
@@ -1164,158 +1487,176 @@ public class TestRESTAPI
         if (getAuthAccess()) {
             // only ConfigB has API-A auth on
             url =
+                getURI(
                     String.format("/objects/%s/datastreams/DS1?dsLocation=%s",
-                                  pid.toString(),
-                                  newLocation);
-            assertEquals(SC_UNAUTHORIZED, put(false).getStatusCode());
-            assertEquals(SC_INTERNAL_SERVER_ERROR, put(true).getStatusCode());
+                                  DEMO_REST_PID.toString(),
+                                  newLocation));
+            verifyPUTStatusOnly(url, SC_UNAUTHORIZED, null, false);
+            verifyPUTStatusOnly(url, SC_INTERNAL_SERVER_ERROR, null, true);
         }
 
         // Update DS1 by reference (X type datastream) - Success expected
         newLocation = getBaseURL() + "/ri/index.xsl";
         url =
-                String.format("/objects/%s/datastreams/DS1?dsLocation=%s", pid
-                        .toString(), newLocation);
-        assertEquals(SC_UNAUTHORIZED, put(false).getStatusCode());
-        assertEquals(SC_OK, put(true).getStatusCode());
+            getURI(
+                String.format("/objects/%s/datastreams/DS1?dsLocation=%s", DEMO_REST_PID
+                        .toString(), newLocation));
+        verifyPUTStatusOnly(url, SC_UNAUTHORIZED, null, false);
+        verifyPUTStatusOnly(url, SC_OK, null, true);
     }
 
+    @Test
     public void testModifyDatastreamByValue() throws Exception {
         String xmlData = "<baz>quux</baz>";
-        url = String.format("/objects/%s/datastreams/DS1", pid.toString());
+        StringEntity entity = getStringEntity(xmlData, TEXT_XML);
+        URI url = getURI(
+            String.format(
+                "/objects/%s/datastreams/DS1?dsLabel=testModifyDatastreamByValue",
+                DEMO_REST_PID.toString()));
 
-        assertEquals(SC_UNAUTHORIZED, put(xmlData, false).getStatusCode());
-        assertEquals(SC_OK, put(xmlData, true).getStatusCode());
+        verifyPUTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        verifyPUTStatusOnly(url, SC_OK, entity, true);
 
         MIMETypedStream ds1 =
-                apia.getDatastreamDissemination(pid.toString(), "DS1", null);
-        assertXMLEqual(xmlData, new String(ds1.getStream(), "UTF-8"));
+                apia.getDatastreamDissemination(DEMO_REST_PID.toString(), "DS1", null);
+        assertXMLEqual(xmlData,
+                       new String(TypeUtility.convertDataHandlerToBytes(ds1
+                               .getStream()), "UTF-8"));
     }
 
+    @Test
     public void testModifyDatastreamNoContent() throws Exception {
-        String label = "Label";
-        url =
-                String.format("/objects/%s/datastreams/DS1?dsLabel=%s", pid
-                        .toString(), label);
+        String label = "testModifyDatastreamNoContent";
+        URI url = getURI(
+                String.format("/objects/%s/datastreams/DS1?dsLabel=%s", DEMO_REST_PID
+                        .toString(), label));
 
-        assertEquals(SC_UNAUTHORIZED, put("", false).getStatusCode());
-        assertEquals(SC_OK, put("", true).getStatusCode());
+        StringEntity entity = getStringEntity("", TEXT_XML);
+        verifyPUTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        verifyPUTStatusOnly(url, SC_OK, entity, true);
 
-        Datastream ds1 = apim.getDatastream(pid.toString(), "DS1", null);
+        Datastream ds1 = apim.getDatastream(DEMO_REST_PID.toString(), "DS1", null);
         assertEquals(label, ds1.getLabel());
     }
 
+    @Test
     public void testSetDatastreamState() throws Exception {
         String state = "D";
-        url =
-                String.format("/objects/%s/datastreams/DS1?dsState=%s", pid
-                        .toString(), state);
-        assertEquals(SC_UNAUTHORIZED, put("", false).getStatusCode());
-        assertEquals(SC_OK, put("", true).getStatusCode());
+        URI url = getURI(
+                String.format("/objects/%s/datastreams/DS1?dsState=%s", DEMO_REST_PID
+                        .toString(), state));
+        StringEntity entity = getStringEntity("", TEXT_XML);
+        verifyPUTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        verifyPUTStatusOnly(url, SC_OK, entity, true);
 
-        Datastream ds1 = apim.getDatastream(pid.toString(), "DS1", null);
+        Datastream ds1 = apim.getDatastream(DEMO_REST_PID.toString(), "DS1", null);
         assertEquals(state, ds1.getState());
     }
 
+    @Test
     public void testSetDatastreamVersionable() throws Exception {
         boolean versionable = false;
-        url =
-                String.format("/objects/%s/datastreams/DS1?versionable=%s", pid
-                        .toString(), versionable);
-        assertEquals(SC_UNAUTHORIZED, put("", false).getStatusCode());
-        assertEquals(SC_OK, put("", true).getStatusCode());
+        URI url =
+                getURI(String.format("/objects/%s/datastreams/DS1?versionable=%s", DEMO_REST_PID
+                        .toString(), versionable));
+        StringEntity entity = getStringEntity("", TEXT_XML);
+        verifyPUTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        verifyPUTStatusOnly(url, SC_OK, entity, true);
 
-        Datastream ds1 = apim.getDatastream(pid.toString(), "DS1", null);
+        Datastream ds1 = apim.getDatastream(DEMO_REST_PID.toString(), "DS1", null);
         assertEquals(versionable, ds1.isVersionable());
     }
 
+    @Test
     public void testPurgeDatastream() throws Exception {
-        url = String.format("/objects/%s/datastreams/RELS-EXT", pid.toString());
-        assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());
-        assertEquals(SC_OK, delete(true).getStatusCode());
+        URI url = getURI(
+            String.format(
+                "/objects/%s/datastreams/RELS-EXT", DEMO_REST_PID.toString()));
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
     }
 
+    @Test
     public void testGetNextPID() throws Exception {
-        url = "/objects/nextPID";
-        assertEquals(SC_UNAUTHORIZED, post("", false).getStatusCode());
+        URI url = getURI("/objects/nextPID");
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, null, false);
         // FIXME: not schema-validated, it should be
         // fcrepo-808 - when schema is available online, post("", true, false) -> post("", true)
-        assertEquals(SC_OK, post("", true, false).getStatusCode());
+        verifyPOSTStatusOnly(url, SC_OK, null, true, false);
     }
 
+    @Test
     public void testLifecycle() throws Exception {
         HttpResponse response = null;
 
         // Get next PID
-        url = "/objects/nextPID?format=xml";
-        assertEquals(SC_UNAUTHORIZED, post("", false).getStatusCode());
+        URI url = getURI("/objects/nextPID?format=xml");
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, null, false);
+        HttpPost post = new HttpPost(url);
         // FIXME: fcrepo-808, validation disabled currently
-        response = post("", true, false);
-        assertEquals(SC_OK, response.getStatusCode());
+        response = putOrPost(post, null, true);
+        String responseXML = readString(response);        
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
 
-        String responseXML = new String(response.responseBody, "UTF-8");
         String pid =
                 responseXML.substring(responseXML.indexOf("<pid>") + 5,
                                       responseXML.indexOf("</pid>"));
 
         // Ingest object
         String label = "Lifecycle-Test-Label";
-        url = String.format("/objects/%s?label=%s", pid, label);
-        assertEquals(SC_UNAUTHORIZED, post("", false).getStatusCode());
-        assertEquals(SC_CREATED, post("", true).getStatusCode());
+        url = getURI(String.format("/objects/%s?label=%s", pid, label));
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, null, false);
+        verifyPOSTStatusOnly(url, SC_CREATED, null, true);
 
         // Add datastream
         String datastreamData = "<test>Test Datastream</test>";
+        StringEntity entity = getStringEntity(datastreamData, TEXT_XML);
         url =
-                String
+                getURI(String
                         .format("/objects/%s/datastreams/TESTDS?controlGroup=X&dsLabel=Test",
-                                pid.toString());
-        assertEquals(SC_UNAUTHORIZED, post(datastreamData, false)
-                .getStatusCode());
-        assertEquals(SC_CREATED, post(datastreamData, true).getStatusCode());
+                                pid.toString()));
+        verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        verifyPOSTStatusOnly(url, SC_CREATED, entity, true);
 
         // Get object XML
-        url = String.format("/objects/%s/objectXML", pid);
-        assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        response = get(true);
-        assertEquals(SC_OK, response.getStatusCode());
-        responseXML = new String(response.responseBody, "UTF-8");
+        url = getURI(String.format("/objects/%s/objectXML", pid));
+        verifyGETStatusString(url, SC_UNAUTHORIZED, false, false);
+        responseXML = verifyGETStatusString(url, SC_OK, true, true);
         assertTrue(responseXML.indexOf(label) > 0);
         assertTrue(responseXML.indexOf(datastreamData) > 0);
 
         // Modify object
         label = "Updated-Label";
-        url = String.format("/objects/%s?label=%s", pid.toString(), label);
-        assertEquals(SC_UNAUTHORIZED, put("", false).getStatusCode());
-        assertEquals(SC_OK, put("", true).getStatusCode());
+        url = getURI(String.format("/objects/%s?label=%s", pid.toString(), label));
+        verifyPUTStatusOnly(url, SC_UNAUTHORIZED, null, false);
+        verifyPUTStatusOnly(url, SC_OK, null, true);
 
         // Modify datastream
         datastreamData = "<test>Update Test</test>";
-        url = String.format("/objects/%s/datastreams/TESTDS", pid.toString());
-        assertEquals(SC_UNAUTHORIZED, put(datastreamData, false)
-                .getStatusCode());
-        assertEquals(SC_OK, put(datastreamData, true).getStatusCode());
+        entity = getStringEntity(datastreamData, TEXT_XML);
+        url = getURI(String.format("/objects/%s/datastreams/TESTDS", pid.toString()));
+        verifyPUTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
+        verifyPUTStatusOnly(url, SC_OK, entity, true);
 
         // Export
-        url = String.format("/objects/%s/export", pid.toString());
-        assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        response = get(true);
-        assertEquals(SC_OK, response.getStatusCode());
-        responseXML = new String(response.responseBody, "UTF-8");
+        url = getURI(String.format("/objects/%s/export", pid.toString()));
+        verifyGETStatusString(url, SC_UNAUTHORIZED, false, false);
+        responseXML = verifyGETStatusString(url, SC_OK, true, true);
         assertTrue(responseXML.indexOf(label) > 0);
         assertTrue(responseXML.indexOf(datastreamData) > 0);
 
         // Purge datastream
-        url = String.format("/objects/%s/datastreams/TESTDS", pid);
-        assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());
-        assertEquals(SC_OK, delete(true).getStatusCode());
+        url = getURI(String.format("/objects/%s/datastreams/TESTDS", pid));
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
 
         // Purge object
-        url = String.format("/objects/%s", pid);
-        assertEquals(SC_UNAUTHORIZED, delete(false).getStatusCode());
-        assertEquals(SC_OK, delete(true).getStatusCode());
+        url = getURI(String.format("/objects/%s", pid));
+        verifyDELETEStatusOnly(url, SC_UNAUTHORIZED, false);
+        verifyDELETEStatusOnly(url, SC_OK, true);
     }
 
+    @Test
     public void testChunked() throws Exception {
         chunked = true;
         testIngest();
@@ -1324,14 +1665,15 @@ public class TestRESTAPI
         testLifecycle();
     }
 
+    @Test
     public void testResponseOverride() throws Exception {
         // Make request which returns error response
-        url = String.format("/objects/%s", "BOGUS_PID");
-        assertEquals(SC_INTERNAL_SERVER_ERROR, post("", true).getStatusCode());
+        URI url = getURI(String.format("/objects/%s", "demo:BOGUS_PID"));
+        verifyPUTStatusOnly(url, SC_NOT_FOUND, null, true);
 
         // With flash=true parameter response should be 200
-        url = String.format("/objects/%s?flash=true", "BOGUS_PID");
-        assertEquals(SC_OK, post("", true).getStatusCode());
+        url = getURI(String.format("/objects/%s?flash=true", "demo:BOGUS_PID"));
+        verifyPUTStatusOnly(url, SC_OK, null, true);
     }
 
     // test correct content-disposition header on getDatastreamDissemination
@@ -1347,14 +1689,18 @@ public class TestRESTAPI
             throws Exception {
 
         // filename from RELS-INT, no lookup of extension; no download
-        url = "/objects/demo:REST/datastreams/DS1/content";
-        HttpResponse response = get(getAuthAccess(), false);
-        assertEquals(SC_OK, response.getStatusCode());
+        URI url = getURI("/objects/demo:REST/datastreams/DS1/content");
+        HttpGet get = new HttpGet(url);
+        HttpResponse response = getOrDelete(get, getAuthAccess(), false);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
         CheckCDHeader(response, "inline", TestRESTAPI.DS1RelsFilename);
         // again with download
-        url = url + "?download=true";
-        response = get(getAuthAccess(), false);
-        assertEquals(SC_OK, response.getStatusCode());
+        url = getURI(url.toString() + "?download=true");
+        get = new HttpGet(url);
+        response = getOrDelete(get, getAuthAccess(), false);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
         CheckCDHeader(response, "attachment", TestRESTAPI.DS1RelsFilename);
     }
 
@@ -1362,24 +1708,37 @@ public class TestRESTAPI
     public void testDatastreamDisseminationContentDispositionFromLabel()
             throws Exception {
 
+        HttpGet get;
+        HttpResponse response;
+        int status = 0;
         // filename from label, known MIMETYPE
-        url = "/objects/demo:REST/datastreams/DS2/content?download=true";
-        HttpResponse response = get(getAuthAccess());
-        assertEquals(SC_OK, response.getStatusCode());
+        URI url =
+            getURI("/objects/demo:REST/datastreams/DS2/content?download=true");
+        get = new HttpGet(url);
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, status);
         CheckCDHeader(response, "attachment", TestRESTAPI.DS2LabelFilename
                 + ".jpg"); // jpg should be from MIMETYPE mapping
 
         // filename from label, unknown MIMETYPE
-        url = "/objects/demo:REST/datastreams/DS3/content?download=true";
-        response = get(getAuthAccess());
-        assertEquals(SC_OK, response.getStatusCode());
+        url = getURI("/objects/demo:REST/datastreams/DS3/content?download=true");
+        get = new HttpGet(url);
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, status);
         CheckCDHeader(response, "attachment", TestRESTAPI.DS3LabelFilename
                 + ".bin"); // default extension from config
 
         // filename from label with illegal characters, known MIMETYPE
-        url = "/objects/demo:REST/datastreams/DS4/content?download=true";
-        response = get(getAuthAccess(), false);
-        assertEquals(SC_OK, response.getStatusCode());
+        url = getURI("/objects/demo:REST/datastreams/DS4/content?download=true");
+        get = new HttpGet(url);
+        response = getOrDelete(get, getAuthAccess(), false);
+        status = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, status);
         CheckCDHeader(response, "attachment", TestRESTAPI.DS4LabelFilename
                 + ".xml"); // xml from mimetype mapping
     }
@@ -1389,44 +1748,189 @@ public class TestRESTAPI
             throws Exception {
 
         // filename from id (no label present)
-        url = "/objects/demo:REST/datastreams/DS5/content?download=true";
-        HttpResponse response = get(getAuthAccess(), false);
-        assertEquals(SC_OK, response.getStatusCode());
-        CheckCDHeader(response, "attachment", TestRESTAPI.DS5ID + ".xml"); // xml from mimetype mapping
+        URI url =
+            getURI("/objects/demo:REST/datastreams/DS5/content?download=true");
+        HttpGet get = new HttpGet(url);
+        HttpResponse response = getOrDelete(get, getAuthAccess(), false);
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+        // xml from mimetype mapping
+        CheckCDHeader(response, "attachment", TestRESTAPI.DS5ID + ".xml");
+        get.releaseConnection();
 
         // filename from id, id contains extension (no label present)
-        url = "/objects/demo:REST/datastreams/DS6.xml/content?download=true";
-        response = get(getAuthAccess(), false);
-        assertEquals(SC_OK, response.getStatusCode());
+        url =
+            getURI("/objects/demo:REST/datastreams/DS6.xml/content?download=true");
+        get = new HttpGet(url);
+        response = getOrDelete(get, getAuthAccess(), false);
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
         CheckCDHeader(response, "attachment", TestRESTAPI.DS6ID); // no extension, id contains it
+        get.releaseConnection();
+    }
 
+    @Test
+    public void testDatastreamDisseminationConditionalGet()
+            throws Exception {
+
+        // test an inline (type X) datastream with no recorded size
+        // info:fedora/demo:REST/DS1 is a type 'X'
+        // filename from RELS-INT, no lookup of extension; no download
+        URI url = getURI("/objects/demo:REST/datastreams/DS1/content");
+        HttpGet get = new HttpGet(url);
+        HttpResponse response = getOrDelete(get, getAuthAccess(), false);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+        checkSingleHeader(HttpHeaders.CONTENT_LENGTH, response, Long.toString(47));
+        checkSingleHeader(HttpHeaders.CONTENT_TYPE, response, "text/xml");
+        // jpg should be from MIMETYPE mapping
+        CheckCDHeader(response, "inline", TestRESTAPI.DS1RelsFilename);
+        String etag = response.getFirstHeader(HttpHeaders.ETAG).getValue();
+        String lastModified = response.getFirstHeader(HttpHeaders.LAST_MODIFIED).getValue();
+        assertNotNull(etag);
+        assertNotNull(lastModified);
+        // again as conditional GET with matched etag
+        get = new HttpGet(url);
+        get.addHeader(HttpHeaders.IF_NONE_MATCH, etag);
+        response = getOrDelete(get, getAuthAccess(), false);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_NOT_MODIFIED, response.getStatusLine().getStatusCode());
+        // again as conditional GET with unmatched etag
+        get = new HttpGet(url);
+        get.addHeader(HttpHeaders.IF_NONE_MATCH, etag + "0");
+        response = getOrDelete(get, getAuthAccess(), false);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+        // again with If-Modified-Since
+        get = new HttpGet(url);
+        get.addHeader(HttpHeaders.IF_MODIFIED_SINCE, lastModified);
+        response = getOrDelete(get, getAuthAccess(), false);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_NOT_MODIFIED, response.getStatusLine().getStatusCode());
+        // and with If-Modified-Since indicating stale cache
+        SimpleDateFormat dateFormat =
+            new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
+        dateFormat.setTimeZone(TimeZone.getTimeZone("GMT"));
+        Date checkDate = dateFormat.parse(lastModified);
+        checkDate = new Date(checkDate.getTime() - 1000);
+        get = new HttpGet(url);
+        get.addHeader(HttpHeaders.IF_MODIFIED_SINCE, dateFormat.format(checkDate));
+        response = getOrDelete(get, getAuthAccess(), false);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+    }
+
+    @Test
+    public void testDatastreamDisseminationGetContentRange()
+            throws Exception {
+
+        // test an inline (type X) datastream with no recorded size
+        // info:fedora/demo:REST/DS1 is a type 'X'
+        // filename from RELS-INT, no lookup of extension; no download
+        URI url = getURI("/objects/demo:REST/datastreams/DS1/content");
+        HttpGet get = new HttpGet(url);
+        HttpResponse response = getOrDelete(get, getAuthAccess(), false);
+        String controlChecksum =
+                MD5Utility.getBase16Hash(EntityUtils.toString(response.getEntity()));
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+        checkSingleHeader(HttpHeaders.CONTENT_LENGTH, response, Long.toString(47));
+        checkSingleHeader(HttpHeaders.CONTENT_TYPE, response, "text/xml");
+        get = new HttpGet(url);
+        get.addHeader("Range", "bytes=0-24");
+        response = getOrDelete(get, getAuthAccess(), false);
+        String part1 = EntityUtils.toString(response.getEntity());
+        assertEquals(206, response.getStatusLine().getStatusCode());
+        checkSingleHeader(HttpHeaders.CONTENT_LENGTH, response, Long.toString(25));
+        checkSingleHeader(HttpHeaders.CONTENT_RANGE, response, "bytes 0-24/47");
+        get = new HttpGet(url);
+        get.addHeader("Range", "bytes=25");
+        response = getOrDelete(get, getAuthAccess(), false);
+        String part2 = EntityUtils.toString(response.getEntity());
+        assertEquals(206, response.getStatusLine().getStatusCode());
+        checkSingleHeader(HttpHeaders.CONTENT_LENGTH, response, Long.toString(22));
+        checkSingleHeader(HttpHeaders.CONTENT_RANGE, response, "bytes 25-46/47");
+        String compositeChecksum = MD5Utility.getBase16Hash(part1, part2);
+        assertEquals(controlChecksum, compositeChecksum);
+    }
+
+    @Test
+    public void testDatastreamDisseminationHEAD()
+            throws Exception {
+
+        // test an inline (type X) datastream with no recorded size
+        // info:fedora/demo:REST/DS1 is a type 'X'
+        // filename from RELS-INT, no lookup of extension; no download
+        URI url = getURI("/objects/demo:REST/datastreams/DS1/content");
+        HttpGet get = new HttpGet(url);
+        HttpResponse response = getOrDelete(get, getAuthAccess(), false);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+        checkSingleHeader(HttpHeaders.CONTENT_LENGTH, response, Long.toString(47));
+        checkSingleHeader(HttpHeaders.CONTENT_TYPE, response, "text/xml");
+        // jpg should be from MIMETYPE mapping
+        CheckCDHeader(response, "inline", TestRESTAPI.DS1RelsFilename);
+        Header[] expectedHeaders = response.getAllHeaders();
+        String etag = response.getFirstHeader(HttpHeaders.ETAG).getValue();
+        String lastModified = response.getFirstHeader(HttpHeaders.LAST_MODIFIED).getValue();
+        assertNotNull(etag);
+        assertNotNull(lastModified);
+        // again as HEAD
+        HttpHead head = new HttpHead(url);
+        response = getOrDelete(head, getAuthAccess(), false);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+        Header[] actualHeaders = response.getAllHeaders();
+        assertHeadersEquals(expectedHeaders, actualHeaders);
+        head.addHeader(HttpHeaders.IF_NONE_MATCH, etag);
+        response = getOrDelete(head, getAuthAccess(), false);
+        assertEquals(SC_NOT_MODIFIED, response.getStatusLine().getStatusCode());
+        assertNull(response.getEntity());
+        // test a managed (type M) datastream 
+        // info:fedora/demo:REST/DS2 is a type 'M'
+        url = getURI("/objects/demo:REST/datastreams/DS2/content");
+        get = new HttpGet(url);
+        response = getOrDelete(get, getAuthAccess(), false);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+        checkSingleHeader(HttpHeaders.CONTENT_LENGTH, response, Long.toString(47));
+        checkSingleHeader(HttpHeaders.CONTENT_TYPE, response, "image/jpeg");
+        // jpg should be from MIMETYPE mapping
+        CheckCDHeader(response, "inline", TestRESTAPI.DS2LabelFilename+ ".jpg");
+        expectedHeaders = response.getAllHeaders();
+        // again as HEAD
+        head = new HttpHead(url);
+        response = getOrDelete(head, getAuthAccess(), false);
+        EntityUtils.consumeQuietly(response.getEntity());
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+        actualHeaders = response.getAllHeaders();
+        assertHeadersEquals(expectedHeaders, actualHeaders);
+        // test an external (type E) datastream with file
+        // test an external (type E) datastream with url
+        // info:fedora/demo:REST/EXTDS is a type 'E' pointing back to DS1
     }
 
     @Test
     public void testUpload() throws Exception {
         String uploadUrl = "/upload";
-        url = getBaseURL() + uploadUrl;
+        String url = getBaseURL() + uploadUrl;
 
-        HttpResponse response = _doUploadPost(url);
-        if (response.getStatusCode() == SC_MOVED_TEMPORARILY) {
-            url = response.getResponseHeader("Location").getValue();
-
-            response = _doUploadPost(url);
+        MultipartEntity entity = _doUploadPost();
+        HttpPost post = new HttpPost(url);
+        
+        HttpResponse response = putOrPost(post, entity, true);
+        if (response.getStatusLine().getStatusCode() == SC_MOVED_TEMPORARILY) {
+            url = response.getFirstHeader(HttpHeaders.LOCATION).getValue();
+            post = new HttpPost(url);
+            entity = _doUploadPost();
+            response = putOrPost(post, entity, true);
         }
 
-        assertEquals(202, response.getStatusCode());
-        assertTrue(response.getResponseBodyString().startsWith("uploaded://"));
+        assertEquals(202, response.getStatusLine().getStatusCode());
+        assertTrue(readString(response).startsWith("uploaded://"));
 
         // Test content not supplied
-        PostMethod post = new PostMethod(url);
-        MultipartRequestEntity entity =
-                new MultipartRequestEntity(new Part[] {}, post.getParams());
-
-        post.setRequestEntity(entity);
-        getClient(true).executeMethod(post);
-        response = new HttpResponse(post);
-
-        assertEquals(500, response.getStatusCode());
+        entity = _doUploadPost(new HashMap<String, AbstractContentBody>(0));
+        response = putOrPost(post, entity, true);
+        assertEquals(400, response.getStatusLine().getStatusCode());
+        post.releaseConnection();
     }
 
     /////////////////////////////////////////////////
@@ -1435,138 +1939,211 @@ public class TestRESTAPI
 
     @Test
     public void testGetRelationships() throws Exception {
-        String s = "info:fedora/" + pid;
+        String s = "info:fedora/" + DEMO_REST_PID;
         String p = Constants.MODEL.HAS_MODEL.uri;
         String o = Models.FEDORA_OBJECT_CURRENT.uri;
 
         // get all CModel relationships
-        url =
-                "/objects/" + pid + "/relationships" + "?subject="
+        URI url =
+                getURI("/objects/" + DEMO_REST_PID + "/relationships" + "?subject="
                         + URLEncoder.encode(s, "UTF-8") + "&predicate="
-                        + URLEncoder.encode(p, "UTF-8");
-        HttpResponse response = get(true, false);
-        assertEquals(SC_OK, response.getStatusCode());
+                        + URLEncoder.encode(p, "UTF-8"));
+        byte [] response = verifyGETStatusBytes(url, SC_OK, true, false);
 
         // check Fedora object CModel found
-        checkRelationship(response.getResponseBody(), s, p, o, true);
+        checkRelationship(response, s, p, o, true);
 
     }
 
     @Test
     public void testAddRelationship() throws Exception {
-        String s = "info:fedora/" + pid;
+        String s = "info:fedora/" + DEMO_REST_PID;
         String p = "http://www.example.org/test#relationship";
-        String o = "foo";
+        String o = "addRelationship";
+        // check relationship not present
+        URI url =
+                getURI("/objects/" + DEMO_REST_PID + "/relationships" + "?subject="
+                        + URLEncoder.encode(s, "UTF-8") + "&predicate="
+                        + URLEncoder.encode(p, "UTF-8"));
+        byte [] bytes = verifyGETStatusBytes(url, SC_OK, true, false);
+
+        checkRelationship(bytes, s, p, o, false);
+
+        // add relationship
+        HttpPost post = new HttpPost();
+        url =
+                getURI("/objects/" + DEMO_REST_PID + "/relationships/new" + "?subject="
+                        + URLEncoder.encode(s, "UTF-8") + "&predicate="
+                        + URLEncoder.encode(p, "UTF-8") + "&object="
+                        + URLEncoder.encode(o, "UTF-8") + "&isLiteral=true");
+        post.setURI(url);
+        HttpResponse response = putOrPost(post, null, true);
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+        post.releaseConnection();
+
+        // check relationship present
+        url = getURI("/objects/" + DEMO_REST_PID + "/relationships");  // +
+        //"?subject=" + URLEncoder.encode(s, "UTF-8") +
+        //"&predicate=" + URLEncoder.encode(p, "UTF-8");
+        bytes = verifyGETStatusBytes(url, SC_OK, true, false);
+
+        checkRelationship(bytes, s, p, o, true);
+
+        // check the same operation with URL-encoded PID
+        o = "addRelationshipUrlEncoded";
         // check relationship not present
         url =
-                "/objects/" + pid + "/relationships" + "?subject="
-                        + URLEncoder.encode(s, "UTF-8") + "&predicate="
-                        + URLEncoder.encode(p, "UTF-8");
-        HttpResponse response = get(true, false);
-        assertEquals(SC_OK, response.getStatusCode());
-        checkRelationship(response.getResponseBody(), s, p, o, false);
+                getURI("/objects/" + URLEncoder.encode(DEMO_REST_PID.toString(), "UTF-8")
+                    + "/relationships" + "?subject="
+                    + URLEncoder.encode(s, "UTF-8") + "&predicate="
+                    + URLEncoder.encode(p, "UTF-8"));
+        bytes = verifyGETStatusBytes(url, SC_OK, true, false);
+
+        checkRelationship(bytes, s, p, o, false);
 
         // add relationship
         url =
-                "/objects/" + pid + "/relationships/new" + "?subject="
-                        + URLEncoder.encode(s, "UTF-8") + "&predicate="
-                        + URLEncoder.encode(p, "UTF-8") + "&object="
-                        + URLEncoder.encode(o, "UTF-8") + "&isLiteral=true";
-        response = putOrPost("POST", null, true);
-        assertEquals(SC_OK, response.getStatusCode());
+                getURI("/objects/" + URLEncoder.encode(DEMO_REST_PID.toString(), "UTF-8")
+                    + "/relationships/new" + "?subject="
+                    + URLEncoder.encode(s, "UTF-8") + "&predicate="
+                    + URLEncoder.encode(p, "UTF-8") + "&object="
+                    + URLEncoder.encode(o, "UTF-8") + "&isLiteral=true");
+        post = new HttpPost(url);
+        response = putOrPost(post, null, true);
+        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+        post.releaseConnection();
 
         // check relationship present
-        url = "/objects/" + pid + "/relationships";// +
+        url = getURI("/objects/"
+            + URLEncoder.encode(DEMO_REST_PID.toString(), "UTF-8")
+            + "/relationships");// +
         //"?subject=" + URLEncoder.encode(s, "UTF-8") +
         //"&predicate=" + URLEncoder.encode(p, "UTF-8");
-        response = get(true, false);
-        assertEquals(SC_OK, response.getStatusCode());
-        checkRelationship(response.getResponseBody(), s, p, o, true);
+        bytes = verifyGETStatusBytes(url, SC_OK, true, false);
+
+        checkRelationship(bytes, s, p, o, true);
 
     }
 
     @Test
     public void testPurgeRelationship() throws Exception {
-        String s = "info:fedora/" + pid;
+        String s = "info:fedora/" + DEMO_REST_PID;
         String p = "http://www.example.org/test#relationship";
         String o = "foo";
 
         // add relationship
-        url =
-                "/objects/" + pid + "/relationships/new" + "?subject="
+        HttpPost post = new HttpPost();
+        URI url =
+                getURI("/objects/" + DEMO_REST_PID + "/relationships/new" + "?subject="
                         + URLEncoder.encode(s, "UTF-8") + "&predicate="
                         + URLEncoder.encode(p, "UTF-8") + "&object="
-                        + URLEncoder.encode(o, "UTF-8") + "&isLiteral=true";
-        HttpResponse response = putOrPost("POST", null, true);
-        assertEquals(SC_OK, response.getStatusCode());
+                        + URLEncoder.encode(o, "UTF-8") + "&isLiteral=true");
+        post.setURI(url);
+        HttpResponse response = putOrPost(post, null, true);
+        
+        int status = response.getStatusLine().getStatusCode();
+        post.releaseConnection();
+        assertEquals(SC_OK, status);
+        HttpGet get = null;
+        HttpDelete delete = null;
+        try {
+            // check present
+            url =
+                    getURI("/objects/" + DEMO_REST_PID + "/relationships" + "?subject="
+                            + URLEncoder.encode(s, "UTF-8") + "&predicate="
+                            + URLEncoder.encode(p, "UTF-8"));
+            get = new HttpGet(url);
+            response = getOrDelete(get, true, false);
+            status = response.getStatusLine().getStatusCode();
+            byte [] responseBytes = readBytes(response);
+            get.releaseConnection();
+            assertEquals(SC_OK, status);
+            checkRelationship(responseBytes, s, p, o, true);
 
-        // check present
-        url =
-                "/objects/" + pid + "/relationships" + "?subject="
-                        + URLEncoder.encode(s, "UTF-8") + "&predicate="
-                        + URLEncoder.encode(p, "UTF-8");
-        response = get(true, false);
-        assertEquals(SC_OK, response.getStatusCode());
-        checkRelationship(response.getResponseBody(), s, p, o, true);
+            // purge it
+            url =
+                    getURI("/objects/" + DEMO_REST_PID + "/relationships" + "?subject="
+                            + URLEncoder.encode(s, "UTF-8") + "&predicate="
+                            + URLEncoder.encode(p, "UTF-8") + "&object="
+                            + URLEncoder.encode(o, "UTF-8") + "&isLiteral=true");
+            delete = new HttpDelete(url);
+            response = getOrDelete(delete, true, false);
+            status = response.getStatusLine().getStatusCode();
+            String responseString = readString(response);
+            assertEquals(SC_OK, status);
+            assertEquals("Purge relationship",
+                    "true",
+                    responseString);
 
-        // purge it
-        url =
-                "/objects/" + pid + "/relationships" + "?subject="
-                        + URLEncoder.encode(s, "UTF-8") + "&predicate="
-                        + URLEncoder.encode(p, "UTF-8") + "&object="
-                        + URLEncoder.encode(o, "UTF-8") + "&isLiteral=true";
-        response = delete(true);
-        assertEquals(SC_OK, response.getStatusCode());
-        assertEquals("Purge relationship", "true", response
-                .getResponseBodyString());
+            // check not present
+            url =
+                    getURI("/objects/" + DEMO_REST_PID + "/relationships" + "?subject="
+                            + URLEncoder.encode(s, "UTF-8") + "&predicate="
+                            + URLEncoder.encode(p, "UTF-8"));
+            get.setURI(url);
+            response = getOrDelete(get, true, false);
+            status = response.getStatusLine().getStatusCode();
+            responseBytes = readBytes(response);
+            assertEquals(SC_OK, response.getStatusLine().getStatusCode());
+            checkRelationship(responseBytes, s, p, o, false);
 
-        // check not present
-        url =
-                "/objects/" + pid + "/relationships" + "?subject="
-                        + URLEncoder.encode(s, "UTF-8") + "&predicate="
-                        + URLEncoder.encode(p, "UTF-8");
-        response = get(true, false);
-        assertEquals(SC_OK, response.getStatusCode());
-        checkRelationship(response.getResponseBody(), s, p, o, false);
-
-        // purge again
-        url =
-                "/objects/" + pid + "/relationships" + "?subject="
-                        + URLEncoder.encode(s, "UTF-8") + "&predicate="
-                        + URLEncoder.encode(p, "UTF-8") + "&object="
-                        + URLEncoder.encode(o, "UTF-8") + "&isLiteral=true";
-        response = delete(true);
-        assertEquals(SC_OK, response.getStatusCode());
-        assertEquals("Purge relationship", "false", response
-                .getResponseBodyString());
-
+            // purge again
+            url =
+                    getURI("/objects/" + DEMO_REST_PID + "/relationships" + "?subject="
+                            + URLEncoder.encode(s, "UTF-8") + "&predicate="
+                            + URLEncoder.encode(p, "UTF-8") + "&object="
+                            + URLEncoder.encode(o, "UTF-8") + "&isLiteral=true");
+            delete.setURI(url);
+            response = getOrDelete(delete, true, true);
+            status = response.getStatusLine().getStatusCode();
+            responseString = readString(response);
+            assertEquals(SC_OK, status);
+            assertEquals("Purge relationship", "false", responseString);
+        } finally {
+            if (get != null) get.releaseConnection();
+            if (delete != null) delete.releaseConnection();
+        }
     }
 
     @Test
     public void testDisseminationContentLengthWhenKnown() throws Exception {
-        url =
-                "/objects/demo:SmileyBeerGlass/methods/demo:DualResolution/mediumSize";
-        if (this.getAuthAccess()) {
-            assertEquals(SC_UNAUTHORIZED, get(false).getStatusCode());
-        }
-        HttpResponse response = get(getAuthAccess());
-        assertEquals(SC_OK, response.getStatusCode());
-        assertEquals("17109", response.getResponseHeader("Content-Length")
-                .getValue());
+        URI url =
+                getURI(
+                    "/objects/demo:14/methods/demo:12/getDocument");
+        HttpGet get = new HttpGet(url);
+        HttpResponse response;
+        verifyNoAuthFailOnAPIAAuth(url);
+        // default to validated response
+        response = getOrDelete(get, getAuthAccess(), true);
+        int status = response.getStatusLine().getStatusCode();
+        String cLen = (response.containsHeader(HttpHeaders.CONTENT_LENGTH)) ?
+            response.getFirstHeader(HttpHeaders.CONTENT_LENGTH).getValue() :
+            null;
+        EntityUtils.consumeQuietly(response.getEntity());
+        get.releaseConnection();
+        assertEquals(SC_OK, status);
+        assertEquals("19498", cLen);
     }
 
-    private HttpResponse _doUploadPost(String path) throws Exception {
-        PostMethod post = new PostMethod(path);
+    private MultipartEntity _doUploadPost() throws Exception {
         File temp = File.createTempFile("test.txt", null);
         FileUtils.writeStringToFile(temp, "This is the upload test file");
 
-        Part[] parts = {new FilePart("file", temp)};
-        MultipartRequestEntity entity =
-                new MultipartRequestEntity(parts, post.getParams());
+        FileBody part = new FileBody(temp);
+        Map<String, AbstractContentBody> parts =
+            new HashMap<String, AbstractContentBody>(1);
+        parts.put("file", part);
+        return _doUploadPost(parts);
+    }
 
-        post.setRequestEntity(entity);
-        getClient(true).executeMethod(post);
-        return new HttpResponse(post);
+    private MultipartEntity _doUploadPost(Map<String, AbstractContentBody> parts) throws Exception {
+        MultipartEntity entity =
+                new MultipartEntity();
+
+        for (String name: parts.keySet()) {
+            entity.addPart(name, parts.get(name));
+        }
+        return entity;
     }
 
     // check content disposition header of response
@@ -1574,85 +2151,62 @@ public class TestRESTAPI
     private void CheckCDHeader(HttpResponse response,
                                String expectedType,
                                String expectedFilename) {
-        String contentDisposition = "";
-        Header[] headers = response.responseHeaders;
-        for (Header header : headers) {
-            if (header.getName().equalsIgnoreCase("content-disposition")) {
-                contentDisposition = header.getValue();
-            }
-        }
-        assertEquals(expectedType + "; " + "filename=\"" + expectedFilename
-                + "\"", contentDisposition);
+        String headerName = "Content-Disposition";
+        String expected = 
+                expectedType + "; filename=\"" + expectedFilename + "\"";
+        checkSingleHeader(headerName, response, expected);
+    }
+    
+    private void checkSingleHeader(String headerName, HttpResponse response, String expected) {
+        String actual = (response.containsHeader(headerName)) ?
+                response.getFirstHeader(headerName).getValue() : null;
+                assertEquals(expected, actual);
     }
 
     // helper methods
 
-    private HttpClient getClient(boolean auth) {
-        HttpClient client = new HttpClient();
-        client.getParams().setAuthenticationPreemptive(auth);
+    private HttpClient getClient(boolean followRedirects, boolean auth) {
+        DefaultHttpClient result =
+            s_client.getHttpClient(followRedirects, auth);
         if (auth) {
-            client
-                    .getState()
-                    .setCredentials(new AuthScope(getHost(), Integer
-                                            .valueOf(_getPort()), "realm"),
-                                    new UsernamePasswordCredentials(getUsername(),
+            String host = getHost();
+            LOGGER.debug("credentials set for scope of {}:[ANY PORT]", host);
+            result
+                    .getCredentialsProvider()
+                    .setCredentials(
+                            new AuthScope(host, AuthScope.ANY_PORT, AuthScope.ANY_REALM),
+                            new UsernamePasswordCredentials(getUsername(),
                                                                     getPassword()));
+        } else {
+            result.getCredentialsProvider().clear();
         }
-        return client;
+        return result;
     }
 
-    private String _getPort() {
-        if (url != null && url.startsWith("https")) {
-            return getServerConfiguration().getParameter("fedoraRedirectPort");
-        }
-        return getServerConfiguration().getParameter("fedoraServerPort");
-    }
-
-    /**
-     * Issues an HTTP GET for the specified URL, schema-validate the response
-     * (if it is XML) If the response is intentionally XML with no schema, then
-     * use get(authenticate, false) then the response won't be validated.
-     *
-     * @param authenticate
-     * @return
-     * @throws Exception
-     */
-    protected HttpResponse get(boolean authenticate) throws Exception {
-        return get(authenticate, true);
-    }
-
-    /**
-     * Issues an HTTP GET for the specified URL. Optionally validate the
-     * response (if the response is XML)
-     *
-     * @param authenticate
-     * @param validate
-     *        - validate the response against its schema
-     * @return HttpResponse
-     * @throws Exception
-     */
-    protected HttpResponse get(boolean authenticate, boolean validate)
-            throws Exception {
-        HttpResponse res = getOrDelete("GET", authenticate);
-
-        if (validate) {
-            validateResponse(res);
+    protected static URI getURI(String url) {
+        if (url == null || url.length() == 0) {
+            throw new IllegalArgumentException("url must be a non-empty value");
+        } else if (!(url.startsWith("http://") || url.startsWith("https://"))) {
+            url = getBaseURL() + url;
         }
 
-        return res;
+        return URI.create(url);
     }
 
-    protected void validateResponse(HttpResponse res) throws Exception {
-        // if response was ok...
-        if (res.getStatusCode() >= 200 && res.getStatusCode() <= 299) {
+    protected void validateResponse(URI url, HttpResponse res) throws Exception {
+        // if response was ok... (and not doing flash override of error response)
+        int sc = res.getStatusLine().getStatusCode();
+        if (sc >= 200 && sc <= 299 && !url.toString().contains("flash=true")) {
             // if response is xml
+            Header contentType = res.getFirstHeader(HttpHeaders.CONTENT_TYPE);
 
-            if (res.getResponseHeader("Content-Type") != null
-                    && (res.getResponseHeader("Content-Type").getValue()
-                            .contains("text/xml") || res
-                            .getResponseHeader("Content-Type").getValue()
+            if (contentType != null
+                    && (contentType.getValue()
+                            .contains(TEXT_XML) || contentType.getValue()
                             .contains("application/xml"))) {
-                String xmlResponse = res.getResponseBodyString();
+                String xmlResponse = EntityUtils.toString(res.getEntity());
+                // put the response right back, in case we need it elsewhere
+                res.setEntity(new StringEntity(xmlResponse, Charset.forName("UTF-8")));
                 // if a schema location is specified
                 if (xmlResponse.contains(":schemaLocation=\"")) {
 
@@ -1661,7 +2215,7 @@ public class TestRESTAPI
                     String online = System.getProperty("online");
                     if (!"false".equals(online)
                             && (offline == null || !"true".equals(offline))) {
-                        onlineValidate(xmlResponse);
+                        validator.onlineValidate(url.toString(), xmlResponse);
                     }
 
                     // Also validate offline unless explicitly disabled
@@ -1671,7 +2225,7 @@ public class TestRESTAPI
                          * xerces:
                          * https://issues.apache.org/jira/browse/XERCESJ-1130
                          */
-                        //offlineValidate(xmlResponse, getSchemaFiles(xmlResponse, null));
+                        //validator.offlineValidate(url, xmlResponse, getSchemaFiles(xmlResponse, null));
                     }
                 } else {
                     // for now, requiring a schema
@@ -1681,158 +2235,114 @@ public class TestRESTAPI
         }
     }
 
-    protected HttpResponse delete(boolean authenticate) throws Exception {
-        return getOrDelete("DELETE", authenticate);
-    }
-
-    /**
-     * Issues an HTTP PUT to <code>url</code>. Callers are responsible for
-     * calling releaseConnection() on the returned <code>HttpMethod</code>.
-     *
-     * @param authenticate
-     * @return
-     * @throws Exception
-     */
-    protected HttpResponse put(boolean authenticate) throws Exception {
-        return putOrPost("PUT", null, authenticate);
-    }
-
-    protected HttpResponse put(String requestContent, boolean authenticate)
+    @Deprecated
+    protected HttpResponse put(URI url, File requestContent, boolean authenticate)
             throws Exception {
-        return putOrPost("PUT", requestContent, authenticate);
+        HttpPut method = new HttpPut(url);
+        MultipartEntity entity = new MultipartEntity();
+        entity.addPart("param_name",new StringBody("value"));
+        entity.addPart(((File) requestContent)
+                .getName(), new FileBody((File) requestContent));
+        HttpResponse response = putOrPost(method, entity, authenticate);
+        int status = response.getStatusLine().getStatusCode();
+        if (status == SC_MOVED_TEMPORARILY) {
+            String original = url.toString();
+            url = URI.create(response.getFirstHeader(HttpHeaders.LOCATION).getValue());
+            if (!original.equals(url.toString())) {
+                EntityUtils.consumeQuietly(response.getEntity());
+                method = new HttpPut(url);
+                entity = new MultipartEntity();
+                entity.addPart("param_name",new StringBody("value"));
+                entity.addPart(((File) requestContent)
+                        .getName(), new FileBody((File) requestContent));
+                response = putOrPost(method, entity, true);
+            }
+        }
+
+        return response;
     }
 
-    // FIXME: to cover getNextPid, actually all verbs should be validated
-    // for if/when they return xml responses
-    protected HttpResponse post(String requestContent, boolean authenticate)
+    @Deprecated
+    protected HttpResponse post(URI url, File requestContent, boolean authenticate)
+            throws Exception {
+        HttpPost method = new HttpPost(url);
+        MultipartEntity entity = new MultipartEntity();
+        entity.addPart("param_name",new StringBody("value"));
+        entity.addPart(((File) requestContent)
+                .getName(), new FileBody((File) requestContent));
+        HttpResponse response = putOrPost(method, entity, authenticate);
+        int status = response.getStatusLine().getStatusCode();
+        if (status == SC_MOVED_TEMPORARILY) {
+            String original = url.toString();
+            url = URI.create(response.getFirstHeader(HttpHeaders.LOCATION).getValue());
+            if (!original.equals(url.toString())) {
+                EntityUtils.consumeQuietly(response.getEntity());
+                method = new HttpPost(url);
+                entity = new MultipartEntity();
+                entity.addPart("param_name",new StringBody("value"));
+                entity.addPart(((File) requestContent)
+                        .getName(), new FileBody((File) requestContent));
+                response = putOrPost(method, entity, true);
+            }
+        }
+
+        return response;
+    }
+
+    private HttpResponse getOrDelete(HttpRequestBase method,
+            boolean authenticate, boolean validate)
+            throws Exception {
+        HttpClient client = getClient(true, authenticate);
+        HttpResponse response =
+            getOrDelete(client, method, authenticate, validate);
+        return response;
+    }
+
+    private HttpResponse getOrDelete(HttpClient client, HttpRequestBase method,
+            boolean authenticate, boolean validate)
             throws Exception {
 
-        return post(requestContent, authenticate, true);
-    }
+        LOGGER.debug(method.getURI().toString());
 
-    protected HttpResponse post(String requestContent,
-                                boolean authenticate,
-                                boolean validate) throws Exception {
-        HttpResponse res = putOrPost("POST", requestContent, authenticate);
+        if (!(method instanceof HttpGet || method instanceof HttpDelete || method instanceof HttpHead)) {
+            throw new IllegalArgumentException("method must be one of GET, HEAD or DELETE.");
+        }
+        HttpResponse response = client.execute(method);
+
+        if (response.getStatusLine().getStatusCode() == SC_MOVED_TEMPORARILY) {
+            String redir =
+                    response.getFirstHeader(HttpHeaders.LOCATION).getValue();
+            if (!method.getURI().toString().equals(redir)) {
+                method.setURI(getURI(redir));
+                response = getOrDelete(client, method, authenticate, validate);
+            }
+        }
+        
         if (validate) {
-            validateResponse(res);
+            validateResponse(method.getURI(), response);
         }
 
-        return res;
+        return response;
     }
 
-    protected HttpResponse put(File requestContent, boolean authenticate)
-            throws Exception {
-        return putOrPost("PUT", requestContent, authenticate);
-    }
-
-    protected HttpResponse post(File requestContent, boolean authenticate)
-            throws Exception {
-        return putOrPost("POST", requestContent, authenticate);
-    }
-
-    private HttpResponse getOrDelete(String method, boolean authenticate)
-            throws Exception {
-        if (url == null || url.length() == 0) {
-            throw new IllegalArgumentException("url must be a non-empty value");
-        } else if (!(url.startsWith("http://") || url.startsWith("https://"))) {
-            url = getBaseURL() + url;
-        }
-        HttpMethod httpMethod = null;
-        try {
-            if (method.equals("GET")) {
-                httpMethod = new GetMethod(url);
-            } else if (method.equals("DELETE")) {
-                httpMethod = new DeleteMethod(url);
-            } else {
-                throw new IllegalArgumentException("method must be one of GET or DELETE.");
-            }
-            httpMethod.setDoAuthentication(authenticate);
-            httpMethod.setFollowRedirects(false);
-            httpMethod.getParams().setParameter("Connection", "Keep-Alive");
-            getClient(authenticate).executeMethod(httpMethod);
-            HttpResponse response = new HttpResponse(httpMethod);
-
-            if (response.getStatusCode() == SC_MOVED_TEMPORARILY) {
-                String redir =
-                        response.getResponseHeader("Location").getValue();
-                if (redir != url) {
-                    url = redir;
-                    response = getOrDelete(method, authenticate);
-                }
-            }
-
-            return response;
-        } finally {
-            if (httpMethod != null) {
-                httpMethod.releaseConnection();
-            }
-        }
-    }
-
-    private HttpResponse putOrPost(String method,
-                                   Object requestContent,
+    private HttpResponse putOrPost(HttpEntityEnclosingRequestBase method,
+                                   HttpEntity requestContent,
                                    boolean authenticate) throws Exception {
-
-        if (url == null || url.length() == 0) {
-            throw new IllegalArgumentException("url must be a non-empty value");
-        } else if (!(url.startsWith("http://") || url.startsWith("https://"))) {
-            url = getBaseURL() + url;
+        HttpClient client = getClient(false, authenticate);
+        if (method == null) {
+            throw new IllegalArgumentException("method must be a non-empty value");
         }
 
-        EntityEnclosingMethod httpMethod = null;
-        try {
-            if (method.equals("PUT")) {
-                httpMethod = new PutMethod(url);
-            } else if (method.equals("POST")) {
-                httpMethod = new PostMethod(url);
-            } else {
-                throw new IllegalArgumentException("method must be one of PUT or POST.");
-            }
-            httpMethod.setDoAuthentication(authenticate);
-            httpMethod.getParams().setParameter("Connection", "Keep-Alive");
-            if (requestContent != null) {
-                httpMethod.setContentChunked(chunked);
-                if (requestContent instanceof String) {
-                    httpMethod
-                            .setRequestEntity(new StringRequestEntity((String) requestContent,
-                                                                      "text/xml",
-                                                                      "utf-8"));
-                } else if (requestContent instanceof File) {
-                    Part[] parts =
-                            {
-                                    new StringPart("param_name", "value"),
-                                    new FilePart(((File) requestContent)
-                                            .getName(), (File) requestContent)};
-                    httpMethod
-                            .setRequestEntity(new MultipartRequestEntity(parts,
-                                                                         httpMethod
-                                                                                 .getParams()));
-                } else {
-                    throw new IllegalArgumentException("requestContent must be a String or File");
-                }
-            }
-            getClient(authenticate).executeMethod(httpMethod);
-
-            HttpResponse response = new HttpResponse(httpMethod);
-
-            if (response.getStatusCode() == SC_MOVED_TEMPORARILY) {
-                String redir =
-                        response.getResponseHeader("Location").getValue();
-                if (redir != url) {
-                    url = redir;
-                    response = putOrPost(method, requestContent, authenticate);
-                }
-            }
-
-            return response;
-        } finally {
-            if (httpMethod != null) {
-                httpMethod.releaseConnection();
-            }
+        if (requestContent != null) {
+            method.setEntity(requestContent);
         }
+
+
+        HttpResponse response = client.execute(method);
+
+        return response;
     }
-
+    
     private void checkRelationship(byte[] rdf,
                                    String s,
                                    String p,
@@ -1843,7 +2353,6 @@ public class TestRESTAPI
         sb.append("RDF: " + new String(rdf, "UTF-8"));
         TripleIterator it =
                 TripleIteratorFactory.defaultInstance().fromStream(new ByteArrayInputStream(rdf), null,
-
                 RDFFormat.RDF_XML);
 
         boolean found = false;
@@ -1873,227 +2382,54 @@ public class TestRESTAPI
                            + ", " + p + ", " + o + " ] \n " + sb.toString(),
                    exists == found);
     }
-
-    /**
-     * Get all local filenames that correspond to declared schemas. Validation
-     * does not work with a "union of all schemata" schema. This was an attempt
-     * create the most minimal set of schema by traversing schemaLocation and
-     * <include> within the xsd files. Ultimately, this was a dead end, because
-     * of a bug in Xerces: https://issues.apache.org/jira/browse/XERCESJ-1130
-     * schemaLocation typically points to some http resource. For offline tests,
-     * we want to use the local copy of that resource (since we know we have
-     * them). Thus, for all declared and included schemas, produce a list of
-     * local filenames.
-     *
-     * @param xml
-     *        blob of xml that may contain schemaLocation
-     * @return List of all local files corresponding to declared schemas
-     * @throws Exception
-     */
-    private List<File> getSchemaFiles(String xml, List<File> state)
-            throws Exception {
-
-        File schemaDir =
-                new File(Constants.FEDORA_HOME, "server" + File.separator
-                        + "xsd");
-
-        /* Get local copies of any declared schema */
-        ArrayList<File> result = new ArrayList<File>();
-        Pattern p = Pattern.compile("schemaLocation=\"(.+?)\"");
-        Matcher m = p.matcher(xml);
-        while (m.find()) {
-            String[] content = m.group(1).split("\\s+");
-            for (String frag : content) {
-                if (frag.contains(".xsd")) {
-                    String[] paths = frag.split("/");
-                    File newSchema =
-                            new File(schemaDir, paths[paths.length - 1]);
-                    if (state == null || !state.contains(newSchema)) {
-                        result.add(newSchema);
-                    }
-                }
+    
+    private static void assertHeadersEquals(Header[] expectedHeaders, 
+            Header[] actualHeaders) {
+        Map<String, String> expected = mapHeaders(expectedHeaders);
+        Map<String, String> actual = mapHeaders(actualHeaders);
+        expected.remove("Set-Cookie");
+        actual.remove("Set-Cookie");
+        expected.remove(HttpHeaders.DATE);
+        actual.remove(HttpHeaders.DATE);
+        assertEquals("Response header names were different", join(expected.keySet()), join(actual.keySet()));
+        for(Map.Entry<String, String> entry: expected.entrySet()) {
+            assertEquals(entry.getValue(), actual.get(entry.getKey()));
+        }
+    }
+    
+    private static String join(Set<String> strings) {
+        TreeSet<String> sorted = new TreeSet<String>(strings);
+        StringBuilder out = new StringBuilder();
+        for (String string: sorted) {
+            out.append(string).append(", ");
+        }
+        int len = out.length();
+        out.deleteCharAt(len - 1);
+        out.deleteCharAt(len - 2);
+        return out.toString();
+    }
+    
+    private static Map<String, String> mapHeaders(Header[] headers) {
+        Map<String, String> result = new HashMap<String, String>(headers.length);
+        for (Header header:headers) {
+            String key = header.getName();
+            if (result.containsKey(key)) {
+                result.put(key, result.get(key) + ", " + header.getValue());
+            } else {
+                result.put(key, header.getValue());
             }
         }
-
-        /* For each declared schema, and get any <include> schemas from them */
-        ArrayList<File> included = new ArrayList<File>();
-        for (File f : result) {
-            xml = IOUtils.toString(new FileInputStream(f));
-            included.addAll(getSchemaFiles(xml, result));
-        }
-
-        result.addAll(included);
-
         return result;
-    }
-
-    /**
-     * Validate XML document supplied as a string.
-     * <p>
-     * Validates against the local copy of the XML schema specified as
-     * schemaLocation in document
-     *</p>
-     *
-     * @param xml
-     * @throws Exception
-     */
-    private void offlineValidate(String xml, List<File> schemas)
-            throws Exception {
-
-        SchemaFactory sf =
-                SchemaFactory.newInstance("http://www.w3.org/2001/XMLSchema");
-
-        System.out.println(sf.getClass().getName());
-
-        ArrayList<Source> schemata = new ArrayList<Source>();
-
-        for (File schemaFile : schemas) {
-            schemata.add(new StreamSource(schemaFile));
-        }
-
-        Schema schema;
-
-        try {
-            schema = sf.newSchema(schemata.toArray(new Source[0]));
-        } catch (SAXException e) {
-
-            throw new RuntimeException("Could not parse schema "
-                    + schemas.toString(), e);
-        }
-        Validator v = schema.newValidator();
-
-        StringBuilder errors = new StringBuilder();
-
-        v.setErrorHandler(new ValidatorErrorHandler(errors));
-
-        v.validate(new StreamSource(new StringReader(xml)));
-
-        assertTrue("Offline validation failed for " + url + ". Errors: "
-                + errors.toString() + "\n xml:\n" + xml, 0 == errors.length());
-
-    }
-
-    /**
-     * Validate XML document supplied as a string. Validates against XML schema
-     * specified as schemaLocation in document
-     *
-     * @param xml
-     * @throws Exception
-     */
-    private void onlineValidate(String xml) throws Exception {
-
-        SAXParserFactory factory = SAXParserFactory.newInstance();
-        factory.setValidating(true);
-        factory.setNamespaceAware(true);
-
-        SAXParser parser;
-        parser = factory.newSAXParser();
-        parser
-                .setProperty("http://java.sun.com/xml/jaxp/properties/schemaLanguage",
-                             "http://www.w3.org/2001/XMLSchema");
-
-        StringBuilder errors = new StringBuilder();
-
-        XMLReader reader = parser.getXMLReader();
-        reader.setEntityResolver(new ValidatorEntityResolver());
-        reader.setErrorHandler(new ValidatorErrorHandler(errors));
-        reader.parse(new InputSource(new StringReader(xml)));
-
-        assertTrue("Online Validation failed for " + url + ". Errors: "
-                + errors.toString(), 0 == errors.length());
-
-    }
-
-    // error handler for validating parsing (see validate(String))
-    // collects errors and fatal errors in a stringBuilder
-    class ValidatorErrorHandler
-            implements ErrorHandler {
-
-        private final StringBuilder m_errors;
-
-        ValidatorErrorHandler(StringBuilder errors) {
-            m_errors = errors;
-        }
-
-        public void warning(SAXParseException e) throws SAXException {
-        }
-
-        public void error(SAXParseException e) throws SAXException {
-            m_errors.append(e.getMessage());
-        }
-
-        public void fatalError(SAXParseException e) throws SAXException {
-            m_errors.append(e.getMessage());
-        }
-
     }
 
     // Supports legacy test runners
 
     public static junit.framework.Test suite() {
-        TestSuite suite = new TestSuite("REST API TestSuite");
-        suite.addTestSuite(TestRESTAPI.class);
-        return new DemoObjectTestSetup(suite);
+        return new JUnit4TestAdapter(TestRESTAPI.class);
     }
 
-    class HttpResponse {
-
-        private final int statusCode;
-
-        private final byte[] responseBody;
-
-        private final Header[] responseHeaders;
-
-        private final Header[] responseFooters;
-
-        HttpResponse(int status, byte[] body, Header[] headers, Header[] footers) {
-            statusCode = status;
-            responseBody = body;
-            responseHeaders = headers;
-            responseFooters = footers;
-        }
-
-        HttpResponse(HttpMethod method)
-                throws IOException {
-            statusCode = method.getStatusCode();
-            //responseBody = method.getResponseBody();
-            responseBody =
-                    IOUtils.toByteArray(method.getResponseBodyAsStream());
-            responseHeaders = method.getResponseHeaders();
-            responseFooters = method.getResponseFooters();
-        }
-
-        public int getStatusCode() {
-            return statusCode;
-        }
-
-        public byte[] getResponseBody() {
-            return responseBody;
-        }
-
-        public String getResponseBodyString() {
-            try {
-                return new String(responseBody, "UTF-8");
-            } catch (UnsupportedEncodingException wontHappen) {
-                throw new Error(wontHappen);
-            }
-        }
-
-        public Header[] getResponseHeaders() {
-            return responseHeaders;
-        }
-
-        public Header[] getResponseFooters() {
-            return responseFooters;
-        }
-
-        public Header getResponseHeader(String headerName) {
-            for (Header header : responseHeaders) {
-                if (header.getName().equalsIgnoreCase(headerName)) {
-                    return header;
-                }
-            }
-            return null;
-        }
+    public static void main(String[] args) {
+        JUnitCore.runClasses(TestRESTAPI.class);
     }
+
 }

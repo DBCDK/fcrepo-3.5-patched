@@ -12,6 +12,9 @@ package org.fcrepo.server.storage.types;
  */
 public class DeploymentDSBindRule {
 
+    public static final DeploymentDSBindRule[] ARRAY_TYPE =
+        new DeploymentDSBindRule[0];
+
     public String bindingKeyName;
 
     public int minNumBindings;
@@ -37,10 +40,10 @@ public class DeploymentDSBindRule {
      * In human readable string, describe which mime types are allowed.
      */
     public String describeAllowedMimeTypes() {
-        StringBuffer out = new StringBuffer();
         if (bindingMIMETypes == null || bindingMIMETypes.length == 0) {
             return ANY_MIME_TYPE;
         }
+        StringBuffer out = new StringBuffer();
         for (int i = 0; i < bindingMIMETypes.length; i++) {
             String allowed = bindingMIMETypes[i];
             if (allowed == null) {

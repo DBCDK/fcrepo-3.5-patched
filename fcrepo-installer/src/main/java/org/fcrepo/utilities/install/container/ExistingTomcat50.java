@@ -7,7 +7,6 @@ package org.fcrepo.utilities.install.container;
 import org.fcrepo.utilities.install.Distribution;
 import org.fcrepo.utilities.install.InstallOptions;
 import org.fcrepo.utilities.install.InstallationFailedException;
-import org.fcrepo.utilities.install.Installer;
 
 public class ExistingTomcat50
         extends ExistingTomcat55 {
@@ -19,8 +18,5 @@ public class ExistingTomcat50
     @Override
     public void install() throws InstallationFailedException {
         super.install();
-        /* REMOVE
-        Installer.installJDBCDriver(getDist(), getOptions(), getCommonLib());
-        */
     }
 }

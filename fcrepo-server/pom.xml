@@ -1,18 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
 
   <parent>
     <groupId>org.fcrepo</groupId>
     <artifactId>fcrepo</artifactId>
-    <version>3.5</version>
+    <version>3.8.0</version>
   </parent>
 
   <artifactId>fcrepo-server</artifactId>
   <packaging>jar</packaging>
   <name>Fedora Server Library</name>
 
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.fcrepo</groupId>
+        <artifactId>mptstore</artifactId>
+        <version>0.9.5</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
   <properties>
     <demo.src.dir>${basedir}/src/main/resources/demo</demo.src.dir>
     <fedora.home.build.dir>${basedir}/build/home</fedora.home.build.dir>
@@ -24,14 +32,22 @@
 
   <build>
 
-    <!-- This 'resource' directory should be migrated to default location -->
     <resources>
       <resource>
-        <directory>../resources/server</directory>
+        <directory>${project.build.directory}/maven-shared-archive-resources/server</directory>
         <filtering>true</filtering>
       </resource>
       <resource>
-        <directory>src/main/resources/properties</directory>
+        <directory>src/main/resources/properties/soapclient</directory>
+        <targetPath>META-INF/resources</targetPath>
+      </resource>
+      <resource>
+        <directory>src/main/resources/properties/resources</directory>
+        <targetPath>resources</targetPath>
+      </resource>
+      <resource>
+        <directory>src/main/resources/properties/batch-demo</directory>
+        <targetPath>batch-demo</targetPath>
       </resource>
       <resource>
         <directory>src/main/resources/dbspec/server</directory>
@@ -48,9 +64,7 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
-        <version>1.1.1</version>
         <executions>
-
           <execution>
             <id>demo-convert-mets</id>
             <phase>generate-test-resources</phase>
@@ -130,7 +144,23 @@
         </executions>
       </plugin>
 
-
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-remote-resources-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>process-remote-resources</id>
+            <goals>
+              <goal>process</goal>
+            </goals>
+	        <configuration>
+	          <resourceBundles>
+	            <resourceBundle>org.fcrepo:fcrepo-shared-resources:${project.version}</resourceBundle>
+	          </resourceBundles>
+	        </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <!-- ** This plugin needs to be removed when ANT is gone. The unit/integration
         test regex's should be defined at root/pom.xml ** -->
       <plugin>
@@ -232,40 +262,13 @@
               <archive>
                 <manifest>
                   <mainClass>org.fcrepo.server.journal.readerwriter.multicast.rmi.RmiJournalReceiver
-                                    </mainClass>
+                  </mainClass>
                 </manifest>
               </archive>
 
               <includes>
                 <include>org/fcrepo/server/journal/readerwriter/multicast/**</include>
                 <include>org/fcrepo/server/journal/JournalException.class</include>
-              </includes>
-            </configuration>
-          </execution>
-
-          <execution>
-            <id>cli-loader-main</id>
-            <phase>package</phase>
-            <goals>
-              <goal>jar</goal>
-            </goals>
-
-            <configuration>
-              <classifier>cli-loader-main</classifier>
-
-              <archive>
-                <manifest>
-                  <mainClass>org.fcrepo.server.utilities.rebuild.cli.CLILoader</mainClass>
-                  <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
-                </manifest>
-
-                <manifestEntries>
-                  <Version>${project.version}</Version>
-                  <Build>${timestamp}</Build>
-                </manifestEntries>
-              </archive>
-              <includes>
-                <include>org/fcrepo/server/utilities/rebuild/cli/**</include>
               </includes>
             </configuration>
           </execution>
@@ -288,7 +291,7 @@
             <configuration>
               <descriptors>
                 <descriptor>${basedir}/src/main/resources/assemblies/rmi-journal-recv-jar.xml
-                                </descriptor>
+                </descriptor>
               </descriptors>
 
               <archive>
@@ -314,7 +317,7 @@
             <configuration>
               <descriptors>
                 <descriptor>${basedir}/src/main/resources/assemblies/rmi-journal-recv-zip.xml
-                                </descriptor>
+                </descriptor>
               </descriptors>
             </configuration>
           </execution>
@@ -338,39 +341,19 @@
     <dependency>
       <groupId>asm</groupId>
       <artifactId>asm</artifactId>
-      <version>3.1</version>
-    </dependency>
-
-    <dependency>
-      <groupId>axis</groupId>
-      <artifactId>axis-wsdl4j</artifactId>
-      <version>1.3</version>
-      <exclusions>
-        <exclusion>
-          <groupId>wsdl4j</groupId>
-          <artifactId>wsdl4j</artifactId>
-        </exclusion>
-      </exclusions>
+      <version>3.3.1</version>
     </dependency>
 
     <dependency>
       <groupId>com.google.collections</groupId>
       <artifactId>google-collections</artifactId>
-      <version>1.0-rc2</version>
+      <version>1.0</version>
     </dependency>
 
     <dependency>
-      <groupId>com.sun.jersey</groupId>
-      <artifactId>jersey-bundle</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.sun.jersey.contribs</groupId>
-      <artifactId>jersey-multipart</artifactId>
-    </dependency>
-    <dependency>
       <groupId>com.sun.xml.stream</groupId>
       <artifactId>sjsxp</artifactId>
-      <version>1.0.1</version>
+      <version>1.0.2</version>
       <exclusions>
         <exclusion>
           <groupId>javax.xml.stream</groupId>
@@ -392,19 +375,16 @@
     <dependency>
       <groupId>commons-codec</groupId>
       <artifactId>commons-codec</artifactId>
-      <version>1.3</version>
     </dependency>
 
     <dependency>
       <groupId>commons-collections</groupId>
       <artifactId>commons-collections</artifactId>
-      <version>3.1</version>
     </dependency>
 
     <dependency>
       <groupId>commons-dbcp</groupId>
       <artifactId>commons-dbcp</artifactId>
-      <version>1.2.1</version>
     </dependency>
 
     <dependency>
@@ -412,27 +392,28 @@
       <artifactId>commons-discovery</artifactId>
     </dependency>
 
-    <dependency>
-      <groupId>commons-httpclient</groupId>
-      <artifactId>commons-httpclient</artifactId>
-    </dependency>
 
     <dependency>
       <groupId>commons-fileupload</groupId>
       <artifactId>commons-fileupload</artifactId>
-      <version>1.2.1</version>
+      <version>1.2.2</version>
     </dependency>
 
     <dependency>
       <groupId>commons-io</groupId>
       <artifactId>commons-io</artifactId>
-      <version>1.4</version>
     </dependency>
 
     <dependency>
       <groupId>dom4j</groupId>
       <artifactId>dom4j</artifactId>
       <version>1.6.1</version>
+      <exclusions>
+        <exclusion>
+          <groupId>xml-apis</groupId>
+          <artifactId>xml-apis</artifactId>
+        </exclusion>
+    </exclusions>
     </dependency>
 
     <dependency>
@@ -445,6 +426,28 @@
       <groupId>gnu.getopt</groupId>
       <artifactId>java-getopt</artifactId>
       <version>1.0.13</version>
+    </dependency>
+    
+    <dependency>
+      <groupId>org.apache.httpcomponents</groupId>
+      <artifactId>httpclient</artifactId>
+      <exclusions>
+        <exclusion>
+          <groupId>commons-logging</groupId>
+          <artifactId>commons-logging</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.httpcomponents</groupId>
+      <artifactId>httpmime</artifactId>
+      <exclusions>
+        <exclusion>
+          <groupId>commons-logging</groupId>
+          <artifactId>commons-logging</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
 
     <dependency>
@@ -505,11 +508,23 @@
     <dependency>
       <groupId>jaxen</groupId>
       <artifactId>jaxen</artifactId>
-      <version>1.1.1</version>
+      <version>1.1.3</version>
       <exclusions>
         <exclusion>
           <groupId>xom</groupId>
           <artifactId>xom</artifactId>
+        </exclusion>
+        <exclusion>
+          <artifactId>maven-cobertura-plugin</artifactId>
+          <groupId>maven-plugins</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>maven-findbugs-plugin</artifactId>
+          <groupId>maven-plugins</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>xml-apis</artifactId>
+          <groupId>xml-apis</groupId>
         </exclusion>
       </exclusions>
     </dependency>
@@ -542,20 +557,46 @@
 
     <dependency>
       <groupId>org.apache.activemq</groupId>
-      <artifactId>activemq-all</artifactId>
+      <artifactId>activemq-core</artifactId>
+      <exclusions>
+        <exclusion>
+          <artifactId>fusemq-leveldb</artifactId>
+          <groupId>org.fusesource.fuse-extra</groupId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.activemq</groupId>
+      <artifactId>activemq-pool</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.cxf</groupId>
+      <artifactId>cxf-rt-frontend-jaxws</artifactId>
+      <exclusions>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.cxf</groupId>
+      <artifactId>cxf-rt-frontend-jaxrs</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.cxf</groupId>
+      <artifactId>cxf-rt-transports-http</artifactId>
     </dependency>
 
     <!-- xstream is an optional activemq dependency, required for Stomp -->
     <dependency>
       <groupId>com.thoughtworks.xstream</groupId>
       <artifactId>xstream</artifactId>
-      <version>1.3.1</version>
+      <version>1.4.2</version>
     </dependency>
 
     <dependency>
       <groupId>org.apache.xbean</groupId>
       <artifactId>xbean-spring</artifactId>
-      <version>3.7</version>
+      <version>3.11.1</version>
       <exclusions>
         <exclusion>
           <groupId>commons-logging</groupId>
@@ -577,6 +618,12 @@
     <dependency>
       <groupId>org.apache.ws.commons.axiom</groupId>
       <artifactId>axiom-impl</artifactId>
+      <exclusions>
+      	<exclusion>
+      		<artifactId>woodstox-core-asl</artifactId>
+      		<groupId>org.codehaus.woodstox</groupId>
+      	</exclusion>
+      </exclusions>
     </dependency>
 
     <dependency>
@@ -587,36 +634,55 @@
     <dependency>
       <groupId>org.codehaus.jettison</groupId>
       <artifactId>jettison</artifactId>
-      <version>1.0.1</version>
+      <version>1.3.1</version>
     </dependency>
 
     <dependency>
       <groupId>org.akubraproject</groupId>
       <artifactId>akubra-core</artifactId>
-      <version>0.3</version>
+      <version>${akubra.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.slf4j</groupId>
+          <artifactId>slf4j-api</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
 
     <dependency>
       <groupId>org.akubraproject</groupId>
       <artifactId>akubra-fs</artifactId>
-      <version>0.3</version>
+      <version>${akubra.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.slf4j</groupId>
+          <artifactId>slf4j-api</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
 
     <dependency>
       <groupId>org.akubraproject</groupId>
       <artifactId>akubra-map</artifactId>
-      <version>0.3</version>
+      <version>${akubra.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.slf4j</groupId>
+          <artifactId>slf4j-api</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
 
     <dependency>
       <groupId>org.akubraproject</groupId>
       <artifactId>akubra-mem</artifactId>
-      <version>0.3</version>
-    </dependency>
-
-    <dependency>
-      <groupId>org.fcrepo</groupId>
-      <artifactId>axis</artifactId>
+      <version>${akubra.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.slf4j</groupId>
+          <artifactId>slf4j-api</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
 
     <dependency>
@@ -638,18 +704,19 @@
       <groupId>org.springframework</groupId>
       <artifactId>spring-beans</artifactId>
     </dependency>
-
-    <!-- Note: No demonstrated evidence of use. DWD 9/15/2009 -->
     <dependency>
-      <groupId>org.fcrepo</groupId>
-      <artifactId>jakarta-oro</artifactId>
-      <version>2.0.5</version>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.sun.xml.ws</groupId>
+      <artifactId>jaxws-rt</artifactId>
+      <version>2.1.4</version>
     </dependency>
 
     <dependency>
       <groupId>org.fcrepo</groupId>
       <artifactId>mptstore</artifactId>
-      <version>0.9.4</version>
     </dependency>
 
     <!-- This is needed only to trigger the rmi-journal-rcv.jar assembly. -->
@@ -672,21 +739,24 @@
     </dependency>
 
     <dependency>
-      <groupId>org.fcrepo</groupId>
+      <groupId>org.trippi</groupId>
       <artifactId>trippi-core</artifactId>
-      <version>1.5.4</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.fcrepo</groupId>
+          <artifactId>openrdf-sesame-onejar</artifactId>      
+        </exclusion>
+      </exclusions>
     </dependency>
 
     <dependency>
-      <groupId>org.fcrepo</groupId>
+      <groupId>org.trippi</groupId>
       <artifactId>trippi-mptstore</artifactId>
-      <version>1.5.4</version>
     </dependency>
 
     <dependency>
-      <groupId>org.fcrepo</groupId>
+      <groupId>org.trippi</groupId>
       <artifactId>trippi-mulgara</artifactId>
-      <version>1.5.4</version>
     </dependency>
 
     <!--Fix of the FCREPO-819 Bug -->
@@ -694,6 +764,12 @@
       <groupId>jotm</groupId>
       <artifactId>jotm_iiop_stubs</artifactId>
       <version>2.0.10</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.fcrepo</groupId>
+      <artifactId>fcrepo-shared-resources</artifactId>
+      <version>${project.version}</version>
     </dependency>
 
     <dependency>
@@ -722,34 +798,46 @@
       </exclusions>
     </dependency>
 
-    <dependency>
-      <groupId>rome</groupId>
-      <artifactId>rome</artifactId>
-      <version>0.9</version>
-    </dependency>
+	<dependency>
+	  <groupId>org.jboss.security</groupId>
+	  <artifactId>jboss-sunxacml</artifactId>
+	</dependency>
 
     <dependency>
-      <groupId>org.fcrepo</groupId>
-      <artifactId>sunxacml</artifactId>
-      <classifier>melcoe</classifier>
+      <groupId>org.openrdf.sesame</groupId>
+      <artifactId>sesame-model</artifactId>
     </dependency>
-
     <dependency>
-      <groupId>org.fcrepo</groupId>
-      <artifactId>openrdf-sesame-onejar</artifactId>
-      <version>2.2.1</version>
+      <groupId>org.openrdf.sesame</groupId>
+      <artifactId>sesame-rio-api</artifactId>
     </dependency>
-
+    <dependency>
+      <groupId>org.openrdf.sesame</groupId>
+      <artifactId>sesame-rio-datatypes</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.openrdf.sesame</groupId>
+      <artifactId>sesame-rio-languages</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.openrdf.sesame</groupId>
+      <artifactId>sesame-rio-ntriples</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.openrdf.sesame</groupId>
+      <artifactId>sesame-rio-n3</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.openrdf.sesame</groupId>
+      <artifactId>sesame-rio-rdfxml</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.openrdf.sesame</groupId>
+      <artifactId>sesame-rio-turtle</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.fcrepo</groupId>
       <artifactId>Tidy</artifactId>
-      <version>1.0</version>
-    </dependency>
-
-    <!-- Note: No evidence of current use. DWD 9/18/2000 -->
-    <dependency>
-      <groupId>org.fcrepo</groupId>
-      <artifactId>tt-bytecode</artifactId>
       <version>1.0</version>
     </dependency>
 
@@ -776,7 +864,7 @@
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
-      <scope>compile</scope>
+      <scope>provided</scope>
     </dependency>
 
     <dependency>
@@ -833,6 +921,20 @@
       <artifactId>multithreadedtc</artifactId>
       <version>1.01</version>
       <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
+    </dependency>
+    <dependency>
+    	<groupId>org.powermock</groupId>
+    	<artifactId>powermock-module-junit4</artifactId>
+    	<scope>test</scope>
+    </dependency>
+    <dependency>
+    	<groupId>org.powermock</groupId>
+    	<artifactId>powermock-api-mockito</artifactId>
+    	<scope>test</scope>
     </dependency>
   </dependencies>
 </project>

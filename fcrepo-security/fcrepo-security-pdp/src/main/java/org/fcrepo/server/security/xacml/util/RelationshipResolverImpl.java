@@ -5,7 +5,6 @@
 package org.fcrepo.server.security.xacml.util;
 
 import java.io.File;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -14,13 +13,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.MalformedPIDException;
 import org.fcrepo.common.PID;
-
 import org.fcrepo.server.Context;
 import org.fcrepo.server.ReadOnlyContext;
 import org.fcrepo.server.Server;
@@ -30,6 +25,8 @@ import org.fcrepo.server.management.Management;
 import org.fcrepo.server.security.xacml.MelcoeXacmlException;
 import org.fcrepo.server.security.xacml.pdp.MelcoePDPException;
 import org.fcrepo.server.storage.types.RelationshipTuple;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -49,7 +46,6 @@ public class RelationshipResolverImpl
      * but it is a special case, as it is not represented by a PID, and by
      * definition, has no parents.
      */
-    private final static String REPOSITORY = "FedoraRepository";
 
     private static String DEFAULT_RELATIONSHIP =
             "info:fedora/fedora-system:def/relations-external#isMemberOf";
@@ -94,6 +90,7 @@ public class RelationshipResolverImpl
      * org.fcrepo.server.security.xacml.pdp.finder.support.RelationshipResolver#buildRESTParentHierarchy
      * (java.lang.String)
      */
+    @Override
     public String buildRESTParentHierarchy(String pid)
             throws MelcoeXacmlException {
         Set<String> parents = getParents(pid);
@@ -113,19 +110,15 @@ public class RelationshipResolverImpl
      * lang.String)
      */
     public Set<String> getParents(String pid) throws MelcoeXacmlException {
-        if (logger.isDebugEnabled()) {
-            logger.debug("Obtaining parents for: " + pid);
-        }
+        logger.debug("Obtaining parents for: {}", pid);
 
         Set<String> parentPIDs = new HashSet<String>();
-        if (pid.equalsIgnoreCase(REPOSITORY)) {
+        if (pid.equalsIgnoreCase(Constants.FEDORA_REPOSITORY_PID.uri)) {
             return parentPIDs;
         }
 
         query: for (String relationship : relationships) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("relationship query: " + pid + ", " + relationship);
-            }
+            logger.debug("relationship query: {}, {}", pid, relationship);
 
             Map<String, Set<String>> mapping;
             try {
@@ -136,10 +129,8 @@ public class RelationshipResolverImpl
                 // another object, Y which does not exist. Therefore, we don't
                 // want to continue querying for Y's parents.
                 if (t != null && t instanceof ObjectNotInLowlevelStorageException) {
-                        if (logger.isDebugEnabled()) {
-                            logger.debug("Parent, " + pid + ", not found.");
-                        }
-                        break query;
+                    logger.debug("Parent, {}, not found.", pid);
+                    break query;
                 } else {
                 // Unexpected error, so we throw back the original
                 throw e;
@@ -152,15 +143,13 @@ public class RelationshipResolverImpl
                     PID parentPID = PID.getInstance(parent);
                     // we want the parents in demo:123 form, not info:fedora/demo:123
                     parentPIDs.add(parentPID.toString());
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("added parent " + parentPID.toString());
-                    }
+                    logger.debug("added parent {}", parentPID.toString());
                 }
             }
         }
         return parentPIDs;
     }
-    
+
     protected String getSubjectURI(String subject) throws MalformedPIDException {
         String strippedSubject;
         if (subject.startsWith(Constants.FEDORA.uri)) {
@@ -179,15 +168,17 @@ public class RelationshipResolverImpl
             logger.warn("Invalid subject argument for getRelationships: " + subject + ". Should be pid or datastream (URI form optional");
             subjectURI = null;
         }
-        
+
         return subjectURI;
     }
 
+    @Override
     public Map<String, Set<String>> getRelationships(String subject)
             throws MelcoeXacmlException {
         return getRelationships(subject, null);
     }
 
+    @Override
     public Map<String, Set<String>> getRelationships(String subject,
                                                       String relationship)
             throws MelcoeXacmlException {

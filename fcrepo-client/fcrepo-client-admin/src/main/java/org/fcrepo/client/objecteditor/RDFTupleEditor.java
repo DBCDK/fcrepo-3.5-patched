@@ -274,16 +274,15 @@ public class RDFTupleEditor
             try {
                 iter = m_factory.fromStream(data, RDFFormat.RDF_XML);
                 entries = new ArrayList<RelationshipTuple>();
-                for (int i = 0; iter.hasNext(); i++) {
+                while (iter.hasNext()) {
                     Triple triple = iter.next();
                     String object = null;
                     boolean isLiteral = false;
-                    String datatype = null;
+                    URI typeURI = null;
                     ObjectNode oNode = triple.getObject();
                     if (oNode instanceof Literal) {
                         isLiteral = true;
-                        URI typeURI = ((Literal) oNode).getDatatypeURI();
-                        datatype = typeURI == null ? null : typeURI.toString();
+                        typeURI = ((Literal) oNode).getDatatypeURI();
                     }
                     object = oNode.toString();
                     entries.add(new RelationshipTuple(triple.getSubject()
@@ -292,7 +291,7 @@ public class RDFTupleEditor
                                                               .toString(),
                                                       object,
                                                       isLiteral,
-                                                      datatype));
+                                                      typeURI));
 
                 }
             } catch (TrippiException e) {
@@ -301,6 +300,7 @@ public class RDFTupleEditor
             }
         }
 
+        @SuppressWarnings("unchecked")
         @Override
         public RDFDataModel clone() {
             RDFDataModel clone = new RDFDataModel();
@@ -317,7 +317,7 @@ public class RDFTupleEditor
                            String predicate,
                            String object,
                            boolean isLiteral,
-                           String datatype) {
+                           URI datatype) {
             entries.add(new RelationshipTuple(subject,
                                               predicate,
                                               object,
@@ -331,7 +331,7 @@ public class RDFTupleEditor
                                String predicate,
                                String object,
                                boolean isLiteral,
-                               String datatype) {
+                               URI datatype) {
             entries.set(selectedRow, new RelationshipTuple(subject,
                                                            predicate,
                                                            object,
@@ -381,11 +381,11 @@ public class RDFTupleEditor
                         if (tuple.datatype == null) {
                             return String.format("\"%s\"", tuple.object);
                         } else {
-                            String trimmedDataType = tuple.datatype;
-                            if (tuple.datatype.startsWith(Constants.XML_XSD.uri
+                            String trimmedDataType = tuple.datatype.toString();
+                            if (trimmedDataType.startsWith(Constants.XML_XSD.uri
                                     + "#")) {
                                 trimmedDataType =
-                                        tuple.datatype
+                                        trimmedDataType
                                                 .substring(Constants.XML_XSD.uri
                                                         .length() + 1);
                             }
@@ -433,7 +433,7 @@ public class RDFTupleEditor
                 String predicate = dialog.getPredicate();
                 String objectURI = dialog.getObjectURI();
                 boolean literalValue = dialog.getIsLiteral();
-                String literalType = dialog.getLiteralType();
+                URI literalType = dialog.getLiteralType();
                 m_dataModel.addRow(subject,
                                    predicate,
                                    objectURI,
@@ -452,7 +452,7 @@ public class RDFTupleEditor
                     String predicate = dialog.getPredicate();
                     String objectURI = dialog.getObjectURI();
                     boolean literalValue = dialog.getIsLiteral();
-                    String literalType = dialog.getLiteralType();
+                    URI literalType = dialog.getLiteralType();
                     m_dataModel.replaceRow(m_editor.getSelectedRow(),
                                            subject,
                                            predicate,
@@ -480,13 +480,13 @@ public class RDFTupleEditor
 
         private JTextField m_subject;
 
-        private final JComboBox m_predicate;
+        private final JComboBox<String> m_predicate;
 
         private JTextField m_objectURI;
 
         private JCheckBox m_isLiteral;
 
-        private JComboBox m_literalType;
+        private JComboBox<String> m_literalType;
 
         private JLabel lab1, lab2, lab3, lab4, lab5;
 
@@ -501,15 +501,16 @@ public class RDFTupleEditor
             JPanel mainPanel = new JPanel();
             mainPanel.setLayout(new SpringLayout());
 
-            mainPanel.add(lab1 = new JLabel("Subject:", SwingConstants.RIGHT));
+            lab1 = new JLabel("Subject:", SwingConstants.RIGHT);
+            mainPanel.add(lab1);
             mainPanel.add(m_subject =
                     new JTextField(tuple != null ? tuple.subject : PID
                             .toURI(pid)));
             m_subject.setBackground(Administrator.BACKGROUND_COLOR);
             m_subject.setEditable(false);
 
-            mainPanel
-                    .add(lab2 = new JLabel("Predicate:", SwingConstants.RIGHT));
+            lab2 = new JLabel("Predicate:", SwingConstants.RIGHT);
+            mainPanel.add(lab2);
             String rels[] =
                     {"",
                      MODEL.HAS_MODEL.toString(),
@@ -517,7 +518,7 @@ public class RDFTupleEditor
                      MODEL.IS_CONTRACTOR_OF.toString(),
                      MODEL.IS_DEPLOYMENT_OF.toString(),
                      Constants.RELS_EXT.IS_MEMBER_OF.toString()};
-            m_predicate = new JComboBox(rels);
+            m_predicate = new JComboBox<String>(rels);
             m_predicate.setEditable(true);
             Administrator.constrainHeight(m_predicate);
             mainPanel.add(m_predicate);
@@ -542,7 +543,7 @@ public class RDFTupleEditor
                     new JLabel("      Type:", SwingConstants.RIGHT));
             String types[] =
                     {"<untyped>", "long", "int", "float", "double", "dateTime"};
-            mainPanel.add(m_literalType = new JComboBox(types));
+            mainPanel.add(m_literalType = new JComboBox<String>(types));
             m_literalType.setEditable(false);
             Administrator.constrainHeight(m_literalType);
 
@@ -573,16 +574,12 @@ public class RDFTupleEditor
                 m_predicate.setSelectedItem(tuple.getRelationship());
                 m_objectURI.setText(tuple.object == null ? "" : tuple.object);
                 m_isLiteral.setSelected(tuple.isLiteral);
-                String trimmedDataType = null;
-                if (tuple.datatype == null) {
-                    trimmedDataType = "<untyped>";
-                } else if (tuple.datatype.startsWith(Constants.XML_XSD.uri
+                String trimmedDataType = tuple.datatype == null ? "<untyped>" : tuple.datatype.toString();
+                if (trimmedDataType.startsWith(Constants.XML_XSD.uri
                         + "#")) {
                     trimmedDataType =
-                            tuple.datatype.substring(Constants.XML_XSD.uri
+                            trimmedDataType.substring(Constants.XML_XSD.uri
                                     .length() + 1);
-                } else {
-                    trimmedDataType = tuple.datatype;
                 }
                 m_literalType.setSelectedItem(trimmedDataType);
                 if (m_isLiteral.isSelected()) {
@@ -601,14 +598,16 @@ public class RDFTupleEditor
             if (arg0.getActionCommand().equals("OK")) {
                 String msg = "predicate";
                 try {
-                    URI uriSub = new URI(m_subject.getText());
-                    TupleArrayTripleIterator
+                    // audit the URI syntax
+                    new URI(m_subject.getText());
+                    RelationshipTuple
                             .makePredicateResourceFromRel(getPredicate(), m_map);
                     msg = "object";
-                    TupleArrayTripleIterator
+                    RelationshipTuple
                             .makeObjectFromURIandLiteral(getObjectURI(),
                                                          getIsLiteral(),
-                                                         getLiteralType());
+                                                         getLiteralType(),
+                                                         null);
                 } catch (URISyntaxException e) {
                     JOptionPane.showMessageDialog(this,
                                                   "Error: Invalid URI in "
@@ -653,18 +652,24 @@ public class RDFTupleEditor
             return cancelled;
         }
 
-        public String getLiteralType() {
+        public URI getLiteralType() {
             if (!getIsLiteral()) {
                 return null;
             }
             if (m_literalType.getSelectedItem().toString().equals("<untyped>")) {
                 return null;
             }
+            URI result = null;
             String litType = m_literalType.getSelectedItem().toString();
-            if (litType.startsWith(Constants.XML_XSD.uri)) {
-                return litType;
-            }
-            return Constants.XML_XSD.uri + "#" + litType;
+            if (litType.length() == 0) return null;
+            try {
+                if (litType.startsWith(Constants.XML_XSD.uri)) {
+                    result = new URI(litType);
+                } else {
+                    result = new URI(Constants.XML_XSD.uri + "#" + litType);
+                }
+            } catch (URISyntaxException e) {} // won't happen
+            return result;
         }
 
         public boolean getIsLiteral() {

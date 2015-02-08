@@ -7,17 +7,21 @@ package org.fcrepo.server;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.sql.Connection;
+import java.util.Date;
+import java.util.Map;
 
 import org.w3c.dom.Element;
-
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.Models;
 import org.fcrepo.common.PID;
 import org.fcrepo.common.rdf.RDFName;
 import org.fcrepo.server.errors.ModuleInitializationException;
 import org.fcrepo.server.errors.ServerInitializationException;
+import org.fcrepo.server.storage.ConnectionPool;
 import org.fcrepo.server.storage.DOManager;
 import org.fcrepo.server.storage.DOWriter;
+import org.fcrepo.server.utilities.SQLUtility;
 import org.fcrepo.server.utilities.status.ServerState;
 import org.fcrepo.server.utilities.status.ServerStatusFile;
 import org.slf4j.Logger;
@@ -35,15 +39,25 @@ public class BasicServer
 
     private static final Logger logger =
             LoggerFactory.getLogger(BasicServer.class);
+    
+    public BasicServer(File fedoraHomeDir)
+            throws ServerInitializationException, ModuleInitializationException {
+        super(fedoraHomeDir);
+    }
 
     public BasicServer(Element rootElement, File fedoraHomeDir)
             throws ServerInitializationException, ModuleInitializationException {
         super(rootElement, fedoraHomeDir);
     }
 
+    public BasicServer(Map<String,String> params, File fedoraHomeDir)
+            throws ServerInitializationException, ModuleInitializationException {
+        super(params, fedoraHomeDir);
+    }
+
     @Override
     public void initServer() throws ServerInitializationException {
-
+        super.initServer();
         String fedoraServerHost = null;
         String fedoraServerPort = null;
 
@@ -60,8 +74,8 @@ public class BasicServer
                     + "not given, but it's required.");
         }
 
-        logger.info("Fedora Version: " + Server.VERSION);
-        logger.info("Fedora Build Date: " + Server.BUILD_DATE);
+        logger.info("Fedora Version: {}", Server.VERSION);
+        logger.info("Fedora Build Date: {}", Server.BUILD_DATE);
 
         ServerStatusFile status = getStatusFile();
         try {
@@ -101,6 +115,7 @@ public class BasicServer
             preIngestIfNeeded(firstRun, doManager, Models.FEDORA_OBJECT_3_0);
             preIngestIfNeeded(firstRun, doManager, Models.SERVICE_DEFINITION_3_0);
             preIngestIfNeeded(firstRun, doManager, Models.SERVICE_DEPLOYMENT_3_0);
+            checkRebuildHasRun(firstRun);
         } catch (Exception e) {
             throw new ServerInitializationException("Failed to ingest "
                                                     + "system object(s)", e);
@@ -129,7 +144,7 @@ public class BasicServer
         PID pid = new PID(objectName.uri.substring("info:fedora/".length()));
         boolean exists = doManager.objectExists(pid.toString());
         if (exists && firstRun) {
-            logger.info("Purging old system object: " + pid.toString());
+            logger.info("Purging old system object: {}", pid);
             Context context = ReadOnlyContext.getContext(null,
                                                          null,
                                                          null,
@@ -146,7 +161,7 @@ public class BasicServer
             }
         }
         if (!exists) {
-            logger.info("Ingesting new system object: " + pid.toString());
+            logger.info("Ingesting new system object: {}", pid);
             InputStream xml = getStream("org/fcrepo/server/resources/"
                                         + pid.toFilename() + ".xml");
             Context context = ReadOnlyContext.getContext(null,
@@ -177,5 +192,30 @@ public class BasicServer
         }
     }
 
-
+    @SuppressWarnings("deprecation")
+    protected void checkRebuildHasRun(boolean firstRun) throws Exception {
+        Connection conn = null;
+        ConnectionPool cpm = SQLUtility.getConnectionPool(getConfig());
+        try {
+            conn = cpm.getReadWriteConnection();
+            long mostRecentRebuildDate = SQLUtility.getMostRecentRebuild(conn);
+            if (firstRun && mostRecentRebuildDate == -1) {
+                // if first run and rebuildStatus has NO ROWS, create one
+                SQLUtility.recordSuccessfulRebuild(conn, System.currentTimeMillis());
+            } else {
+                // otherwise, verify that the most recent rebuild was successful
+                boolean rebuildFinished =
+                        SQLUtility.getRebuildStatus(conn, mostRecentRebuildDate);
+                if (!rebuildFinished) {
+                    throw new ServerInitializationException(
+                            "The SQL Rebuild attempted on "
+                            + new Date(mostRecentRebuildDate).toGMTString()
+                            + " did not finish successfully, which may compromise"
+                            + " the repo. Please re-run the SQL rebuild.");
+                }
+            }
+        } finally {
+            if (conn != null) cpm.free(conn);
+        }
+    }
 }

@@ -27,25 +27,22 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-
+import org.fcrepo.common.Constants;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.pep.PEPException;
+import org.fcrepo.server.security.xacml.pep.ResourceAttributes;
+import org.fcrepo.server.security.xacml.pep.rest.filters.AbstractFilter;
+import org.fcrepo.server.security.xacml.util.LogUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.fcrepo.common.Constants;
-import org.fcrepo.server.security.xacml.pep.PEPException;
-import org.fcrepo.server.security.xacml.pep.rest.filters.AbstractFilter;
-import org.fcrepo.server.security.xacml.util.LogUtil;
-
-import com.sun.xacml.attr.AnyURIAttribute;
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.DateTimeAttribute;
-import com.sun.xacml.attr.StringAttribute;
-import com.sun.xacml.ctx.RequestCtx;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
+import org.jboss.security.xacml.sunxacml.attr.DateTimeAttribute;
 
 
 /**
  * Handles the GetDatastreamDissemination operation.
- * 
+ *
  * @author nish.naidoo@gmail.com
  */
 public class GetDatastreamDissemination
@@ -56,7 +53,7 @@ public class GetDatastreamDissemination
 
     /**
      * Default constructor.
-     * 
+     *
      * @throws PEPException
      */
     public GetDatastreamDissemination()
@@ -70,6 +67,7 @@ public class GetDatastreamDissemination
      * org.fcrepo.server.security.xacml.pep.rest.filters.RESTFilter#handleRequest(javax.servlet
      * .http.HttpServletRequest, javax.servlet.http.HttpServletResponse)
      */
+    @Override
     public RequestCtx handleRequest(HttpServletRequest request,
                                     HttpServletResponse response)
             throws IOException, ServletException {
@@ -77,11 +75,13 @@ public class GetDatastreamDissemination
             logger.debug(this.getClass().getName() + "/handleRequest!");
         }
 
-        String path = request.getPathInfo();
-        String[] parts = path.split("/");
+        String[] parts = getPathParts(request);
+        // -/objects/{pid}/datastreams/{dsID}/content
+        if (parts.length < 5) {
+            logger.error("Not enough path components on the URI: {}", request.getRequestURI());
+            throw new ServletException("Not enough path components on the URI: " + request.getRequestURI());
+        }
 
-        String pid = parts[1];
-        String dsid = parts[3];
         String asOfDateTime = request.getParameter("asOfDateTime");
         if (!isDate(asOfDateTime)) {
             asOfDateTime = null;
@@ -89,35 +89,23 @@ public class GetDatastreamDissemination
 
         RequestCtx req = null;
         Map<URI, AttributeValue> actions = new HashMap<URI, AttributeValue>();
-        Map<URI, AttributeValue> resAttr = new HashMap<URI, AttributeValue>();
+        Map<URI, AttributeValue> resAttr;
         try {
-            if (pid != null && !"".equals(pid)) {
-                resAttr.put(Constants.OBJECT.PID.getURI(),
-                            new StringAttribute(pid));
-            }
-            if (pid != null && !"".equals(pid)) {
-                resAttr.put(new URI(XACML_RESOURCE_ID),
-                            new AnyURIAttribute(new URI(pid)));
-            }
-            if (dsid != null && !"".equals(dsid)) {
-                resAttr.put(Constants.DATASTREAM.ID.getURI(),
-                            new StringAttribute(dsid));
-            }
-            if (asOfDateTime != null && !"".equals(asOfDateTime)) {
+            resAttr = ResourceAttributes.getResources(parts);
+            if (asOfDateTime != null && !asOfDateTime.isEmpty()) {
                 resAttr.put(Constants.DATASTREAM.AS_OF_DATETIME.getURI(),
                             DateTimeAttribute.getInstance(asOfDateTime));
             }
 
             actions.put(Constants.ACTION.ID.getURI(),
-                        new StringAttribute(Constants.ACTION.GET_DATASTREAM
-                                .getURI().toASCIIString()));
+                        Constants.ACTION.GET_DATASTREAM
+                                .getStringAttribute());
             actions
                     .put(Constants.ACTION.ID.getURI(),
-                         new StringAttribute(Constants.ACTION.GET_DATASTREAM_DISSEMINATION
-                                 .getURI().toASCIIString()));
+                         Constants.ACTION.GET_DATASTREAM_DISSEMINATION
+                                 .getStringAttribute());
             actions.put(Constants.ACTION.API.getURI(),
-                        new StringAttribute(Constants.ACTION.APIA.getURI()
-                                .toASCIIString()));
+                        Constants.ACTION.APIA.getStringAttribute());
 
             req =
                     getContextHandler().buildRequest(getSubjects(request),
@@ -127,9 +115,9 @@ public class GetDatastreamDissemination
 
             LogUtil.statLog(request.getRemoteUser(),
                             Constants.ACTION.GET_DATASTREAM_DISSEMINATION
-                                    .getURI().toASCIIString(),
-                            pid,
-                            dsid);
+                                    .uri,
+                            parts[1],
+                            parts[3]);
         } catch (Exception e) {
             logger.error(e.getMessage(), e);
             throw new ServletException(e.getMessage(), e);

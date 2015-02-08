@@ -7,19 +7,18 @@ package org.fcrepo.client.utility.ingest;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-
 import java.net.MalformedURLException;
-
 import java.rmi.RemoteException;
-
 import java.util.HashMap;
 import java.util.StringTokenizer;
 
+import javax.activation.DataHandler;
+import javax.mail.util.ByteArrayDataSource;
 import javax.xml.rpc.ServiceException;
 
 import org.fcrepo.common.Constants;
-import org.fcrepo.server.access.FedoraAPIA;
-import org.fcrepo.server.management.FedoraAPIM;
+import org.fcrepo.server.access.FedoraAPIAMTOM;
+import org.fcrepo.server.management.FedoraAPIMMTOM;
 import org.fcrepo.server.types.gen.RepositoryInfo;
 import org.fcrepo.server.utilities.StreamUtility;
 
@@ -33,14 +32,14 @@ import org.fcrepo.server.utilities.StreamUtility;
 public class AutoIngestor
         implements Constants {
 
-    private final FedoraAPIA m_apia;
+    private final FedoraAPIAMTOM m_apia;
 
-    private final FedoraAPIM m_apim;
+    private final FedoraAPIMMTOM m_apim;
 
-    private static HashMap<FedoraAPIA, RepositoryInfo> s_repoInfo =
-            new HashMap<FedoraAPIA, RepositoryInfo>();
+    private static HashMap<FedoraAPIAMTOM, RepositoryInfo> s_repoInfo =
+            new HashMap<FedoraAPIAMTOM, RepositoryInfo>();
 
-    public AutoIngestor(FedoraAPIA apia, FedoraAPIM apim)
+    public AutoIngestor(FedoraAPIAMTOM apia, FedoraAPIMMTOM apim)
             throws MalformedURLException, ServiceException {
         m_apia = apia;
         m_apim = apim;
@@ -62,14 +61,16 @@ public class AutoIngestor
      *             instead.
      */
     @Deprecated
-    public static String ingestAndCommit(FedoraAPIA apia,
-                                         FedoraAPIM apim,
+    public static String ingestAndCommit(FedoraAPIAMTOM apia,
+                                         FedoraAPIMMTOM apim,
                                          InputStream in,
                                          String logMessage)
             throws RemoteException, IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         StreamUtility.pipeStream(in, out, 4096);
-        String pid = apim.ingest(out.toByteArray(), METS_EXT1_0.uri, logMessage);
+        DataHandler handler = new DataHandler(new ByteArrayDataSource(out.toByteArray(),
+        "text/xml"));
+        String pid = apim.ingest(handler, METS_EXT1_0.uri, logMessage);
         return pid;
     }
 
@@ -80,8 +81,8 @@ public class AutoIngestor
         return ingestAndCommit(m_apia, m_apim, in, ingestFormat, logMessage);
     }
 
-    public static String ingestAndCommit(FedoraAPIA apia,
-                                         FedoraAPIM apim,
+    public static String ingestAndCommit(FedoraAPIAMTOM apia,
+                                         FedoraAPIMMTOM apim,
                                          InputStream in,
                                          String ingestFormat,
                                          String logMessage)
@@ -128,6 +129,8 @@ public class AutoIngestor
                 }
             }
         }
-        return apim.ingest(out.toByteArray(), ingestFormat, logMessage);
+        DataHandler handler = new DataHandler(new ByteArrayDataSource(out.toByteArray(),
+        "text/xml"));
+        return apim.ingest(handler, ingestFormat, logMessage);
     }
 }

@@ -10,18 +10,14 @@ import org.fcrepo.server.storage.types.RelationshipTuple;
 import org.fcrepo.server.storage.types.Validation;
 import org.fcrepo.server.validation.ecm.jaxb.DsCompositeModel;
 import org.fcrepo.server.validation.ecm.jaxb.DsTypeModel;
-import org.fcrepo.utilities.xml.DOM;
-import org.fcrepo.utilities.xml.XPathSelector;
 import org.semanticweb.owlapi.apibinding.OWLManager;
 import org.semanticweb.owlapi.model.*;
 import org.semanticweb.owlapi.util.OWLClassExpressionVisitorAdapter;
 import org.semanticweb.owlapi.util.OWLOntologyMerger;
-import org.w3c.dom.Document;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.xml.bind.JAXB;
-import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.*;
 
@@ -35,12 +31,8 @@ import java.util.*;
 public class OwlValidator {
     private RepositoryReader doMgr;
 
-
-    XPathSelector xpathselector = DOM.createXPathSelector("fedora-model", "info:fedora/fedora-system:def/model#",
-                                                          "rdf", "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
-                                                          "owl", "http://www.w3.org/2002/07/owl#",
-                                                          "rdfs", "http://www.w3.org/2000/01/rdf-schema#");
-
+    private static final Logger logger =
+            LoggerFactory.getLogger(OwlValidator.class);
 
     public OwlValidator(RepositoryReader doMgr) {
         //To change body of created methods use File | Settings | File Templates.
@@ -70,7 +62,6 @@ public class OwlValidator {
 
         List<String> contentmodels = currentObjectReader.getContentModels();
 
-        Map<String, InputStream> ontologies = new HashMap<String, InputStream>();
         for (String contentmodel : contentmodels) {
             contentmodel = contentmodel.substring("info:fedora/".length());
             DOReader contentmodelReader;
@@ -95,8 +86,7 @@ public class OwlValidator {
             try {
                 owlManager.loadOntologyFromOntologyDocument(ontologyStream);
             } catch (OWLOntologyCreationException e) {
-                //TODO
-                e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
+                logger.debug("Failed to load ontology for object " + currentObjectReader.GetObjectPID(), e);
             }
         }
         OWLOntologyMerger merger = new OWLOntologyMerger(owlManager);
@@ -105,8 +95,7 @@ public class OwlValidator {
         try {
             mergedOntology = merger.createMergedOntology(owlManager, mergedOntologyIRI);
         } catch (OWLOntologyCreationException e) {
-            //TODO
-            e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
+            logger.debug("Failed to load ontology for object " + currentObjectReader.GetObjectPID(), e);
         }
 
 
@@ -196,7 +185,16 @@ public class OwlValidator {
                 if (objectRelationName.equals(ontologyrelation)) {//This is one of the restricted relations
 
                     String target = relation.object;
-                    List<String> classes = getClassesOfTarget(target, context);
+                    List<String> classes;
+                    try {
+                        classes = getClassesOfTarget(target, context);
+                    } catch (ServerException e){
+                        validation.setValid(false);
+                        validation.getObjectProblems().add(Errors.missingObjectViolation(subject,objectRelationName,requiredTarget, target));
+                        continue;
+                    }
+
+
                     boolean found = false;
                     for (String aClass : classes) {
                         if (aClass.equals(requiredclass.getIRI().toString())){
@@ -204,7 +202,7 @@ public class OwlValidator {
                             break;
                         }
                     }
-                    if (found == false) {
+                    if (!found) {
                         validation.setValid(false);
                         validation.getObjectProblems().add(Errors.allValuesFromViolation(subject, ontologyrelation,requiredTarget));
 
@@ -234,8 +232,11 @@ public class OwlValidator {
         } else { //target is an object
             targetPid = target;
         }
+        List<String> targetContentModels;
+
         DOReader targetReader = doMgr.getReader(false, context, targetPid);
-        List<String> targetContentModels = targetReader.getContentModels();
+        targetContentModels = targetReader.getContentModels();
+
         for (String targetContentModel : targetContentModels) {
             targetContentModel = targetContentModel+"#" +dsname+"class";
             classes.add(targetContentModel);
@@ -269,7 +270,13 @@ public class OwlValidator {
                 if (objectRelationName.equals(ontologyrelation)) {//This is one of the restricted relations
 
                     String target = relation.object;
-                    List<String> classes = getClassesOfTarget(target, context);
+                    List<String> classes;
+                    try {
+                        classes = getClassesOfTarget(target, context);
+                    } catch (ServerException e){
+                        //object not found. So, continue to next
+                        continue;
+                    }
 
                     for (String aClass : classes) {
                         if (aClass.equals(requiredclass.getIRI().toString())){
@@ -277,17 +284,16 @@ public class OwlValidator {
                             break;
                         }
                     }
-                    if (found == false) {
-                        validation.setValid(false);
-                        validation.getObjectProblems().add(
-                                Errors.someValuesFromViolationWrongClassOfTarget(subject,
-                                                                                 ontologyrelation,
-                                                                                 requiredTarget));
-                    }
-                    if (found) {
-                        break;
-                    }
+                } else {
+                    continue;
                 }
+            }
+            if (!found) {
+                validation.setValid(false);
+                validation.getObjectProblems().add(
+                        Errors.someValuesFromViolationWrongClassOfTarget(subject,
+                                                                         ontologyrelation,
+                                                                         requiredTarget));
             }
         }
 
@@ -439,6 +445,7 @@ public class OwlValidator {
         }
 
 
+        @SuppressWarnings("unused")
         public void setProcessInherited(boolean processInherited) {
             this.processInherited = processInherited;
         }

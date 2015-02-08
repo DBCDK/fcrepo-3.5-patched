@@ -1,5 +1,5 @@
 -------------------------------------------------------------------
-                  Fedora 3.5 - August 18th, 2011
+                  Fedora Commons Repository
 -------------------------------------------------------------------
 This is a full source code release of Fedora.  Before using this
 software, you must read and agree to the license, found under
@@ -10,7 +10,7 @@ online browsing or download at the following URL:
 
 Building Fedora
 ===============
-To build the executable installer, make sure you have maven2
+To build the executable installer, make sure you have Maven 3
 installed and enter the following:
 
   mvn install
@@ -53,8 +53,9 @@ plausible system test configuration.
     with API-A authentication turned ON, with the
     Resource Index, REST api, and fesl authZ enabled.  If tests are
     being run against an externally-deployed Fedora it is necessary
-    to set the environment variable PEP_NOCACHE=true before starting
-    the Fedora instance, or some tests will fail.
+    to set the system property fedora.fesl.pep_nocache=true before starting
+    the Fedora instance, or some tests will fail.  This can be done by
+    adding -Dfedora.fesl.pep_nocache to CATALINA_OPTS.
     
   [configQ]
     When running this suite, the server shall be configured
@@ -145,7 +146,7 @@ By default, integration tests are run against a Fedora instance configured
 to use the built-in Derby database.  If you wish to run the integration
 tests against an external database, you can specify this with the db property:
 
--Ddb postgres
+-Ddb=postgres
 
 Properties files used to configure Fedora during installation for the various 
 database configurations are in the folder:

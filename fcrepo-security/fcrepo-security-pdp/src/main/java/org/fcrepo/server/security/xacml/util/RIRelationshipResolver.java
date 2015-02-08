@@ -1,7 +1,5 @@
 package org.fcrepo.server.security.xacml.util;
 
-import java.io.File;
-
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -9,27 +7,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.fcrepo.common.Constants;
+import org.fcrepo.common.MalformedPIDException;
+import org.fcrepo.common.PID;
+import org.fcrepo.server.Server;
+import org.fcrepo.server.resourceIndex.ResourceIndex;
+import org.fcrepo.server.security.xacml.MelcoeXacmlException;
 import org.jrdf.graph.Node;
 import org.jrdf.graph.ObjectNode;
 import org.jrdf.graph.PredicateNode;
 import org.jrdf.graph.SubjectNode;
 import org.jrdf.graph.Triple;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.trippi.TripleIterator;
 import org.trippi.TripleMaker;
 import org.trippi.TrippiException;
 import org.trippi.TupleIterator;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.fcrepo.common.Constants;
-import org.fcrepo.common.MalformedPIDException;
-import org.fcrepo.common.PID;
-
-import org.fcrepo.server.Server;
-import org.fcrepo.server.resourceIndex.ResourceIndex;
-import org.fcrepo.server.security.xacml.MelcoeXacmlException;
 
 public class RIRelationshipResolver
         extends RelationshipResolverBase
@@ -39,44 +33,33 @@ public class RIRelationshipResolver
 
     private final ResourceIndex RI;
 
-    public RIRelationshipResolver() throws MelcoeXacmlException {
-        this(new HashMap<String, String>()) ;
-    }
+    private boolean spoTriples = false;
+    private boolean sparqlTuples = false;
+    private boolean itqlTuples = false;
 
-    protected final List<String> tripleLanguages;
-    protected final List<String> tupleLanguages;
+    // Because the FESL beans are created outside the Fedora module context,
+    // they can't both share a PDP with the Authorization impl and have a post-init
+    // ResourceIndex impl without circular dependencies, so the RI module's config
+    // is checked lazily
+    protected List<String> tripleLanguages;
+    protected List<String> tupleLanguages;
 
     private static final String SPO = "spo";
     private static final String SPARQL = "sparql";
     private static final String ITQL = "itql";
 
 
-    public RIRelationshipResolver(Map<String, String> options) throws MelcoeXacmlException {
+    public RIRelationshipResolver(Server server, Map<String, String> options) throws MelcoeXacmlException {
         super(options);
 
         try {
-            Server server = Server.getInstance(new File(Constants.FEDORA_HOME), false);
             RI = (ResourceIndex) server.getModule("org.fcrepo.server.resourceIndex.ResourceIndex");
         } catch (Exception e) {
             throw new MelcoeXacmlException("Error getting resource index.", e);
         }
-        if (RI == null || RI.getIndexLevel() == ResourceIndex.INDEX_LEVEL_OFF) {
-            throw new MelcoeXacmlException("The Resource Index Module is not enabled.");
+        if (RI == null) {
+            throw new MelcoeXacmlException("No Resource Index Module is available to the Server.");
         }
-
-        // get supported query languages
-        tripleLanguages = Arrays.asList(RI.listTripleLanguages());
-        tupleLanguages = Arrays.asList(RI.listTupleLanguages());
-
-        if (logger.isDebugEnabled()) {
-            for (String lang : tripleLanguages) {
-                logger.debug("Triple language: " + lang);
-            }
-            for (String lang : tupleLanguages) {
-                logger.debug("Tuple language: " + lang);
-            }
-        }
-
 
     }
 
@@ -199,7 +182,7 @@ public class RIRelationshipResolver
         // tuple queries
         if (queryLang.equals(ITQL) || queryLang.equals(SPARQL)) {
             // check lang supported
-            if (!tupleLanguages.contains(queryLang)) {
+            if (!verifyTupleLanguage(queryLang)) {
                 logger.warn("RI query language " + queryLang + " is not supported");
                 return res;
             }
@@ -226,7 +209,7 @@ public class RIRelationshipResolver
         } else if (queryLang.equals(SPO)) {
             // triple query
             // check lang supported
-            if (!tripleLanguages.contains(queryLang)) {
+            if (!(spoTriples || verifyTripleLanguage(queryLang))) {
                 logger.warn("RI query language " + queryLang + " is not supported");
                 return res;
             }
@@ -345,10 +328,10 @@ public class RIRelationshipResolver
     }
 
     protected Set<String> getParents(String pid) throws MelcoeXacmlException {
-        logger.debug("Obtaining parents for: " + pid);
+        logger.debug("Obtaining parents for: {}", pid);
 
         Set<String> parentPIDs = new HashSet<String>();
-        if (pid.equalsIgnoreCase(REPOSITORY)) {
+        if (pid.equalsIgnoreCase(Constants.FEDORA_REPOSITORY_PID.uri)) {
             return parentPIDs;
         }
 
@@ -360,18 +343,20 @@ public class RIRelationshipResolver
         String pidUri = getFedoraResourceURI(pid);
 
         // tuple query
-        if (tupleLanguages.contains(ITQL) || tupleLanguages.contains(SPARQL)) {
+        if (verifyTupleLanguage(ITQL) || verifyTupleLanguage(SPARQL)) {
             String query = "";
             String lang = "";
-            if (tupleLanguages.contains(ITQL)) {
+            if (itqlTuples) {
                 lang = ITQL;
                 query = getTQLQuery(pidUri);
-            } else if (tupleLanguages.contains(SPARQL)) {
+            } else if (sparqlTuples){
                 lang = SPARQL;
                 query = getSPARQLQuery(pidUri);
+            } else {
+                throw new MelcoeXacmlException("RI supports no expected query languages for parent queries.");
             }
 
-            logger.debug(lang + " query: " + query);
+            logger.debug("{} query: {}", lang, query);
 
             TupleIterator tuples;
             try {
@@ -407,7 +392,7 @@ public class RIRelationshipResolver
             }
 
 
-        } else if (tripleLanguages.contains(SPO)) {
+        } else if (spoTriples || verifyTripleLanguage(SPO)) {
             // gets all relationships for pid, then filters results
             // rather than executing separate queries for each relationship
 
@@ -461,6 +446,23 @@ public class RIRelationshipResolver
         }
 
         return parentPIDs;
+    }
+
+    private boolean verifyTripleLanguage(String lang) {
+        if (tripleLanguages == null){
+            tripleLanguages = Arrays.asList(RI.listTripleLanguages());
+            spoTriples = tripleLanguages.contains(SPO);
+        }
+        return tripleLanguages.contains(lang);
+    }
+
+    private boolean verifyTupleLanguage(String lang){
+        if (tupleLanguages == null){
+            tupleLanguages = Arrays.asList(RI.listTupleLanguages());
+            sparqlTuples = tupleLanguages.contains(SPARQL);
+            itqlTuples = tupleLanguages.contains(ITQL);
+        }
+        return tupleLanguages.contains(lang);
     }
 
 

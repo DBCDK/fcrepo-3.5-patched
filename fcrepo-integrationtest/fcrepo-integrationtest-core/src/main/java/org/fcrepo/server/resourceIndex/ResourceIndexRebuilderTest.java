@@ -20,11 +20,11 @@ import org.junit.Test;
 
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.PID;
+
 import org.fcrepo.server.Server;
-import org.fcrepo.server.config.ServerConfiguration;
-import org.fcrepo.server.config.ServerConfigurationParser;
-import org.fcrepo.server.management.FedoraAPIM;
+import org.fcrepo.server.management.FedoraAPIMMTOM;
 import org.fcrepo.server.utilities.ServerUtility;
+import org.fcrepo.server.utilities.TypeUtility;
 import org.fcrepo.server.utilities.rebuild.Rebuild;
 import org.fcrepo.server.utilities.rebuild.RebuildServer;
 import org.fcrepo.server.utilities.rebuild.Rebuilder;
@@ -48,7 +48,7 @@ import org.fcrepo.utilities.Foxml11Document.State;
  */
 public class ResourceIndexRebuilderTest {
 
-    private FedoraAPIM apim;
+    private FedoraAPIMMTOM apim;
 
     private String osName;
 
@@ -62,7 +62,7 @@ public class ResourceIndexRebuilderTest {
         if (!isTomcatRunning()) {
             startTomcat();
         }
-        apim = FedoraTestCase.getFedoraClient().getAPIM();
+        apim = FedoraTestCase.getFedoraClient().getAPIMMTOM();
     }
 
     /**
@@ -141,6 +141,8 @@ public class ResourceIndexRebuilderTest {
             return socket.isConnected();
         } catch (ConnectException e) {
             return false;
+        } finally {
+            socket.close();
         }
     }
 
@@ -181,7 +183,7 @@ public class ResourceIndexRebuilderTest {
         System.out.print("ingesting " + count + " objects ");
         for (int i = 0; i < count; i++) {
             String pid = String.format("demo:ri%s", i);
-            apim.ingest(getFoxmlObject(pid, url), Constants.FOXML1_1.uri, null);
+            apim.ingest(TypeUtility.convertBytesToDataHandler(getFoxmlObject(pid, url)), Constants.FOXML1_1.uri, null);
             if (i % 100 == 0) {
                 System.out.print("\n\t");
             }
@@ -219,7 +221,7 @@ public class ResourceIndexRebuilderTest {
             String dsv = "DS1.0";
             doc.addDatastream(ds, State.A, ControlGroup.E, true);
             doc.addDatastreamVersion(ds, dsv, "text/html", "label", 1, date);
-            doc.setContentLocation(dsv, contentLocation, "URL");
+            doc.setContentLocation(dsv, contentLocation, org.fcrepo.server.storage.types.Datastream.DS_LOCATION_TYPE_URL);
         }
         return doc;
     }

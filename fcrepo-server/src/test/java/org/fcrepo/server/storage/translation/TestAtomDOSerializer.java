@@ -8,7 +8,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.StringReader;
@@ -22,7 +21,6 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
@@ -38,6 +36,7 @@ import org.custommonkey.xmlunit.XMLUnit;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import org.fcrepo.common.Constants;
@@ -175,16 +174,19 @@ public class TestAtomDOSerializer
         //f.delete();
     }
 
-    // TODO
-    private void validateWithISOSchematron(String candidate)
-            throws TransformerException, IOException {
+    /**
+     * Not yet implemented
+     */
+    @Ignore
+    public void validateWithISOSchematron(String candidate)
+            throws Exception {
         StreamSource skeleton = new StreamSource(new File(iso_tron));
         StreamSource schema = new StreamSource(new File(atom_tron));
         StringWriter temp = new StringWriter();
         StreamResult result = new StreamResult(temp);
 
         // generate the stylesheet
-        TransformerFactory factory = XmlTransformUtility.getTransformerFactory();
+        TransformerFactory factory = XmlTransformUtility.borrowTransformerFactory();
         Transformer xform = factory.newTransformer(skeleton);
         xform.transform(schema, result);
         temp.flush();
@@ -195,6 +197,7 @@ public class TestAtomDOSerializer
         StringReader in = new StringReader(stylesheet);
         StreamSource sheet = new StreamSource(in);
         Transformer validator = factory.newTransformer(sheet);
+        XmlTransformUtility.returnTransformerFactory(factory);
         validator.setOutputProperty("method", "text");
         temp = new StringWriter();
         result = new StreamResult(temp);

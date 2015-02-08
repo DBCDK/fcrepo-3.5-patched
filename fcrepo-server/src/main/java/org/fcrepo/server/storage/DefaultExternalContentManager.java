@@ -5,37 +5,43 @@
 package org.fcrepo.server.storage;
 
 import java.io.File;
-
+import java.io.IOException;
 import java.net.URI;
 import java.net.URL;
-
+import java.util.Date;
 import java.util.Hashtable;
 import java.util.Map;
 
 import javax.activation.MimetypesFileTypeMap;
 
-import org.apache.commons.httpclient.Header;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import org.apache.commons.httpclient.util.DateUtil;
+import org.apache.http.Header;
+import org.apache.http.HttpHeaders;
+import org.apache.http.HttpStatus;
+import org.fcrepo.common.Constants;
 import org.fcrepo.common.http.HttpInputStream;
 import org.fcrepo.common.http.WebClient;
 import org.fcrepo.common.http.WebClientConfiguration;
-
+import org.fcrepo.server.Context;
 import org.fcrepo.server.Module;
 import org.fcrepo.server.Server;
+import org.fcrepo.server.utilities.MD5Utility;
 import org.fcrepo.server.errors.GeneralException;
 import org.fcrepo.server.errors.HttpServiceNotFoundException;
 import org.fcrepo.server.errors.ModuleInitializationException;
+import org.fcrepo.server.errors.RangeNotSatisfiableException;
 import org.fcrepo.server.errors.authorization.AuthzException;
 import org.fcrepo.server.security.Authorization;
 import org.fcrepo.server.security.BackendPolicies;
 import org.fcrepo.server.security.BackendSecurity;
 import org.fcrepo.server.security.BackendSecuritySpec;
+import org.fcrepo.server.storage.translation.DOTranslationUtility;
 import org.fcrepo.server.storage.types.MIMETypedStream;
 import org.fcrepo.server.storage.types.Property;
 import org.fcrepo.server.utilities.ServerUtility;
+import org.fcrepo.utilities.io.NullInputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -53,8 +59,13 @@ public class DefaultExternalContentManager
             LoggerFactory.getLogger(DefaultExternalContentManager.class);
 
     private static final String DEFAULT_MIMETYPE="text/plain";
+    
+    private static final MimetypesFileTypeMap MIME_MAP =
+            new MimetypesFileTypeMap();
+
     private String m_userAgent;
 
+    @SuppressWarnings("unused")
     private String fedoraServerHost;
 
     private String fedoraServerPort;
@@ -125,7 +136,7 @@ public class DefaultExternalContentManager
                                                             + "The message was \""
                                                             + th.getMessage()
                                                             + "\".",
-                                                    getRole());
+                                                    getRole(), th);
         }
     }
 
@@ -138,9 +149,10 @@ public class DefaultExternalContentManager
      * org.fcrepo.server.storage.ExternalContentManager#getExternalContent(fedora
      * .server.storage.ContentManagerParams)
      */
+    @Override
     public MIMETypedStream getExternalContent(ContentManagerParams params)
-            throws GeneralException, HttpServiceNotFoundException{
-        logger.debug("in getExternalContent(), url=" + params.getUrl());
+            throws GeneralException, HttpServiceNotFoundException, RangeNotSatisfiableException {
+        logger.debug("in getExternalContent(), url={}", params.getUrl());
         try {
             if(params.getProtocol().equals("file")){
                 return getFromFilesystem(params);
@@ -149,6 +161,9 @@ public class DefaultExternalContentManager
                 return getFromWeb(params);
             }
             throw new GeneralException("protocol for retrieval of external content not supported. URL: " + params.getUrl());
+        }
+        catch (RangeNotSatisfiableException re) {
+        	throw re;
         } catch (Exception ex) {
             // catch anything but generalexception
             ex.printStackTrace();
@@ -165,21 +180,68 @@ public class DefaultExternalContentManager
      * Get a MIMETypedStream for the given URL. If user or password are
      * <code>null</code>, basic authentication will not be attempted.
      */
-    private MIMETypedStream get(String url, String user, String pass, String knownMimeType)
-            throws GeneralException {
-        logger.debug("DefaultExternalContentManager.get(" + url + ")");
+    private MIMETypedStream getFromWeb(String url, String user, String pass,
+            String knownMimeType, boolean headOnly, Context context)
+            throws GeneralException, RangeNotSatisfiableException {
+        logger.debug("DefaultExternalContentManager.getFromWeb({})", url);
+        if (url == null) throw new GeneralException("null url");
+        HttpInputStream response = null;
         try {
-            HttpInputStream response = m_http.get(url, true, user, pass);
+            if (headOnly) {
+                response = m_http.head(url, true, user, pass,
+                        context.getHeaderValue(HttpHeaders.IF_NONE_MATCH),
+                        context.getHeaderValue(HttpHeaders.IF_MODIFIED_SINCE),
+                        context.getHeaderValue("Range"));
+            } else {
+                response = m_http.get(
+                        url, true, user, pass,
+                        context.getHeaderValue(HttpHeaders.IF_NONE_MATCH),
+                        context.getHeaderValue(HttpHeaders.IF_MODIFIED_SINCE),
+                        context.getHeaderValue("Range"));
+            }
             String mimeType =
-                    response.getResponseHeaderValue("Content-Type",
+                    response.getResponseHeaderValue(HttpHeaders.CONTENT_TYPE,
                                                     knownMimeType);
-            long length = Long.parseLong(response.getResponseHeaderValue("Content-Length","-1"));
+            long length = Long.parseLong(response.getResponseHeaderValue(HttpHeaders.CONTENT_LENGTH,"-1"));
             Property[] headerArray =
                     toPropertyArray(response.getResponseHeaders());
-            if (mimeType == null || mimeType.equals("")) {
+            if (mimeType == null || mimeType.isEmpty()) {
                 mimeType = DEFAULT_MIMETYPE;
             }
-            return new MIMETypedStream(mimeType, response, headerArray, length);
+            if (response.getStatusCode() == HttpStatus.SC_NOT_MODIFIED) {
+                response.close();
+                Header[] respHeaders = response.getResponseHeaders();
+                Property[] properties = new Property[respHeaders.length];
+                for (int i = 0; i < respHeaders.length; i++){
+                    properties[i] =
+                        new Property(respHeaders[i].getName(), respHeaders[i].getValue());
+                }
+                return MIMETypedStream.getNotModified(properties);
+            } else if (response.getStatusCode() == HttpStatus.SC_PARTIAL_CONTENT) {
+            	MIMETypedStream pc_response = new MIMETypedStream(mimeType, response,
+                        headerArray, length);
+            	pc_response.setStatusCode(HttpStatus.SC_PARTIAL_CONTENT);
+            	return pc_response;
+            } else if (response.getStatusCode() == HttpStatus.SC_REQUESTED_RANGE_NOT_SATISFIABLE) {
+            	response.close();
+            	throw new RangeNotSatisfiableException("External URL datastream request returned 416 Range Not Satisfiable");
+            } else {
+                if (headOnly) {
+                    try {
+                        response.close();
+                    } catch (IOException ioe) {
+                        logger.warn("problem closing HEAD response: {}", ioe.getMessage());
+                    }
+                    
+                    return new MIMETypedStream(mimeType, NullInputStream.NULL_STREAM,
+                            headerArray, length);
+                } else {
+                    return new MIMETypedStream(mimeType, response, headerArray, length);
+                }
+            }
+        } catch (RangeNotSatisfiableException re){
+        	logger.error(re.getMessage(), re);
+        	throw re;                    
         } catch (Exception e) {
             throw new GeneralException("Error getting " + url, e);
         }
@@ -200,24 +262,6 @@ public class DefaultExternalContentManager
         return props;
     }
 
-   /* *//**
-     * Creates a property array out of the MIME type and the length of the
-     * provided file.
-     *
-     * @param file
-     *            the file containing the content.
-     * @return an array of properties containing content-length and
-     *         content-type.
-     *//*
-    private static Property[] getPropertyArray(File file, String mimeType) {
-         Property[] props = new Property[2];
-         Property clen = new Property("Content-Length",Long.toString(file.length()));
-         Property ctype = new Property("Content-Type", mimeType);
-         props[0] = clen;
-         props[1] = ctype;
-         return props;
-    }*/
-
     /**
      * Get a MIMETypedStream for the given URL. If user or password are
      * <code>null</code>, basic authentication will not be attempted.
@@ -226,24 +270,26 @@ public class DefaultExternalContentManager
      * @return
      * @throws HttpServiceNotFoundException
      * @throws GeneralException
+     * @throws RangeNotSatisfiableException
      */
     private MIMETypedStream getFromFilesystem(ContentManagerParams params)
-            throws HttpServiceNotFoundException,GeneralException {
-        logger.debug("in getFile(), url=" + params.getUrl());
+            throws HttpServiceNotFoundException,RangeNotSatisfiableException,GeneralException {
+        logger.debug("in getFromFilesystem(), url={}", params.getUrl());
 
         try {
             URL fileUrl = new URL(params.getUrl());
             File cFile = new File(fileUrl.toURI()).getCanonicalFile();
             // security check
             URI cURI = cFile.toURI();
-            logger.info("Checking resolution security on " + cURI);
-            Authorization authModule = (Authorization) getServer().getModule(
-            "org.fcrepo.server.security.Authorization");
+            logger.info("Checking resolution security on {}", cURI);
+            Authorization authModule = getServer()
+                    .getBean("org.fcrepo.server.security.Authorization", Authorization.class);
             if (authModule == null) {
                 throw new GeneralException(
                 "Missing required Authorization module");
             }
-            authModule.enforceRetrieveFile(params.getContext(), cURI.toString());
+            String cUriString = cURI.toString();
+            authModule.enforceRetrieveFile(params.getContext(), cUriString);
             // end security check
             String mimeType = params.getMimeType();
 
@@ -251,11 +297,34 @@ public class DefaultExternalContentManager
             if (mimeType == null || mimeType.equalsIgnoreCase("")){
                 mimeType = determineMimeType(cFile);
             }
-            return new MIMETypedStream(mimeType,fileUrl.openStream(),null,cFile.length());
+            Property [] headers = getFileDatastreamHeaders(cUriString, cFile.lastModified());
+            if (ServerUtility.isStaleCache(params.getContext(), headers)) {
+                MIMETypedStream result;
+                if (isHEADRequest(params)) {
+                    result = new MIMETypedStream(mimeType, NullInputStream.NULL_STREAM,
+                            headers, cFile.length());
+                } else {
+                    result = new MIMETypedStream(mimeType, fileUrl.openStream(),
+                            headers, cFile.length());
+                }
+                String rangeHdr =
+                        params.getContext().getHeaderValue(HttpHeaders.RANGE);
+                if (rangeHdr != null) {
+                    result.setRange(rangeHdr);;
+                }
+                return result;
+                
+            } else {
+                return MIMETypedStream.getNotModified(headers);
+            }
         }
         catch(AuthzException ae){
             logger.error(ae.getMessage(),ae);
             throw new HttpServiceNotFoundException("Policy blocked datastream resolution",ae);
+        }
+        catch (RangeNotSatisfiableException re){
+        	logger.error(re.getMessage(), re);
+        	throw re;
         }
         catch (GeneralException me) {
             logger.error(me.getMessage(),me);
@@ -279,14 +348,16 @@ public class DefaultExternalContentManager
      * @return A MIMETypedStream
      * @throws ModuleInitializationException
      * @throws GeneralException
+     * @throws RangeNotSatisfiableException
      */
     private MIMETypedStream getFromWeb(ContentManagerParams params)
-            throws ModuleInitializationException, GeneralException {
+            throws ModuleInitializationException, GeneralException, RangeNotSatisfiableException {
            String username = params.getUsername();
         String password = params.getPassword();
         boolean backendSSL = false;
         String url = params.getUrl();
-
+        // in case host is 'local.fedora.server', and has not been normalized (e.g. on validating datastream add)
+        url = DOTranslationUtility.makeAbsoluteURLs(url);
         if (ServerUtility.isURLFedoraServer(url) && !params.isBypassBackend()) {
             BackendSecuritySpec m_beSS;
             BackendSecurity m_beSecurity =
@@ -304,8 +375,7 @@ public class DefaultExternalContentManager
             username = beHash.get("callUsername");
             password = beHash.get("callPassword");
             backendSSL =
-                    new Boolean(beHash.get("callSSL"))
-                            .booleanValue();
+                    Boolean.parseBoolean(beHash.get("callSSL"));
             if (backendSSL) {
                 if (params.getProtocol().equals("http")) {
                     url = url.replaceFirst("http:", "https:");
@@ -323,7 +393,8 @@ public class DefaultExternalContentManager
             }
 
         }
-        return get(url, username, password, params.getMimeType());
+        return getFromWeb(url, username, password, params.getMimeType(),
+                isHEADRequest(params), params.getContext());
     }
 
 /**
@@ -333,12 +404,47 @@ public class DefaultExternalContentManager
      * @return the detected mime type
      */
     private String determineMimeType(File file){
-        String mimeType = new MimetypesFileTypeMap().getContentType(file);
+        String mimeType = MIME_MAP.getContentType(file);
         // if mimeType detection failed, fall back to the default
         if (mimeType == null || mimeType.equalsIgnoreCase("")){
             mimeType = DEFAULT_MIMETYPE;
         }
         return mimeType;
     }
+    
+    /**
+     * determine whether the context is a HEAD http request
+     */
+    private static boolean isHEADRequest(ContentManagerParams params) {
+        Context context = params.getContext();
+        if (context != null) {
+            String method =
+                    context.getEnvironmentValue(
+                            Constants.HTTP_REQUEST.METHOD.attributeId);
+            return "HEAD".equalsIgnoreCase(method);
+        }
+        return false;
+    }
+    
+    /**
+     * Content-Length is determined elsewhere
+     * Content-Type is determined elsewhere
+     * Last-Modified
+     * ETag
+     * @param String canonicalPath: the canonical path to a file system resource
+     * @param long lastModified: the date of last modification
+     * @return
+     */
+    private static Property[] getFileDatastreamHeaders(String canonicalPath, long lastModified) {
+        Property[] result = new Property[3];
+        String eTag =
+            MD5Utility.getBase16Hash(canonicalPath.concat(Long.toString(lastModified)));
+        result[0] = new Property(HttpHeaders.ACCEPT_RANGES,"bytes");
+        result[1] = new Property(HttpHeaders.ETAG, eTag);
+        result[2] = new Property(HttpHeaders.LAST_MODIFIED,
+                DateUtil.formatDate(new Date(lastModified)));
+        return result;
+    }
+
 }
 

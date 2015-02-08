@@ -85,11 +85,11 @@ public class AutoBatchIngest
                 errors = true;
             }
 
-            if (args.length == 9 && !args[8].equals("")) {
+            if (args.length == 9 && !args[8].isEmpty()) {
                 context = args[8];
             }
             if (!errors) {
-                AutoBatchIngest autoBatch =
+                // test constructor
                         new AutoBatchIngest(args[0],
                                             args[1],
                                             args[2],

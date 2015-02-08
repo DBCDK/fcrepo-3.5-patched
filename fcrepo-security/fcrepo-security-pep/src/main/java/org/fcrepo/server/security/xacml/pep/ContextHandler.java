@@ -22,22 +22,22 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.ctx.RequestCtx;
-import com.sun.xacml.ctx.ResponseCtx;
+import org.fcrepo.server.security.RequestCtx;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
+import org.jboss.security.xacml.sunxacml.ctx.ResponseCtx;
 
 /**
  * This interface represents the bridge between the PEP and the PDP. It is
  * responsible for building requests and passing them to the PDP. It then
  * receives the response and passes it to the PEP.
- * 
+ *
  * @author nishen@melcoe.mq.edu.au
  */
 public interface ContextHandler {
 
     /**
      * Creates a new Request.
-     * 
+     *
      * @param subjects
      *        a list of Map<URI, AttributeValue> containing the attributes for a
      *        set of subjects.
@@ -85,8 +85,6 @@ public interface ContextHandler {
      */
     public String evaluateBatch(String[] requests) throws PEPException;
 
-    /**
-     * @return a reference to the response cache.
-     */
-    public ResponseCache getResponseCache();
+    public ResponseCtx evaluateBatch(RequestCtx[] requests) throws PEPException;
+
 }

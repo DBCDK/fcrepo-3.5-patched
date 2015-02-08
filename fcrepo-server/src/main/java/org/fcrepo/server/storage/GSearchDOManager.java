@@ -14,11 +14,10 @@ import java.net.URLEncoder;
 
 import java.util.Map;
 
-import org.apache.commons.httpclient.UsernamePasswordCredentials;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.http.auth.UsernamePasswordCredentials;
 import org.fcrepo.common.http.HttpInputStream;
 import org.fcrepo.common.http.WebClient;
 import org.fcrepo.common.http.WebClientConfiguration;
@@ -85,7 +84,7 @@ public class GSearchDOManager
     /**
      * Delegates construction to the superclass.
      */
-    public GSearchDOManager(Map moduleParameters, Server server, String role)
+    public GSearchDOManager(Map<String, String> moduleParameters, Server server, String role)
             throws ModuleInitializationException {
         super(moduleParameters, server, role);
     }
@@ -162,14 +161,14 @@ public class GSearchDOManager
         String pid = obj.getPid();
         url.append("&value=" + urlEncode(pid));
         if (remove) {
-            logger.info("Signaling removal of " + pid + " to GSearch");
+            logger.info("Signaling removal of {} to GSearch", pid);
             url.append("&action=deletePid");
         } else {
             if (logger.isInfoEnabled()) {
                 if (obj.isNew()) {
-                    logger.info("Signaling add of " + pid + " to GSearch");
+                    logger.info("Signaling add of {} to GSearch", pid);
                 } else {
-                    logger.info("Signaling mod of " + pid + " to GSearch");
+                    logger.info("Signaling mod of {} to GSearch", pid);
                 }
             }
             url.append("&action=fromPid");

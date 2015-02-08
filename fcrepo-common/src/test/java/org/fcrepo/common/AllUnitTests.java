@@ -9,7 +9,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Suite;
 
 @RunWith(Suite.class)
-@Suite.SuiteClasses( {org.fcrepo.common.TestPID.class} )
+@Suite.SuiteClasses( {org.fcrepo.common.TestPID.class, org.fcrepo.common.TestDateUtility.class} )
 public class AllUnitTests {
 
     // Supports legacy tests runners
@@ -17,6 +17,7 @@ public class AllUnitTests {
         junit.framework.TestSuite suite =
                 new junit.framework.TestSuite(AllUnitTests.class.getName());
         suite.addTest(org.fcrepo.common.TestPID.suite());
+        suite.addTest(org.fcrepo.common.TestDateUtility.suite());
         return suite;
     }
 }

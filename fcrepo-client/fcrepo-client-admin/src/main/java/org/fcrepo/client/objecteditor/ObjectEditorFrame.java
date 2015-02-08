@@ -6,7 +6,6 @@ package org.fcrepo.client.objecteditor;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
-
 import java.util.Collection;
 import java.util.Iterator;
 
@@ -70,11 +69,11 @@ public class ObjectEditorFrame
         ObjectFields o =
                 Util.getObjectFields(pid, new String[] {"pid", "state",
                         "label", "cDate", "mDate", "ownerId"});
-        String state = o.getState();
-        String label = o.getLabel();
-        String cDate = o.getCDate();
-        String mDate = o.getMDate();
-        String ownerId = o.getOwnerId();
+        String state = o.getState() != null ? o.getState().getValue() : null;
+        String label = o.getLabel() != null ? o.getLabel().getValue() : null;
+        String cDate = o.getCDate() != null ? o.getCDate().getValue() : null;
+        String mDate = o.getMDate() != null ? o.getMDate().getValue() : null;
+        String ownerId = o.getOwnerId() != null ? o.getOwnerId().getValue() : null;
 
         doTitle(false);
 
@@ -84,16 +83,12 @@ public class ObjectEditorFrame
 
         // outerPane(tabbedPane)
         ImageIcon objIcon =
-            new ImageIcon(this.getClass().getClassLoader().getSystemClassLoader()
+            new ImageIcon(ClassLoader
                           .getSystemResource("images/client/standard/general/Information16.gif"));
 
         ImageIcon dsIcon =
-            new ImageIcon(this.getClass().getClassLoader().getSystemClassLoader()
+            new ImageIcon(ClassLoader
                           .getSystemResource("images/client/standard/general/Copy16.gif"));
-
-        ImageIcon dissIcon =
-            new ImageIcon(this.getClass().getClassLoader().getSystemClassLoader()
-                          .getSystemResource("images/client/standard/general/Refresh16.gif"));
 
         // tabbedPane(ObjectPane, DatastreamsPane, DisseminatorsPane)
         m_objectPane =
@@ -122,10 +117,7 @@ public class ObjectEditorFrame
 
         getContentPane().setLayout(new BorderLayout());
         getContentPane().add(outerPane, BorderLayout.CENTER);
-        //ImageIcon openIcon =
-        //    new ImageIcon(ClassLoader.
-        //                  getSystemResource("images/client/standard/general/Open16.gif"));
-        //setFrameIcon(openIcon);
+
         pack();
         Dimension dims = getSize();
         if (dims.height < 675) {
@@ -143,9 +135,9 @@ public class ObjectEditorFrame
     }
 
     public Datastream[] getCurrentDatastreamVersions() {
-        Collection vColl = m_datastreamsPane.getCurrentVersionMap().values();
+        Collection<Datastream> vColl = m_datastreamsPane.getCurrentVersionMap().values();
         Datastream[] versions = new Datastream[vColl.size()];
-        Iterator iter = vColl.iterator();
+        Iterator<Datastream> iter = vColl.iterator();
         int i = 0;
         while (iter.hasNext()) {
             versions[i++] = (Datastream) iter.next();
@@ -162,6 +154,7 @@ public class ObjectEditorFrame
         setTitle("Object - " + m_pid + d);
     }
 
+    @Override
     public boolean isDirty() {
         return m_objectPane.isDirty() || m_datastreamsPane.isDirty();
     }

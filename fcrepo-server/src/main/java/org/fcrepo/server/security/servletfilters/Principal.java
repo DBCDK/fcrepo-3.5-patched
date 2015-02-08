@@ -4,8 +4,6 @@
  */
 package org.fcrepo.server.security.servletfilters;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /*
  * import java.security.Principal; import java.util.Map; import java.util.Set;
@@ -18,8 +16,8 @@ import org.slf4j.LoggerFactory;
 public class Principal
         implements java.security.Principal {
 
-    private final Logger logger = LoggerFactory.getLogger(Principal.class);
-
+    private static final String[] EMPTY_STRING_ARRAY = new String[0];
+    
     private final String name;
 
     public Principal(String name) {
@@ -50,7 +48,7 @@ public class Principal
     }
 
     public String[] getRoles() {
-        return new String[0];
+        return EMPTY_STRING_ARRAY;
     }
 
 }

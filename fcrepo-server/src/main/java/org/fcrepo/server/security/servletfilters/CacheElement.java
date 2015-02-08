@@ -5,7 +5,7 @@
 package org.fcrepo.server.security.servletfilters;
 
 import java.util.Calendar;
-import java.util.Hashtable;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
@@ -36,7 +36,8 @@ public class CacheElement {
     private boolean m_valid = false;
     private Calendar m_expiration = null;
     private Boolean m_authenticated = null;
-    private Map m_namedValues = null;
+    // a map of String to Set<String>
+    private Map<String, Set<?>> m_namedValues = null;
     private String m_errorMessage = null;
 
     static {
@@ -77,11 +78,11 @@ public class CacheElement {
      *        For now, callers can avoid a warning by giving it as null.
      */
     public final void populate(Boolean authenticated,
-                               Set predicates,
-                               Map namedValues,
+                               Set<?> predicates,
+                               Map<String, Set<?>> map,
                                String errorMessage) {
         String m = m_cacheabbrev + " populate() ";
-        logger.debug(m + ">");
+        logger.debug("{}>", m);
         try {
             if (predicates != null) {
                 logger.warn(m + " predicates are deprecated; will be ignored");
@@ -91,7 +92,7 @@ public class CacheElement {
                 logger.error(m + "errorMessage==" + errorMessage);
                 throw new Exception(errorMessage);
             } else {
-                validate(authenticated, namedValues);
+                validate(authenticated, map);
                 // can't set expiration here -- don't have cache reference
                 // can't set pwd here, don't have it
             }
@@ -99,7 +100,7 @@ public class CacheElement {
             logger.error(m + "invalidating to be sure");
             this.invalidate(errorMessage);
         } finally {
-            logger.debug(m + "<");
+            logger.debug("{}<", m);
         }
     }
 
@@ -120,30 +121,30 @@ public class CacheElement {
         // non-interlaced.  This protects against overlapping calls resulting in
         // redundant authenticator calls.
         String m = m_cacheabbrev + " authenticate() ";
-        logger.debug(m + ">");
+        logger.debug("{}>", m);
         Boolean rc = null;
         try {
-            logger.debug(m + "m_valid==" + m_valid);
+            logger.debug("{}m_valid=={}", m, m_valid);
             if (m_valid && !CacheElement.isExpired(m_expiration)) {
-                logger.debug(m + "valid and not expired, so use");
+                logger.debug("{}valid and not expired, so use", m);
                 if (!isAuthenticated()) {
-                    logger.debug(m + "auth==" + m_authenticated);
+                    logger.debug("{}auth=={}", m, m_authenticated);
                     rc = m_authenticated;
                 } else {
-                    logger.debug(m + "already authd, request password==" + pwd);
+                    logger.debug("{}already authd, request password=={}", m, pwd);
                     if (pwd == null) {
-                        logger.debug(m + "null request password");
+                        logger.debug("{}null request password", m);
                         rc = Boolean.FALSE;
                     } else if ("".equals(pwd)) {
-                        logger.debug(m + "zero-length request password");
+                        logger.debug("{}zero-length request password", m);
                         rc = Boolean.FALSE;
                     } else {
-                        logger.debug(m + "stored password==" + m_password);
+                        logger.debug("{}stored password=={}", m, m_password);
                         rc = pwd.equals(m_password);
                     }
                 }
             } else { // expired or invalid
-                logger.debug(m + "expired or invalid, so try to repopulate");
+                logger.debug("{}expired or invalid, so try to repopulate", m);
                 this.invalidate();
                 CacheElementPopulator cePop = cache.getCacheElementPopulator();
                 cePop.populateCacheElement(this, pwd);
@@ -153,18 +154,18 @@ public class CacheElement {
                 if (m_authenticated == null || !m_valid) {
                     duration = cache.getAuthExceptionTimeoutDuration();
                     unit = cache.getAuthExceptionTimeoutUnit();
-                    logger.debug(m + "couldn't complete population");
+                    logger.debug("{}couldn't complete population", m);
                 } else {
-                    logger.debug(m + "populate completed");
+                    logger.debug("{}populate completed", m);
                     if (isAuthenticated()) {
                         m_password = pwd;
                         duration = cache.getAuthSuccessTimeoutDuration();
                         unit = cache.getAuthSuccessTimeoutUnit();
-                        logger.debug(m + "populate succeeded");
+                        logger.debug("{}populate succeeded", m);
                     } else {
                         duration = cache.getAuthFailureTimeoutDuration();
                         unit = cache.getAuthFailureTimeoutUnit();
-                        logger.debug(m + "populate failed");
+                        logger.debug("{}populate failed", m);
                     }
                 }
                 m_expiration = CacheElement.calcExpiration(duration, unit);
@@ -176,26 +177,26 @@ public class CacheElement {
             logger.error(m + "invalidating to be sure");
         } finally {
             audit();
-            logger.debug(m + "< " + rc);
+            logger.debug("{}< {}", m, rc);
         }
         return rc;
     }
 
-    public final synchronized Map getNamedValues(Cache cache, String pwd) {
+    public final synchronized Map<String, Set<?>> getNamedValues(Cache cache, String pwd) {
         // Original Comment:
         // Synchronized so evaluation of cache item state will be sequential,
         // non-interlaced.  This protects against overlapping calls resulting in
         // redundant (authenticator?) calls.
         // TODO: refactor method name so that it doesn't look like "getter"
         String m = m_cacheabbrev + " namedValues ";
-        logger.debug(m + ">");
-        Map rc = null;
+        logger.debug("{}>", m);
+        Map<String, Set<?>> rc = null;
         try {
-            logger.debug(m + "valid==" + m_valid);
+            logger.debug("{}valid=={}",m, m_valid);
             if (m_valid && !CacheElement.isExpired(m_expiration)) {
-                logger.debug(m + "valid and not expired, so use");
+                logger.debug("{}valid and not expired, so use",m);
             } else {
-                logger.debug(m + "expired or invalid, so try to repopulate");
+                logger.debug("{}expired or invalid, so try to repopulate", m);
                 this.invalidate();
                 CacheElementPopulator cePop = cache.getCacheElementPopulator();
                 cePop.populateCacheElement(this, pwd);
@@ -204,19 +205,13 @@ public class CacheElement {
                 if (m_namedValues == null || !m_valid) {
                     duration = cache.getAuthExceptionTimeoutDuration();
                     unit = cache.getAuthExceptionTimeoutUnit();
-                    logger.debug(m + "couldn't complete population");
+                    logger.debug("{}couldn't complete population", m);
                 } else {
-                    logger.debug(m + "populate completed");
-                    if (m_namedValues == null) {
-                        duration = cache.getAuthFailureTimeoutDuration();
-                        unit = cache.getAuthFailureTimeoutUnit();
-                        logger.debug(m + "populate failed");
-                    } else {
-                        m_password = pwd;
-                        duration = cache.getAuthSuccessTimeoutDuration();
-                        unit = cache.getAuthSuccessTimeoutUnit();
-                        logger.debug(m + "populate succeeded");
-                    }
+                    logger.debug("{}populate completed", m);
+                    m_password = pwd;
+                    duration = cache.getAuthSuccessTimeoutDuration();
+                    unit = cache.getAuthSuccessTimeoutUnit();
+                    logger.debug("{}populate succeeded", m);
                 }
                 m_expiration = CacheElement.calcExpiration(duration, unit);
             }
@@ -228,9 +223,9 @@ public class CacheElement {
             audit();
             rc = m_namedValues;
             if (rc == null) {
-                rc = new Hashtable();
+                rc = new HashMap<String, Set<?>>();
             }
-            logger.debug(m + "< " + rc);
+            logger.debug("{}< {}", m, rc);
         }
         return rc;
     }
@@ -323,10 +318,10 @@ public class CacheElement {
         }
     }
 
-    private void validate(Boolean authenticated, Map namedValues) {
+    private void validate(Boolean authenticated, Map<String, Set<?>> map) {
         assertInvalid();
         m_authenticated = authenticated;
-        m_namedValues = namedValues;
+        m_namedValues = map;
         m_errorMessage = null;
         m_valid = true;
     }
@@ -335,10 +330,10 @@ public class CacheElement {
     // Private Class Methods
     ///////////////////////////////////////////////////////////////////////////
 
-    private static final void auditNamedValues(String m, Map namedValues) {
+    private static final void auditNamedValues(String m, Map<String, ?> namedValues) {
         if (logger.isDebugEnabled()) {
             assert namedValues != null;
-            for (Iterator outer = namedValues.keySet().iterator(); outer
+            for (Iterator<String> outer = namedValues.keySet().iterator(); outer
                     .hasNext();) {
                 Object name = outer.next();
                 assert name instanceof String : "not a string, name==" + name;
@@ -349,18 +344,14 @@ public class CacheElement {
                 if (temp instanceof String) {
                     sb.append(temp.toString());
                 } else if (temp instanceof Set) {
-                    Set values = (Set) temp;
+                    @SuppressWarnings("unchecked")
+                    Set<String> values = (Set<String>) temp;
                     sb.append("(" + values.size() + ") {");
                     String punct = "";
-                    for (Iterator it = values.iterator(); it.hasNext();) {
-                        temp = it.next();
-                        if (!(temp instanceof String)) {
-                            logger.error(m + "set member not string, ==" + temp);
-                        } else {
-                            String value = (String) temp;
-                            sb.append(punct + value);
-                            punct = ",";
-                        }
+                    for (Iterator<String> it = values.iterator(); it.hasNext();) {
+                        String value = it.next();
+                        sb.append(punct + value);
+                        punct = ",";
                     }
                     sb.append("}");
                 }
@@ -379,9 +370,9 @@ public class CacheElement {
         } else {
             String padNeeded = pad.substring(0, pad.length() - st.length());
             if (padLeft) {
-                rc = padNeeded + st;
+                rc = padNeeded.concat(st);
             } else {
-                rc = st + padNeeded;
+                rc = st.concat(padNeeded);
             }
         }
         return rc;
@@ -400,17 +391,17 @@ public class CacheElement {
         StringBuffer sb = new StringBuffer();
         if (dayPad != null) {
             sb.append(CacheElement.pad(day, "00"));
-            sb.append(" ");
+            sb.append(' ');
         } else {
             sb.append(Long.toString(day));
             sb.append(" days ");
         }
         sb.append(CacheElement.pad(hour, "00"));
-        sb.append(":");
+        sb.append(':');
         sb.append(CacheElement.pad(minute, "00"));
-        sb.append(":");
+        sb.append(':');
         sb.append(CacheElement.pad(second, "00"));
-        sb.append(".");
+        sb.append('.');
         sb.append(CacheElement.pad(millisecond, "000"));
         return sb.toString();
     }
@@ -469,20 +460,20 @@ public class CacheElement {
 
     private static final Calendar calcExpiration(int duration, int unit) {
         String m = "- calcExpiration(int,int) ";
-        logger.debug(m + ">");
+        logger.debug("{}>", m);
         Calendar now = Calendar.getInstance();
         Calendar rc = Calendar.getInstance();
         try {
             CacheElement.checkCalcExpiration(duration, unit);
             if (duration > 0) {
                 rc.add(unit, duration);
-                logger.debug(m + CacheElement.compareForExpiration(now, rc));
+                logger.debug("{}{}", m, CacheElement.compareForExpiration(now, rc));
             } else {
-                logger.debug(m + "timeout set to now (effectively, no caching)");
+                logger.debug("{}timeout set to now (effectively, no caching)", m);
             }
         } finally {
             if (logger.isDebugEnabled()) {
-                logger.debug(m + "< " + format(rc));
+                logger.debug("{}< {}", m, format(rc));
             }
         }
         return rc;

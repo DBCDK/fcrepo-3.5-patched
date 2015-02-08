@@ -8,19 +8,12 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
 
-import javax.xml.validation.Schema;
-import javax.xml.validation.SchemaFactory;
-import javax.xml.validation.Validator;
+import junit.framework.JUnit4TestAdapter;
 
+import org.fcrepo.common.FedoraTestConstants;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-
-import org.fcrepo.common.Constants;
-import org.fcrepo.common.FedoraTestConstants;
-import org.fcrepo.server.validation.DOValidatorXMLSchema;
-
-import junit.framework.JUnit4TestAdapter;
 
 
 /**
@@ -75,11 +68,6 @@ public class DOValidatorXMLSchemaTest
         DOValidatorXMLSchema dov = new DOValidatorXMLSchema(RESOURCES + "xsd/atom.xsd");
         dov.validate(in);
 
-        SchemaFactory sf =
-                SchemaFactory.newInstance(Constants.XML_XSD.uri);
-        Schema schema = sf.newSchema(new File(RESOURCES + "xsd/atom.xsd"));
-        Validator validator = schema.newValidator();
-        //validator.validate(new StreamSource(in));
     }
 
     public static junit.framework.Test suite() {

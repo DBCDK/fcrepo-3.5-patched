@@ -42,7 +42,7 @@ class MmapParser
     /**
      * URI-to-namespace prefix mapping info from SAX2 startPrefixMapping events.
      */
-    private HashMap nsPrefixMap;
+    private HashMap<String, String> nsPrefixMap;
 
     // Variables for keeping state during SAX parse.
     private boolean inMethod = false;
@@ -58,17 +58,17 @@ class MmapParser
     private MmapMethodParmDef methodMapParm;
 
     //private Hashtable wsdlMsgToMethodTbl;
-    private Hashtable wsdlOperationToMethodDefTbl;
+    private Hashtable<String, MmapMethodDef> wsdlOperationToMethodDefTbl;
 
-    private Hashtable wsdlMsgPartToParmDefTbl;
+    private Hashtable<String, MmapMethodParmDef> wsdlMsgPartToParmDefTbl;
 
     // Working variables...
 
-    private Vector tmp_enum;
+    private Vector<String> tmp_enum;
 
-    private Vector tmp_parms;
+    private Vector<MmapMethodParmDef> tmp_parms;
 
-    private Vector tmp_methods;
+    private Vector<MmapMethodDef> tmp_methods;
 
     /**
      * Constructor to enable another class to initiate the parsing
@@ -112,8 +112,8 @@ class MmapParser
 
     @Override
     public void startDocument() throws SAXException {
-        nsPrefixMap = new HashMap();
-        wsdlOperationToMethodDefTbl = new Hashtable();
+        nsPrefixMap = new HashMap<String, String>();
+        wsdlOperationToMethodDefTbl = new Hashtable<String, MmapMethodDef>();
     }
 
     @Override
@@ -129,12 +129,10 @@ class MmapParser
 
     @Override
     public void skippedEntity(String name) throws SAXException {
-        StringBuffer sb = new StringBuffer();
-        sb.append('&');
-        sb.append(name);
-        sb.append(';');
-        char[] text = new char[sb.length()];
-        sb.getChars(0, sb.length(), text, 0);
+        char[] text = new char[name.length() + 2];
+        text[0] = '&';
+        text[text.length - 1] = ';';
+        name.getChars(0, name.length(), text, 1);
         characters(text, 0, text.length);
     }
 
@@ -152,7 +150,7 @@ class MmapParser
                 && localName.equalsIgnoreCase("MethodMap")) {
             methodMap = new Mmap();
             methodMap.mmapName = attrs.getValue("name");
-            tmp_methods = new Vector();
+            tmp_methods = new Vector<MmapMethodDef>();
         } else if (namespaceURI.equalsIgnoreCase(METHOD_MAP.uri)
                 && localName.equalsIgnoreCase("Method")) {
             inMethod = true;
@@ -163,8 +161,8 @@ class MmapParser
             methodMapMethod.wsdlMessageName = attrs.getValue("wsdlMsgName");
             methodMapMethod.wsdlOutputMessageName =
                     attrs.getValue("wsdlMsgOutput");
-            tmp_parms = new Vector();
-            wsdlMsgPartToParmDefTbl = new Hashtable();
+            tmp_parms = new Vector<MmapMethodParmDef>();
+            wsdlMsgPartToParmDefTbl = new Hashtable<String, MmapMethodParmDef>();
         } else if (inMethod) {
             if (namespaceURI.equalsIgnoreCase(METHOD_MAP.uri)
                     && localName.equalsIgnoreCase("DatastreamInputParm")) {
@@ -178,11 +176,10 @@ class MmapParser
                     methodMapParm.parmRequired = true;
                 } else {
                     methodMapParm.parmRequired =
-                            new Boolean(attrs.getValue("required"))
-                                    .booleanValue();
+                            Boolean.parseBoolean(attrs.getValue("required"));
                 }
                 methodMapParm.parmDefaultValue = null;
-                methodMapParm.parmDomainValues = new String[0];
+                methodMapParm.parmDomainValues = EMPTY_STRING_ARRAY;
             } else if (namespaceURI.equalsIgnoreCase(METHOD_MAP.uri)
                     && localName.equalsIgnoreCase("DefaultInputParm")) {
                 methodMapParm = new MmapMethodParmDef();
@@ -195,11 +192,10 @@ class MmapParser
                     methodMapParm.parmRequired = true;
                 } else {
                     methodMapParm.parmRequired =
-                            new Boolean(attrs.getValue("required"))
-                                    .booleanValue();
+                            Boolean.parseBoolean(attrs.getValue("required"));
                 }
                 methodMapParm.parmDefaultValue = attrs.getValue("defaultValue");
-                methodMapParm.parmDomainValues = new String[0];
+                methodMapParm.parmDomainValues = EMPTY_STRING_ARRAY;
             } else if (namespaceURI.equalsIgnoreCase(METHOD_MAP.uri)
                     && localName.equalsIgnoreCase("UserInputParm")) {
                 inUserInputParm = true;
@@ -213,14 +209,13 @@ class MmapParser
                     methodMapParm.parmRequired = true;
                 } else {
                     methodMapParm.parmRequired =
-                            new Boolean(attrs.getValue("required"))
-                                    .booleanValue();
+                            Boolean.parseBoolean(attrs.getValue("required"));
                 }
                 methodMapParm.parmDefaultValue = attrs.getValue("defaultValue");
             } else if (inUserInputParm) {
                 if (namespaceURI.equalsIgnoreCase(METHOD_MAP.uri)
                         && localName.equalsIgnoreCase("ValidParmValues")) {
-                    tmp_enum = new Vector();
+                    tmp_enum = new Vector<String>();
                 } else if (namespaceURI.equalsIgnoreCase(METHOD_MAP.uri)
                         && localName.equalsIgnoreCase("ValidParm")) {
                     tmp_enum.add(attrs.getValue("value"));
@@ -277,7 +272,7 @@ class MmapParser
                     && namespaceURI.equalsIgnoreCase(METHOD_MAP.uri)
                     && localName.equalsIgnoreCase("ValidParmValues")) {
                 methodMapParm.parmDomainValues =
-                        (String[]) tmp_enum.toArray(new String[0]);
+                        (String[]) tmp_enum.toArray(EMPTY_STRING_ARRAY);
                 tmp_enum = null;
             }
         }

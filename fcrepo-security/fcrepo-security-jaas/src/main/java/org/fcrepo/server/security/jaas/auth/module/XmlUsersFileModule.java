@@ -1,14 +1,14 @@
 /*
  * File: XmlUsersFileModule.java
- * 
+ *
  * Copyright 2009 Muradora
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
@@ -34,13 +34,11 @@ import javax.security.auth.callback.UnsupportedCallbackException;
 import javax.security.auth.login.LoginException;
 import javax.security.auth.spi.LoginModule;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.fcrepo.common.Constants;
 import org.fcrepo.server.security.jaas.auth.UserPrincipal;
 import org.fcrepo.server.security.jaas.util.DataUtils;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -51,14 +49,21 @@ public class XmlUsersFileModule
     private static final Logger logger =
             LoggerFactory.getLogger(XmlUsersFileModule.class);
 
+    private static final File userFile = getUsersFile();
+
+    // must be marked volatile for double-checked locking in caching method to work
+    private static volatile long userFileParsed = Long.MIN_VALUE;
+
+    private static volatile long userFileBytesLoaded = 0L;
+
+    private static volatile Document userDoc = null;
+
     private Subject subject = null;
 
     private CallbackHandler handler = null;
 
     // private Map<String, ?> sharedState = null;
     private Map<String, ?> options = null;
-
-    private String fedoraHome = null;
 
     private String username = null;
 
@@ -70,6 +75,7 @@ public class XmlUsersFileModule
 
     private boolean successLogin = false;
 
+    @Override
     public void initialize(Subject subject,
                            CallbackHandler handler,
                            Map<String, ?> sharedState,
@@ -84,28 +90,23 @@ public class XmlUsersFileModule
             debug = true;
         }
 
-        fedoraHome = Constants.FEDORA_HOME;
-        if (fedoraHome == null || "".equals(fedoraHome)) {
-            logger.error("FEDORA_HOME constant is not set");
-        } else {
-            if (logger.isDebugEnabled()) {
-                logger.debug("using FEDORA_HOME: " + fedoraHome);
-            }
-        }
-
-        attributes = new HashMap<String, Set<String>>();
+        // the default size is 16, but the common case is accounts
+        // with 1 attribute, 'fedoraRole', with 1 or 2 values. 4 should
+        // accommodate most cases without resizing.
+        attributes = new HashMap<String, Set<String>>(4);
 
         if (debug) {
-            logger.debug("login module initialised: " + this.getClass().getName());
+            logger.debug("login module initialised: {}", this.getClass().getName());
         }
     }
 
+    @Override
     public boolean login() throws LoginException {
         if (debug) {
             logger.debug(this.getClass().getName() + " login called.");
         }
 
-        if (fedoraHome == null || "".equals(fedoraHome.trim())) {
+        if (Constants.FEDORA_HOME == null || Constants.FEDORA_HOME.isEmpty()) {
             logger.error("FEDORA_HOME constant is not set");
             return false;
         }
@@ -137,6 +138,7 @@ public class XmlUsersFileModule
         return successLogin;
     }
 
+    @Override
     public boolean commit() throws LoginException {
         if (!successLogin) {
             return false;
@@ -153,6 +155,7 @@ public class XmlUsersFileModule
         return true;
     }
 
+    @Override
     public boolean abort() throws LoginException {
         try {
             clear();
@@ -164,6 +167,7 @@ public class XmlUsersFileModule
         return true;
     }
 
+    @Override
     public boolean logout() throws LoginException {
         try {
             clear();
@@ -184,19 +188,15 @@ public class XmlUsersFileModule
     }
 
     private boolean authenticate(String username, String password) {
-        String xmlUsersFile = fedoraHome + "/server/config/fedora-users.xml";
-        File file = new File(xmlUsersFile);
-        if (!file.exists()) {
-            logger.error("XmlUsersFile not found: " + file.getAbsolutePath());
+        if (!userFile.exists()) {
+            logger.error("XmlUsersFile not found: {}", userFile.getAbsolutePath());
             return false;
         }
 
-        Document doc = null;
         try {
-            doc = DataUtils.getDocumentFromFile(new File(xmlUsersFile));
-
+            Document userDoc = getUserDocument();
             // go through each user
-            NodeList userList = doc.getElementsByTagName("user");
+            NodeList userList = userDoc.getElementsByTagName("user");
             for (int x = 0; x < userList.getLength(); x++) {
                 Element user = (Element) userList.item(x);
                 String a_username = user.getAttribute("name");
@@ -223,7 +223,7 @@ public class XmlUsersFileModule
 
                         Set<String> values = attributes.get(name);
                         if (values == null) {
-                            values = new HashSet<String>();
+                            values = new HashSet<String>(4);
                             attributes.put(name, values);
                         }
                         values.add(v);
@@ -235,7 +235,36 @@ public class XmlUsersFileModule
         } catch (Exception e) {
             logger.error(e.getMessage());
         }
-
         return false;
+    }
+
+    private static File getUsersFile() {
+        if (Constants.FEDORA_HOME == null || Constants.FEDORA_HOME.isEmpty()) {
+            logger.error("FEDORA_HOME constant is not set");
+        } else {
+            if (logger.isDebugEnabled()) {
+                logger.debug("using FEDORA_HOME: " + Constants.FEDORA_HOME);
+            }
+        }
+
+        return new File(Constants.FEDORA_HOME + "/server/config/fedora-users.xml");
+    }
+
+    /**
+     * Quick and dirty caching.
+     * @return DOM of a parsed user file
+     * @throws Exception
+     */
+    private static Document getUserDocument() throws Exception {
+        if (userDoc == null || userFileParsed != userFile.lastModified() || userFileBytesLoaded != userFile.length()) {
+            synchronized(XmlUsersFileModule.class) {
+                if (userDoc == null || userFileParsed != userFile.lastModified() || userFileBytesLoaded != userFile.length()) {
+                    userDoc = DataUtils.getDocumentFromFile(userFile);
+                    userFileParsed = userFile.lastModified();
+                    userFileBytesLoaded = userFile.length();
+                }
+            }
+        }
+        return userDoc;
     }
 }

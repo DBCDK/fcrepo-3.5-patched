@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
     <groupId>org.fcrepo</groupId>
     <artifactId>fcrepo-integrationtest</artifactId>
-    <version>3.5</version>
+    <version>3.8.0</version>
   </parent>
 
   <artifactId>fcrepo-integrationtest-configA</artifactId>
@@ -107,86 +106,6 @@
         <mvn.fedora.appServerContext>${fedora.appServerContext}</mvn.fedora.appServerContext>
         <mvn.tomcat.home>${tomcat.home}</mvn.tomcat.home>
       </properties>
-
-      <build>
-
-        <plugins>
-          
-          <!-- Copy and filter config properties -->
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-resources-plugin</artifactId>
-            <version>2.5</version>
-            <executions>
-              <execution>
-                <id>filter-test-configs</id>
-                <phase>pre-integration-test</phase>
-                <goals>
-                  <goal>copy-resources</goal>
-                </goals>
-                <configuration>
-                  <outputDirectory>${project.build.directory}/config</outputDirectory>
-                  <resources>
-                    <resource>
-                      <directory>${project.build.directory}/ext/fcrepo-integrationtest-core/test-classes/config</directory>
-                      <includes>
-                        <include>*.properties</include>
-                      </includes>
-                      <filtering>true</filtering>
-                    </resource>
-                  </resources>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-
-          <!-- Execute installer and run/stop tomcat -->
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-antrun-plugin</artifactId>
-            <version>1.6</version>
-            <executions>
-              <execution>
-                <id>start-fedora</id>
-                <phase>pre-integration-test</phase>
-                <configuration>
-                  <target unless="${integration.test.skip}">
-                    <ant
-                      antfile="target/ext/fcrepo-integrationtest-core/scripts/installer-run.xml"
-                      target="install" inheritrefs="true" />
-                    <ant
-                      antfile="target/ext/fcrepo-integrationtest-core/scripts/installer-run.xml"
-                      target="clearSQL" inheritrefs="true" />
-                    <ant
-                      antfile="target/ext/fcrepo-integrationtest-core/scripts/tomcat-run.xml"
-                      target="tomcat-start" inheritrefs="true" />
-                  </target>
-                </configuration>
-                <goals>
-                  <goal>run</goal>
-                </goals>
-              </execution>
-
-              <execution>
-                <id>stop-fedora</id>
-                <phase>post-integration-test</phase>
-                <configuration>
-                  <target unless="${integration.test.skip}">
-                    <echo>Stopping Fedora</echo>
-                    <ant
-                      antfile="target/ext/fcrepo-integrationtest-core/scripts/tomcat-run.xml"
-                      target="tomcat-stop" inheritrefs="true" />
-                  </target>
-                </configuration>
-                <goals>
-                  <goal>run</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-
-        </plugins>
-      </build>
     </profile>
 
     <profile>
@@ -207,7 +126,7 @@
 
     <resources>
       <resource>
-        <directory>src/test/resources/confg</directory>
+        <directory>src/test/resources/config</directory>
         <filtering>true</filtering>
       </resource>
     </resources>
@@ -217,7 +136,6 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>
-        <version>2.1</version>
 
         <!-- Place a physical copy of installer artifact in build dir -->
         <executions>
@@ -260,7 +178,7 @@
                   <type>jar</type>
                   <overWrite>true</overWrite>
                   <outputDirectory>${project.build.directory}/ext/fcrepo-integrationtest-core/</outputDirectory>
-                  <includes>**/scripts/*.xml</includes>
+                  <includes>**/scripts/*.xml,**/test-policies/*.xml,**/fesl-test-policies/*.xml,**/config/spring/*.xml</includes>
                 </artifactItem>
               </artifactItems>
             </configuration>
@@ -290,11 +208,75 @@
           </execution>
         </executions>
       </plugin>
+          <!-- Copy and filter config properties -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-resources-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>filter-test-configs</id>
+                <phase>pre-integration-test</phase>
+                <goals>
+                  <goal>copy-resources</goal>
+                </goals>
+                <configuration>
+                  <outputDirectory>${project.build.directory}/config</outputDirectory>
+                  <resources>
+                    <resource>
+                      <directory>${project.build.directory}/ext/fcrepo-integrationtest-core/test-classes/config</directory>
+                      <includes>
+                        <include>*.properties</include>
+                      </includes>
+                      <filtering>true</filtering>
+                    </resource>
+                  </resources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+
+          <!-- Execute installer and run/stop tomcat -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>start-fedora</id>
+                <phase>pre-integration-test</phase>
+                <configuration>
+                  <target unless="${integration.test.skip}">
+                    <ant antfile="target/ext/fcrepo-integrationtest-core/scripts/installer-run.xml" target="install" inheritrefs="true" />
+                    <ant antfile="target/ext/fcrepo-integrationtest-core/scripts/installer-run.xml" target="clearSQL" inheritrefs="true" />
+                    <ant antfile="target/ext/fcrepo-integrationtest-core/scripts/installer-run.xml" target="configureFedora" inheritrefs="true" />
+                    <ant antfile="target/ext/fcrepo-integrationtest-core/scripts/tomcat-run.xml" target="tomcat-start" inheritrefs="true" />
+                  </target>
+                </configuration>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+              </execution>
+
+              <execution>
+                <id>stop-fedora</id>
+                <phase>post-integration-test</phase>
+                <configuration>
+                  <target unless="${integration.test.skip}">
+                    <echo>Stopping Fedora</echo>
+                    <ant antfile="target/ext/fcrepo-integrationtest-core/scripts/tomcat-run.xml" target="tomcat-stop" inheritrefs="true" />
+                    <echo>Running a Fedora Rebuilder</echo>
+                    <ant antfile="target/ext/fcrepo-integrationtest-core/scripts/rebuilder-run.xml" target="run" inheritrefs="true" />
+                  </target>
+                </configuration>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
 
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
-        <version>2.7.1</version>
 
         <executions>
           <execution>
@@ -310,38 +292,9 @@
 
               <includes>
 
-                <include>**/NotificationInvocationHandlerTest.class</include>
-
-                <!--
-                  Has bug in source-code
-                  <include>**/SimpleDeploymentTests.class</include>
-                -->
-
-                <include>**/AtomAPIMMessageTest.class</include>
-                <include>**/NotificationInvocationHandlerTest.class</include>
-                <include>**/DOTranslationUtilityTest.class</include>
-                <include>**/TestIngest.class</include>
-                <include>**/TestAPIA.class</include>
-                <include>**/TestAPIAConfigA.class</include>
-                <include>**/TestAPIALite.class</include>
-                <include>**/TestAPIALiteConfigA.class</include>
-                <include>**/TestAPIM.class</include>
-                <include>**/TestAPIMLite.class</include>
-                <include>**/TestRESTAPI.class</include>
-                <include>**/TestHTTPStatusCodes.class</include>
-                <include>**/TestHTTPStatusCodesConfigA.class</include>
-                <include>**/TestManagedDatastreams.class</include>
-                <include>**/TestManyDisseminations.class</include>
-                <include>**/TestCommandLineFormats.class</include>
-                <include>**/TestOAIService.class</include>
-                <include>**/TestServerConfiguration.class</include>
-                <include>**/ConflictingDeploymentTests.class</include>
-                <include>**/TestCommandLineUtilities.class</include>
-                <include>**/SharedDeploymentTests.class</include>
-                <include>**/ContentModelDSInputTest.class</include>
-                <include>**/TestAdminAPI.class</include>
-
-                <!-- Disabled until FCREPO-798 is public <include>**/TestAPIM2.class</include> -->
+                <include>**/org/fcrepo/test/AllSystemTestsConfigA.class</include>
+                <include>**/org/fcrepo/server/messaging/AllUnitTests.class</include>
+                <include>**/org/fcrepo/client/utility/ingest/TestIngest.class</include>
 
               </includes>
 
@@ -389,7 +342,7 @@
             <javax.net.ssl.trustStore>${javax.net.ssl.trustStore}</javax.net.ssl.trustStore>
             <fedora.username>${fedora.username}</fedora.username>
             <fedora.password>${fedora.password}</fedora.password>
-            <demo.format></demo.format>
+            <demo.format />
             <fedora.hostname>${fedora.hostname}</fedora.hostname>
             <fedora.port>${fedora.port}</fedora.port>
             <fedora.appServerContext>${fedora.appServerContext}</fedora.appServerContext>

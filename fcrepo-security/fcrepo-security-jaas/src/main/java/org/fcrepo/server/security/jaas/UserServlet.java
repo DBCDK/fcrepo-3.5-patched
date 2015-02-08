@@ -20,28 +20,23 @@ package org.fcrepo.server.security.jaas;
 
 import java.io.IOException;
 import java.io.OutputStream;
-
 import java.util.Map;
 import java.util.Set;
 
+import javax.security.auth.Subject;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-
 import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-
-import javax.security.auth.Subject;
-
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
 
 import org.fcrepo.server.security.jaas.util.DataUtils;
 import org.fcrepo.server.security.jaas.util.SubjectUtils;
+import org.fcrepo.utilities.XmlTransformUtility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 
 /**
  * This servlet produces an XML representation of a currently logged in user.
@@ -66,23 +61,12 @@ public class UserServlet
     private static final String SESSION_SUBJECT_KEY =
             "javax.security.auth.subject";
 
-    private DocumentBuilder documentBuilder = null;
-
     /*
      * (non-Javadoc)
      * @see javax.servlet.GenericServlet#init()
      */
     @Override
     public void init() throws ServletException {
-        try {
-            DocumentBuilderFactory documentBuilderFactory =
-                    DocumentBuilderFactory.newInstance();
-            documentBuilderFactory.setNamespaceAware(true);
-            documentBuilder = documentBuilderFactory.newDocumentBuilder();
-        } catch (ParserConfigurationException pce) {
-            logger.error("Unable to initialise UserServlet: " + pce.getMessage(),
-                      pce);
-        }
     }
 
     /*
@@ -113,13 +97,20 @@ public class UserServlet
         java.security.Principal principal = request.getUserPrincipal();
         String userId = null;
         if (principal == null || principal.getName() == null
-                || "".equals(principal.getName())) {
+                || principal.getName().isEmpty()) {
             userId = "anonymous";
         } else {
             userId = principal.getName();
         }
 
+        DocumentBuilder documentBuilder = null;
+        try {
+            documentBuilder = XmlTransformUtility.borrowDocumentBuilder();
+        } catch (Exception e) {
+            throw new ServletException(e.getMessage(), e);
+        }
         Document doc = documentBuilder.newDocument();
+        if (documentBuilder != null) XmlTransformUtility.returnDocumentBuilder(documentBuilder);
         doc.setXmlVersion("1.0");
 
         Element root = doc.createElement("user");

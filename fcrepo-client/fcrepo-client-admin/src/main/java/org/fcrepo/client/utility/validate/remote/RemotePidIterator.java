@@ -5,17 +5,15 @@
 
 package org.fcrepo.client.utility.validate.remote;
 
+import java.math.BigInteger;
 import java.rmi.RemoteException;
-
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 
-import org.apache.axis.types.NonNegativeInteger;
-
 import org.fcrepo.client.utility.validate.ObjectSourceException;
-import org.fcrepo.server.access.FedoraAPIA;
+import org.fcrepo.server.access.FedoraAPIAMTOM;
 import org.fcrepo.server.search.FieldSearchQuery;
 import org.fcrepo.server.search.FieldSearchResult;
 import org.fcrepo.server.search.ObjectFields;
@@ -36,13 +34,13 @@ class RemotePidIterator
 
     public static final String[] OBJECT_RESULT_FIELDS = new String[] {"pid"};
 
-    public static final NonNegativeInteger MAX_FIND_RESULTS =
-            new NonNegativeInteger("500");
+    public static final BigInteger MAX_FIND_RESULTS =
+            new BigInteger("500");
 
     private static final String SEARCH_NOT_STARTED = "SearchNotStartedYet";
 
     /** The connection to the server. */
-    private final FedoraAPIA apia;
+    private final FedoraAPIAMTOM apia;
 
     /** The query. */
     private final FieldSearchQuery query;
@@ -65,7 +63,7 @@ class RemotePidIterator
      */
     private String token = SEARCH_NOT_STARTED;
 
-    RemotePidIterator(FedoraAPIA apia, FieldSearchQuery query) {
+    RemotePidIterator(FedoraAPIAMTOM apia, FieldSearchQuery query) {
         this.apia = apia;
         this.query = query;
     }
@@ -73,6 +71,7 @@ class RemotePidIterator
     /**
      * Check to see whether the stash is empty. Can it be refilled?
      */
+    @Override
     public boolean hasNext() {
         try {
             refreshStash();
@@ -86,6 +85,7 @@ class RemotePidIterator
      * Get the next item from the stash, if there is one. Maybe refill the stash
      * if there's more on the server.
      */
+    @Override
     public String next() {
         if (hasNext()) {
             return stash.remove(0);
@@ -99,6 +99,7 @@ class RemotePidIterator
      *
      * @throws UnsupportedOperationException
      */
+    @Override
     public void remove() {
         throw new UnsupportedOperationException();
     }
@@ -129,7 +130,7 @@ class RemotePidIterator
         org.fcrepo.server.types.gen.FieldSearchQuery genFieldSearchQuery =
                 TypeUtility.convertFieldSearchQueryToGenFieldSearchQuery(query);
         org.fcrepo.server.types.gen.FieldSearchResult searchResult =
-                apia.findObjects(OBJECT_RESULT_FIELDS,
+                apia.findObjects(org.fcrepo.server.utilities.TypeUtility.convertStringtoAOS(OBJECT_RESULT_FIELDS),
                                  MAX_FIND_RESULTS,
                                  genFieldSearchQuery);
         FieldSearchResult fsr =

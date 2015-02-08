@@ -4,9 +4,6 @@
  */
 package org.fcrepo.server.rest;
 
-import java.io.ByteArrayOutputStream;
-import java.io.UnsupportedEncodingException;
-import java.util.ArrayList;
 import java.util.Arrays;
 
 import javax.ws.rs.DELETE;
@@ -22,9 +19,12 @@ import javax.ws.rs.core.Response;
 
 import org.fcrepo.common.PID;
 import org.fcrepo.server.Context;
+import org.fcrepo.server.Server;
 import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.storage.types.RelationshipTuple;
 import org.fcrepo.server.storage.types.TupleArrayTripleIterator;
+import org.fcrepo.utilities.ReadableCharArrayWriter;
+import org.springframework.stereotype.Component;
 import org.trippi.RDFFormat;
 import org.trippi.TripleIterator;
 import org.trippi.TrippiException;
@@ -37,8 +37,13 @@ import org.trippi.TrippiException;
  * @version $Id$
  * @since 3.4.0
  */
-@Path("/{pid}/relationships")
+@Path(BaseRestResource.VALID_PID_PART + "/relationships")
+@Component
 public class RelationshipResource extends BaseRestResource {
+
+    public RelationshipResource(Server server) {
+        super(server);
+    }
 
     /**
      * Get relationships asserted by the object denoted by <i>pid</i>.
@@ -63,16 +68,18 @@ public class RelationshipResource extends BaseRestResource {
             String predicate,
             @QueryParam(RestParam.FORMAT)
             @DefaultValue("rdf/xml")
-            String format) {
+            String format,
+            @QueryParam(RestParam.FLASH)
+            @DefaultValue("false")
+            boolean flash) {
         Context context = getContext();
         if (subject == null) {
             // assume the subject is the object as denoted by the pid
             subject = PID.toURI(pid);
         }
         try {
-            RelationshipTuple[] tuples = apiMService.getRelationships(context, subject, predicate);
-            TripleIterator it = new TupleArrayTripleIterator(new ArrayList<RelationshipTuple>(Arrays.asList(tuples)));
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            RelationshipTuple[] tuples = m_management.getRelationships(context, subject, predicate);
+            TripleIterator it = new TupleArrayTripleIterator(Arrays.asList(tuples));
 
             format = format.toLowerCase();
             RDFFormat outputFormat;
@@ -92,14 +99,14 @@ public class RelationshipResource extends BaseRestResource {
             } else {
                 throw new IllegalArgumentException("unknown format: " + format);
             }
-            it.toStream(out, outputFormat);
-            return Response.ok(out.toString("UTF-8"), mediaType).build();
+
+            ReadableCharArrayWriter out = new ReadableCharArrayWriter(256 * tuples.length);
+            it.toStream(out, outputFormat, true);
+            return Response.ok(out.getString(), mediaType).build();
         } catch (ServerException e) {
-            return handleException(e);
+            return handleException(e, flash);
         } catch (TrippiException e) {
-            return handleException(e);
-        } catch (UnsupportedEncodingException e) {
-            return handleException(e);
+            return handleException(e, flash);
         }
     }
 
@@ -125,17 +132,20 @@ public class RelationshipResource extends BaseRestResource {
             @QueryParam(RestParam.IS_LITERAL)
             boolean isLiteral,
             @QueryParam(RestParam.DATATYPE)
-            String datatype) {
+            String datatype,
+            @QueryParam(RestParam.FLASH)
+            @DefaultValue("false")
+            boolean flash) {
         Context context = getContext();
         try {
             if (subject == null) {
                 // assume the subject is the object as denoted by the pid
                 subject = PID.toURI(pid);
             }
-            apiMService.addRelationship(context, subject, predicate, object, isLiteral, datatype);
-            return Response.ok().build();
+            boolean result = m_management.addRelationship(context, subject, predicate, object, isLiteral, datatype);
+            return Response.ok(Boolean.toString(result)).build(); // needs an entity to not be overridden with a 204
         } catch (ServerException e) {
-            return handleException(e);
+            return handleException(e, flash);
         }
     }
 
@@ -160,17 +170,20 @@ public class RelationshipResource extends BaseRestResource {
             @QueryParam(RestParam.IS_LITERAL)
             boolean isLiteral,
             @QueryParam(RestParam.DATATYPE)
-            String datatype) {
+            String datatype,
+            @QueryParam(RestParam.FLASH)
+            @DefaultValue("false")
+            boolean flash) {
         Context context = getContext();
         try {
             if (subject == null) {
                 // assume the subject is the object as denoted by the pid
                 subject = PID.toURI(pid);
             }
-            boolean result = apiMService.purgeRelationship(context, subject, predicate, object, isLiteral, datatype);
+            boolean result = m_management.purgeRelationship(context, subject, predicate, object, isLiteral, datatype);
             return Response.ok(Boolean.toString(result), MediaType.TEXT_PLAIN_TYPE).build();
         } catch (ServerException e) {
-            return handleException(e);
+            return handleException(e, flash);
         }
     }
 }

@@ -4,16 +4,18 @@
  */
 package org.fcrepo.test.integration;
 
+import static junit.framework.Assert.fail;
+
 import java.io.IOException;
+
+import junit.framework.JUnit4TestAdapter;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-
 import org.fcrepo.client.FedoraClient;
-
 import org.fcrepo.server.utilities.StreamUtility;
-
+import org.fcrepo.server.utilities.TypeUtility;
 import org.fcrepo.test.FedoraTestCase;
 import org.fcrepo.test.api.RISearchUtil;
 
@@ -46,23 +48,26 @@ public class TestMisplacedNamespace
 
     private static final String PID = "demo:failObject";
 
-    @Override
+    public static junit.framework.Test suite() {
+        return new JUnit4TestAdapter(TestMisplacedNamespace.class);
+    }
+
     @Before
     public void setUp() throws Exception {
         m_client = getFedoraClient();
     }
 
-    @Override
     @After
     public void tearDown() throws Exception {
-        m_client.getAPIM().purgeObject(PID, "Cleanup", false);
+        m_client.getAPIMMTOM().purgeObject(PID, "Cleanup", false);
+        m_client.shutdown();
     }
 
     @Test
     public void testIngestAndPurge() throws Exception {
         try {
             /* Ingest of the offending foxml should fail */
-            m_client.getAPIM().ingest(getFoxml(OFFENDING_FOXML),
+            m_client.getAPIMMTOM().ingest(TypeUtility.convertBytesToDataHandler(getFoxml(OFFENDING_FOXML)),
                                       FOXML1_1.uri,
                                       "malformed foxml object");
             fail("Sould have failed initial ingest!");
@@ -73,7 +78,7 @@ public class TestMisplacedNamespace
         }
 
         /* Ingest the good object. Should succeed */
-        m_client.getAPIM().ingest(getFoxml(GOOD_FOXML),
+        m_client.getAPIMMTOM().ingest(TypeUtility.convertBytesToDataHandler(getFoxml(GOOD_FOXML)),
                                   FOXML1_1.uri,
                                   "non-malformed foxml object");
     }

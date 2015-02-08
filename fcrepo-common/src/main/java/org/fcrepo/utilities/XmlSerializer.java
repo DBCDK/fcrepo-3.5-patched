@@ -11,19 +11,17 @@ import java.io.OutputStream;
 import java.io.Writer;
 
 import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerException;
-import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 
 import org.apache.xml.serialize.Method;
 import org.apache.xml.serialize.OutputFormat;
 import org.apache.xml.serialize.XMLSerializer;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.DOMConfiguration;
 import org.w3c.dom.DOMImplementation;
 import org.w3c.dom.Document;
@@ -31,11 +29,7 @@ import org.w3c.dom.bootstrap.DOMImplementationRegistry;
 import org.w3c.dom.ls.DOMImplementationLS;
 import org.w3c.dom.ls.LSOutput;
 import org.w3c.dom.ls.LSSerializer;
-
 import org.xml.sax.SAXException;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * A utility class for XML serialization.
@@ -50,7 +44,7 @@ public class XmlSerializer {
             LoggerFactory.getLogger(XmlSerializer.class);
 
     public static void serialize(InputStream in, OutputStream out)
-            throws ParserConfigurationException, SAXException, IOException {
+            throws Exception {
         serialize(in, out, false);
     }
 
@@ -62,7 +56,7 @@ public class XmlSerializer {
     public static void serialize(InputStream in,
                                  OutputStream out,
                                  boolean prettyPrint)
-            throws ParserConfigurationException, SAXException, IOException {
+            throws Exception {
         Document document = getDocument(in);
         serialize(document, out, prettyPrint);
     }
@@ -147,11 +141,8 @@ public class XmlSerializer {
     }
 
     public static void prettyPrintWithTransformer(Document doc, OutputStream out) {
-        TransformerFactory tfactory =
-                XmlTransformUtility.getTransformerFactory();
-        Transformer serializer;
         try {
-            serializer = tfactory.newTransformer();
+            final Transformer serializer = XmlTransformUtility.getTransformer();
             //Setup indenting to "pretty print"
             serializer.setOutputProperty(OutputKeys.INDENT, "yes");
             serializer
@@ -161,7 +152,7 @@ public class XmlSerializer {
             DOMSource xmlSource = new DOMSource(doc);
             StreamResult outputTarget = new StreamResult(out);
             serializer.transform(xmlSource, outputTarget);
-        } catch (TransformerException e) {
+        } catch (Exception e) {
             logger.error(e.getMessage());
             throw new RuntimeException(e);
         }
@@ -170,7 +161,7 @@ public class XmlSerializer {
     @Deprecated
     public static void prettyPrintWithXMLSerializer(InputStream in,
                                                     OutputStream out)
-            throws IOException, ParserConfigurationException, SAXException {
+            throws Exception {
 
         prettyPrintWithXMLSerializer(in, out, false);
     }
@@ -179,7 +170,7 @@ public class XmlSerializer {
     public static void prettyPrintWithXMLSerializer(InputStream in,
                                                     OutputStream out,
                                                     boolean embeddable)
-            throws IOException, ParserConfigurationException, SAXException {
+            throws Exception {
         Document document = getDocument(in);
         prettyPrintWithXMLSerializer(document, out, embeddable);
     }
@@ -208,7 +199,7 @@ public class XmlSerializer {
                                                     OutputStream out,
                                                     boolean omitXMLDeclaration,
                                                     boolean omitDocumentType)
-            throws ParserConfigurationException, SAXException, IOException {
+            throws Exception {
         Document document = getDocument(in);
         prettyPrintWithXMLSerializer(document,
                                      out,
@@ -267,10 +258,14 @@ public class XmlSerializer {
      *         If any IO errors occur.
      */
     protected static Document getDocument(InputStream in)
-            throws ParserConfigurationException, SAXException, IOException {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(true);
-        DocumentBuilder builder = factory.newDocumentBuilder();
-        return builder.parse(in);
+            throws Exception {
+        DocumentBuilder builder = XmlTransformUtility.borrowDocumentBuilder();
+        Document doc = null;
+        try {
+            doc = builder.parse(in);
+        } finally {
+            XmlTransformUtility.returnDocumentBuilder(builder);
+        }
+        return doc;
     }
 }

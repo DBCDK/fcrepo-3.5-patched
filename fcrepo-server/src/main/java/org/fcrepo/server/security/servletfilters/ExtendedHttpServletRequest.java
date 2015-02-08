@@ -24,8 +24,8 @@ public interface ExtendedHttpServletRequest
 
     public static final String FAILED = "failed";
 
-    public static final ImmutableHashSet IMMUTABLE_NULL_SET =
-            new ImmutableHashSet();
+    public static final ImmutableHashSet<Object> IMMUTABLE_NULL_SET =
+            new ImmutableHashSet<Object>();
 
     public void audit();
 
@@ -42,7 +42,7 @@ public interface ExtendedHttpServletRequest
 
     public boolean isAuthenticated();
 
-    public Set getAttributeValues(String key) throws AuthzOperationalException;
+    public Set<?> getAttributeValues(String key) throws AuthzOperationalException;
 
     public boolean hasAttributeValues(String key)
             throws AuthzOperationalException;
@@ -50,14 +50,14 @@ public interface ExtendedHttpServletRequest
     public boolean isAttributeDefined(String key)
             throws AuthzOperationalException;
 
-    public void addAttributes(String authority, Map attributes)
+    public void addAttributes(String authority, Map<String, Set<?>> namedValues)
             throws Exception;
 
     public String getUser() throws Exception;
 
     public String getPassword() throws Exception;
 
-    public Map getAllAttributes() throws Exception;
+    public Map<String, Set<?>> getAllAttributes() throws Exception;
 
     public String getAuthority();
 

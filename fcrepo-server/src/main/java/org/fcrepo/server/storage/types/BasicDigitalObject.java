@@ -4,9 +4,6 @@
  */
 package org.fcrepo.server.storage.types;
 
-import java.net.URI;
-import java.net.URISyntaxException;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -27,7 +24,6 @@ import org.fcrepo.common.Constants;
 import org.fcrepo.common.Models;
 import org.fcrepo.common.PID;
 import org.fcrepo.common.rdf.JRDF;
-import org.fcrepo.common.rdf.SimpleURIReference;
 import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.storage.RDFRelationshipReader;
 
@@ -71,7 +67,7 @@ public class BasicDigitalObject
 
     private final HashMap<String, List<Disseminator>> m_disseminators;
 
-    private final Map<String, String> m_extProperties;
+    private Map<String, String> m_extProperties;
 
 
 
@@ -79,7 +75,8 @@ public class BasicDigitalObject
         m_auditRecords = new ArrayList<AuditRecord>();
         m_datastreams = new LinkedHashMap<String, List<Datastream>>();
         m_disseminators = new HashMap<String, List<Disseminator>>();
-        m_extProperties = new HashMap<String, String>();
+        // since extProperties are rare, initialize lazily
+        m_extProperties = null;
         m_datastreamProcessor = new RelationshipProcessor();
         setNew(false);
     }
@@ -149,7 +146,10 @@ public class BasicDigitalObject
     }
 
     private static <T> Set<String> copyOfKeysForNonEmptyLists(Map<String, List<T>> map) {
-        Set<String> set = new LinkedHashSet<String>();
+        if (map == null || map.size() == 0) {
+            return Collections.emptySet();
+        }
+        Set<String> set = new LinkedHashSet<String>(map.size());
 
         for (Map.Entry<String, List<T>> e : map.entrySet()) {
             if (!e.getValue().isEmpty()) {
@@ -162,12 +162,11 @@ public class BasicDigitalObject
     public Iterable<Datastream> datastreams(String id) {
 
         if (!m_datastreams.containsKey(id)) {
-            return new ArrayList<Datastream>();
+            return Collections.emptyList();
         }
 
         return Collections
-                .unmodifiableList(new ArrayList<Datastream>(m_datastreams
-                        .get(id)));
+                .unmodifiableList(new ArrayList<Datastream>(m_datastreams.get(id)));
     }
 
     public void removeDatastreamVersion(Datastream ds) {
@@ -190,15 +189,6 @@ public class BasicDigitalObject
     }
 
     private void add(Datastream d) {
-
-        /*
-         * We determine the most recent datastream version by its created date.
-         * If a created date has not been supplied, give it one.
-         */
-        if (d.DSCreateDT == null) {
-            d.DSCreateDT = new Date();
-        }
-
         String id = d.DatastreamID;
         if (!m_datastreams.containsKey(id)) {
             m_datastreams.put(id, new ArrayList<Datastream>());
@@ -253,20 +243,20 @@ public class BasicDigitalObject
     }
 
     public String newDatastreamID(String id) {
-        List<String> versionIDs = new ArrayList<String>();
-        Iterator<Datastream> iter = (m_datastreams.get(id)).iterator();
-        while (iter.hasNext()) {
-            Datastream ds = iter.next();
-            versionIDs.add(ds.DSVersionID);
+        Iterator<String> iter = null;
+        if (m_datastreams.containsKey(id)) {
+            List<String> versionIDs = new ArrayList<String>(m_datastreams.get(id).size());
+            for (Datastream ds: m_datastreams.get(id)) {
+                versionIDs.add(ds.DSVersionID);
+            }
+            iter = versionIDs.iterator();
         }
-        return newID(versionIDs.iterator(), id + ".");
+        return newID(iter, id.concat("."));
     }
 
     public String newAuditRecordID() {
-        ArrayList<String> auditIDs = new ArrayList<String>();
-        Iterator<AuditRecord> iter = m_auditRecords.iterator();
-        while (iter.hasNext()) {
-            AuditRecord record = iter.next();
+        ArrayList<String> auditIDs = new ArrayList<String>(m_auditRecords.size());
+        for (AuditRecord record: m_auditRecords) {
             auditIDs.add(record.id);
         }
         return newID(auditIDs.iterator(), "AUDREC");
@@ -276,9 +266,12 @@ public class BasicDigitalObject
      * Sets an extended property on the object.
      *
      * @param propName
-     *        The extende property name, either a string, or URI as string.
+     *        The extended property name, either a string, or URI as string.
      */
     public void setExtProperty(String propName, String propValue) {
+        if (m_extProperties == null) {
+            m_extProperties = new HashMap<String, String>();
+        }
         m_extProperties.put(propName, propValue);
 
     }
@@ -289,8 +282,10 @@ public class BasicDigitalObject
      * @return The property value.
      */
     public String getExtProperty(String propName) {
+        if (m_extProperties == null) {
+            return null;
+        }
         return m_extProperties.get(propName);
-
     }
 
     /**
@@ -300,8 +295,10 @@ public class BasicDigitalObject
      * @return The property Map.
      */
     public Map<String, String> getExtProperties() {
+        if (m_extProperties == null) {
+            return Collections.emptyMap();
+        }
         return m_extProperties;
-
     }
 
     // assumes m_pid as subject; ie RELS-EXT only
@@ -311,32 +308,17 @@ public class BasicDigitalObject
 
     public boolean hasRelationship(SubjectNode subject, PredicateNode predicate, ObjectNode object) {
         /* Brute force */
-        return getRelationships(subject, predicate, object).size() > 0;
-    }
-
-    // assume m_pid as subject; ie RELS-EXT only
-    public Set<RelationshipTuple> getRelationships(PredicateNode predicate,
-                                                   ObjectNode object) {
-        return getRelationships(PID.toURIReference(m_pid), predicate, object);
-    }
-
-    public Set<RelationshipTuple> getRelationships() {
-        return getRelationships(null, null, null);
-    }
-
-    public Set<RelationshipTuple> getRelationships(SubjectNode subject,
-                                                   PredicateNode predicate,
-                                                   ObjectNode object) {
-        Set<RelationshipTuple> foundRels = new HashSet<RelationshipTuple>();
-
         if (m_rels == null) {
             readRels();
         }
 
+        boolean hasRel = false;
+        
         boolean basicExplicit = false;
 
         // Iterate explicit relationships, finding matches and
         // determining whether the object has an explicit basic cmodel.
+
         for (RelationshipTuple t : m_rels) {
 
             // Do any hasModel rels point to a basic cmodel?
@@ -361,7 +343,77 @@ public class BasicDigitalObject
                                      t.object,
                                      t.isLiteral,
                                      t.datatype,
-                                     null)) {
+                                     t.language)) {
+                    continue;
+                }
+
+            }
+            hasRel = true;
+        }
+
+        // If necessary, add the current basic cmodel to the set of matches
+        if (!hasRel && !basicExplicit
+                && (subject == null ||
+                JRDF.sameSubject(subject, PID.toURI(m_pid)))
+                && (predicate == null ||
+                JRDF.samePredicate(predicate, Constants.MODEL.HAS_MODEL))
+                && (object == null ||
+                JRDF.sameObject(object, Models.FEDORA_OBJECT_CURRENT))) {
+            return true;
+        }
+
+        return hasRel;
+    }
+
+    // assume m_pid as subject; ie RELS-EXT only
+    public Set<RelationshipTuple> getRelationships(PredicateNode predicate,
+                                                   ObjectNode object) {
+        return getRelationships(PID.toURIReference(m_pid), predicate, object);
+    }
+
+    public Set<RelationshipTuple> getRelationships() {
+        return getRelationships(null, null, null);
+    }
+
+    public Set<RelationshipTuple> getRelationships(SubjectNode subject,
+                                                   PredicateNode predicate,
+                                                   ObjectNode object) {
+
+        if (m_rels == null) {
+            readRels();
+        }
+
+        boolean basicExplicit = false;
+
+        // Iterate explicit relationships, finding matches and
+        // determining whether the object has an explicit basic cmodel.
+        Set<RelationshipTuple> foundRels = new HashSet<RelationshipTuple>(m_rels.size());
+
+        for (RelationshipTuple t : m_rels) {
+
+            // Do any hasModel rels point to a basic cmodel?
+            if (Constants.MODEL.HAS_MODEL.uri.equals(t.predicate)
+                    && Models.isBasicModel(t.object)) {
+                basicExplicit = true;
+            }
+
+            // Find matching relationships from those that are explicit
+            if (subject != null) {
+                if (!JRDF.sameSubject(subject, t.subject)) {
+                    continue;
+                }
+            }
+            if (predicate != null) {
+                if (!JRDF.samePredicate(predicate, t.predicate)) {
+                    continue;
+                }
+            }
+            if (object != null) {
+                if (!JRDF.sameObject(object,
+                                     t.object,
+                                     t.isLiteral,
+                                     t.datatype,
+                                     t.language)) {
                     continue;
                 }
 
@@ -370,23 +422,19 @@ public class BasicDigitalObject
         }
 
         // If necessary, add the current basic cmodel to the set of matches
-        try {
-            if (!basicExplicit
-                    && (subject == null ||
-                            JRDF.sameSubject(subject, new SimpleURIReference(new URI(PID.toURI(m_pid)))))
-                    && (predicate == null ||
-                        JRDF.samePredicate(predicate, Constants.MODEL.HAS_MODEL))
-                    && (object == null ||
-                        JRDF.sameObject(object, Models.FEDORA_OBJECT_CURRENT))) {
-                foundRels.add(
-                        new RelationshipTuple(Constants.FEDORA.uri + m_pid,
-                                              Constants.MODEL.HAS_MODEL.uri,
-                                              Models.FEDORA_OBJECT_CURRENT.uri,
-                                              false,
-                                              null));
-            }
-        } catch (URISyntaxException e) {
-            // assume that m_pid is a valid pid
+        if (!basicExplicit
+                && (subject == null ||
+                JRDF.sameSubject(subject, PID.toURI(m_pid)))
+                && (predicate == null ||
+                JRDF.samePredicate(predicate, Constants.MODEL.HAS_MODEL))
+                && (object == null ||
+                JRDF.sameObject(object, Models.FEDORA_OBJECT_CURRENT))) {
+            foundRels.add(
+                    new RelationshipTuple(Constants.FEDORA.uri.concat(m_pid),
+                            Constants.MODEL.HAS_MODEL.uri,
+                            Models.FEDORA_OBJECT_CURRENT.uri,
+                            false,
+                            null));
         }
 
         return foundRels;
@@ -395,7 +443,7 @@ public class BasicDigitalObject
     public List<String> getContentModels() {
         Set<RelationshipTuple> cmTubles = getRelationships(Constants.MODEL.HAS_MODEL,
                                                            null);
-        List<String> cms = new ArrayList<String>();
+        List<String> cms = new ArrayList<String>(cmTubles.size());
         for (RelationshipTuple cmTuble:cmTubles){
             cms.add(cmTuble.object);
         }
@@ -414,15 +462,17 @@ public class BasicDigitalObject
      */
     private String newID(Iterator<String> iter, String start) {
         int highest = 0;
-        while (iter.hasNext()) {
-            String id = iter.next();
-            if (id.startsWith(start) && id.length() > start.length()) {
-                try {
-                    int num = Integer.parseInt(id.substring(start.length()));
-                    if (num > highest) {
-                        highest = num;
+        if (iter != null) {
+            while (iter.hasNext()) {
+                String id = iter.next();
+                if (id.startsWith(start) && id.length() > start.length()) {
+                    try {
+                        int num = Integer.parseInt(id.substring(start.length()));
+                        if (num > highest) {
+                            highest = num;
+                        }
+                    } catch (NumberFormatException ignored) {
                     }
-                } catch (NumberFormatException ignored) {
                 }
             }
         }
@@ -451,6 +501,10 @@ public class BasicDigitalObject
         Datastream latestRels = relsDatastreamVersions.get(0);
 
         for (Datastream v : relsDatastreamVersions) {
+           	if (v.DSCreateDT == null){
+           		latestRels = v;
+           		break;
+           	}
             if (v.DSCreateDT.getTime() > latestRels.DSCreateDT.getTime()) {
                 latestRels = v;
             }
@@ -473,8 +527,8 @@ public class BasicDigitalObject
 
             List<Datastream> versions = m_datastreams.get(d.DatastreamID);
 
-            if (versions == null || versions.size() == 0) return true;
-
+            if (d.DSCreateDT == null || versions == null || versions.size() == 0) return true;
+            
             long created = d.DSCreateDT.getTime();
 
             for (Datastream v : versions) {

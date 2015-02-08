@@ -4,21 +4,17 @@
  */
 package org.fcrepo.test.integration.cma;
 
+import static junit.framework.Assert.assertEquals;
+import static junit.framework.Assert.assertTrue;
+import static org.fcrepo.test.integration.cma.Util.filterMethods;
+
+import org.fcrepo.client.FedoraClient;
+import org.fcrepo.server.access.FedoraAPIAMTOM;
+import org.fcrepo.server.types.gen.ObjectMethodsDef;
+import org.fcrepo.test.FedoraServerTestCase;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
-import org.fcrepo.client.FedoraClient;
-import org.fcrepo.server.access.FedoraAPIA;
-import org.fcrepo.server.types.gen.ObjectMethodsDef;
-import org.fcrepo.test.FedoraServerTestCase;
-
-
-
-import static org.fcrepo.test.integration.cma.Util.filterMethods;
-
-import static junit.framework.Assert.assertEquals;
-import static junit.framework.Assert.assertTrue;
 
 
 /**
@@ -31,7 +27,7 @@ import static junit.framework.Assert.assertTrue;
  */
 public class ContentModelDSInputTest {
 
-    private static FedoraClient m_client;
+    private static FedoraClient s_client;
 
     private static final String OBJECT_PID = "demo:dc2mods.1";
 
@@ -48,20 +44,26 @@ public class ContentModelDSInputTest {
     @BeforeClass
     public static void bootstrap() throws Exception {
 
-        m_client =
+        s_client =
                 new FedoraClient(FedoraServerTestCase.getBaseURL(),
                                  FedoraServerTestCase.getUsername(),
                                  FedoraServerTestCase.getPassword());
-        Util.ingestTestObjects(DC2MODS_DEPLOYMENT_BASE);
+        Util.ingestTestObjects(s_client, DC2MODS_DEPLOYMENT_BASE);
+    }
+    
+    @AfterClass
+    public static void cleanUp() throws Exception {
+        FedoraServerTestCase.purgeDemoObjects(s_client);
+        s_client.shutdown();
     }
 
     /* Assure that listMethods works as advertised */
     @Test
     public void testListMethods() throws Exception {
-        FedoraAPIA apia = m_client.getAPIA();
+        FedoraAPIAMTOM apia = s_client.getAPIAMTOM();
         ObjectMethodsDef[] methods;
 
-        methods = filterMethods(apia.listMethods(OBJECT_PID, null));
+        methods = filterMethods(apia.listMethods(OBJECT_PID, null).toArray(new ObjectMethodsDef[0]));
 
         assertEquals("Wrong number of methods", 1, methods.length);
         assertEquals(methods[0].getServiceDefinitionPID(), SDEF_PID);
@@ -81,11 +83,7 @@ public class ContentModelDSInputTest {
 
     private String getDissemination(String pid, String sDef, String method)
             throws Exception {
-        return Util.getDissemination(m_client, pid, sDef, method);
+        return Util.getDissemination(s_client, pid, sDef, method);
     }
 
-    @AfterClass
-    public static void cleanup() throws Exception {
-        FedoraServerTestCase.purgeDemoObjects();
-    }
 }

@@ -4,16 +4,23 @@
  */
 package org.fcrepo.test.api;
 
+import static org.apache.http.HttpStatus.SC_CREATED;
+import static org.apache.http.HttpStatus.SC_NOT_FOUND;
+import static org.apache.http.HttpStatus.SC_OK;
+import static org.apache.http.HttpStatus.SC_UNAUTHORIZED;
+
+import java.net.URI;
+
+import junit.framework.JUnit4TestAdapter;
+
+import org.apache.http.entity.StringEntity;
 import org.fcrepo.common.PID;
-
-import org.fcrepo.server.management.FedoraAPIM;
-
+import org.fcrepo.server.management.FedoraAPIMMTOM;
 import org.fcrepo.test.FedoraServerTestCase;
-
-import static org.apache.commons.httpclient.HttpStatus.SC_CREATED;
-import static org.apache.commons.httpclient.HttpStatus.SC_NOT_FOUND;
-import static org.apache.commons.httpclient.HttpStatus.SC_OK;
-import static org.apache.commons.httpclient.HttpStatus.SC_UNAUTHORIZED;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+import org.junit.Test;
+import org.junit.runner.JUnitCore;
 
 /**
  * Tests of the REST API based on the config Q settings.
@@ -27,14 +34,14 @@ import static org.apache.commons.httpclient.HttpStatus.SC_UNAUTHORIZED;
  */
 public class TestRESTAPIConfigQ
         extends FedoraServerTestCase {
-
-    private FedoraAPIM apim;
+    
+    private static FedoraAPIMMTOM apim;
 
     private static String DEMO_FOXML;
 
     private static final PID pid = PID.getInstance("demo:RESTQ");
 
-    private static TestRESTAPI rest = new TestRESTAPI();
+    private static TestRESTAPI rest;
 
     static {
         // Test minimal FOXML object
@@ -53,38 +60,53 @@ public class TestRESTAPIConfigQ
 
         DEMO_FOXML = sb.toString();
     }
-
-    @Override
-    public void setUp() throws Exception {
-        apim = getFedoraClient().getAPIM();
+    
+    @BeforeClass
+    public static void bootStrap() throws Exception {
+        apim = TestRESTAPI.initClient().getAPIMMTOM();
+        rest = new TestRESTAPI();
+    }
+    
+    @AfterClass
+    public static void cleanUp() {
+        TestRESTAPI.stopClient();
     }
 
-    @Override
-    public void tearDown() throws Exception {
-    }
-
+    @Test
     public void testFindObjects() throws Exception {
-        rest.url = String.format("/objects?pid=true&terms=&query=&resultFormat=xml");
-        assertEquals(SC_OK, rest.get(false).getStatusCode());
+        URI url = TestRESTAPI.getURI(String.format("/objects?pid=true&terms=&query=&resultFormat=xml"));
+        rest.verifyGETStatusOnly(url, SC_OK, false);
     }
 
+    @Test
     public void testIngest() throws Exception {
         String label = "Label";
-        rest.url = String.format("/objects/%s?label=%s", pid, label);
-        assertEquals(SC_UNAUTHORIZED, rest.post(DEMO_FOXML, false).getStatusCode());
+        URI url = TestRESTAPI.getURI(String.format("/objects/%s?label=%s", pid, label));
+        StringEntity entity = TestRESTAPI.getStringEntity(DEMO_FOXML, "text/xml");
+        rest.verifyPOSTStatusOnly(url, SC_UNAUTHORIZED, entity, false);
 
         // Make sure the object was not ingested
-        rest.url = String.format("/objects/%s", pid);
-        assertEquals(SC_NOT_FOUND, rest.get(false).getStatusCode());
+        url = TestRESTAPI.getURI(String.format("/objects/%s", pid));
+        rest.verifyGETStatusOnly(url, SC_NOT_FOUND, false);
 
-        rest.url = String.format("/objects/%s?label=%s", pid, label);
-        assertEquals(SC_CREATED, rest.post(DEMO_FOXML, true).getStatusCode());
+        url = TestRESTAPI.getURI(String.format("/objects/%s?label=%s", pid, label));
+        rest.verifyPOSTStatusOnly(url, SC_CREATED, entity, true);
 
         // Make sure the object was ingested
-        rest.url = String.format("/objects/%s", pid);
-        assertEquals(SC_OK, rest.get(false).getStatusCode());
+        url = TestRESTAPI.getURI(String.format("/objects/%s", pid));
+        rest.verifyGETStatusOnly(url, SC_OK, false, false);
 
         apim.purgeObject(pid.toString(), "", false);
+    }
+    
+    // Supports legacy test runners
+
+    public static junit.framework.Test suite() {
+        return new JUnit4TestAdapter(TestRESTAPIConfigQ.class);
+    }
+
+    public static void main(String[] args) {
+        JUnitCore.runClasses(TestRESTAPIConfigQ.class);
     }
 
 }

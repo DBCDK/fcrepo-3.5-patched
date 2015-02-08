@@ -5,15 +5,12 @@
 package org.fcrepo.server.utilities;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.Writer;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-
-import com.sun.org.apache.xml.internal.serialize.OutputFormat;
-import com.sun.org.apache.xml.internal.serialize.XMLSerializer;
-
+import org.fcrepo.utilities.XmlTransformUtility;
+import org.fcrepo.utilities.xml.XercesXmlSerializers;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -39,12 +36,10 @@ public class RuntimeWSDL {
         try {
 
             // init dom parser and parse input
-            DocumentBuilderFactory factory =
-                    DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(true);
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            Document xsdDoc = builder.parse(schemaFile);
-            _wsdlDoc = builder.parse(sourceWSDL);
+            Document xsdDoc =
+                XmlTransformUtility.parseNamespaceAware(new FileInputStream(schemaFile));
+            _wsdlDoc =
+                XmlTransformUtility.parseNamespaceAware(new FileInputStream(sourceWSDL));
 
             // put schema into the wsdl types section
             Element typesElement = getTopElement("types");
@@ -125,17 +120,7 @@ public class RuntimeWSDL {
      * Serialize the final WSDL document to the given writer.
      */
     public void serialize(Writer out) throws IOException {
-
-        OutputFormat fmt = new OutputFormat("XML", "UTF-8", true);
-        fmt.setIndent(2);
-        fmt.setLineWidth(80);
-        fmt.setPreserveSpace(false);
-        fmt.setOmitXMLDeclaration(false);
-        fmt.setOmitDocumentType(true);
-
-        XMLSerializer ser = new XMLSerializer(out, fmt);
-
-        ser.serialize(_wsdlDoc);
+        XercesXmlSerializers.writeConsoleNoDocType(_wsdlDoc, out);
     }
 
     /**

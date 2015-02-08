@@ -7,20 +7,19 @@ import java.io.InputStreamReader;
 
 import java.rmi.RemoteException;
 
-import org.apache.axis.types.NonNegativeInteger;
-
 import org.fcrepo.common.Constants;
 
-import org.fcrepo.server.management.FedoraAPIM;
+import org.fcrepo.server.management.FedoraAPIMMTOM;
 import org.fcrepo.server.security.xacml.pdp.data.FedoraPolicyStore;
 import org.fcrepo.server.utilities.StreamUtility;
+import org.fcrepo.server.utilities.TypeUtility;
 
 
 public class PolicyIndexUtils implements Constants {
 
-    private FedoraAPIM m_apim = null;
+    private FedoraAPIMMTOM m_apim = null;
 
-    public PolicyIndexUtils(FedoraAPIM apim) {
+    public PolicyIndexUtils(FedoraAPIMMTOM apim) {
         m_apim = apim;
     }
 
@@ -30,7 +29,7 @@ public class PolicyIndexUtils implements Constants {
 
         byte[] object = getPolicyObject(policy, objectState, datastreamState, pid);
 
-        m_apim.ingest(object, FOXML1_1.uri,
+        m_apim.ingest(TypeUtility.convertBytesToDataHandler(object), FOXML1_1.uri,
                     "ingesting new foxml object");
 
         return pid;
@@ -38,7 +37,7 @@ public class PolicyIndexUtils implements Constants {
 
     public String[] getNextPids(int pidCount) throws RemoteException {
 
-        return m_apim.getNextPID(new NonNegativeInteger(Integer.toString(pidCount)), "demo");
+        return m_apim.getNextPID(new java.math.BigInteger(Integer.toString(pidCount)), "demo").toArray(new String[0]);
 
     }
 
@@ -56,7 +55,8 @@ public class PolicyIndexUtils implements Constants {
         BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(base + "/test-objects/xacml/test-policy-" + policy + ".xml"),"UTF-8"));
         String ln;
         while ((ln = br.readLine()) != null)
-            sb.append(ln + "\n");
+            sb.append(ln).append('\n');
+        br.close();
         return sb.toString();
 
 
@@ -70,34 +70,37 @@ public class PolicyIndexUtils implements Constants {
         if (!"AID".contains(objectState))
             throw new RuntimeException("Invalid datastreamState parameter " + datastreamState);
 
-        foxml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        foxml.append("<foxml:digitalObject VERSION=\"1.1\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n");
-        foxml.append("    xmlns:foxml=\"info:fedora/fedora-system:def/foxml#\"\n");
-        foxml.append("           xsi:schemaLocation=\"" + Constants.FOXML.uri
-                     + " " + Constants.FOXML1_1.xsdLocation + "\"");
-        foxml.append("\n           PID=\"" + StreamUtility.enc(pid)
-                         + "\">\n");
-        foxml.append("  <foxml:objectProperties>\n");
-        foxml.append("    <foxml:property NAME=\"info:fedora/fedora-system:def/model#state\" VALUE=\"" + objectState + "\"/>\n");
-        foxml.append("    <foxml:property NAME=\"info:fedora/fedora-system:def/model#label\" VALUE=\""
-                + StreamUtility.enc("test policy object") + "\"/>\n");
-        foxml.append("  </foxml:objectProperties>\n");
+        foxml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                + "<foxml:digitalObject VERSION=\"1.1\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n"
+                + "    xmlns:foxml=\"info:fedora/fedora-system:def/foxml#\"\n"
+                + "           xsi:schemaLocation=\"");
+        foxml.append(Constants.FOXML.uri);
+        foxml.append(' ');
+        foxml.append(Constants.FOXML1_1.xsdLocation);
+        foxml.append("\"\n           PID=\"");
+        StreamUtility.enc(pid, foxml);
+        foxml.append("\">\n"
+                + "  <foxml:objectProperties>\n"
+                + "    <foxml:property NAME=\"info:fedora/fedora-system:def/model#state\" VALUE=\"" + objectState + "\"/>\n"
+                + "    <foxml:property NAME=\"info:fedora/fedora-system:def/model#label\" VALUE=\"");
+        StreamUtility.enc("test policy object", foxml);
+        foxml.append("\"/>\n  </foxml:objectProperties>\n");
 
         // policy datastream, unless null/empty string specified
         if (datastreamState != null) {
-            foxml.append("<foxml:datastream ID=\"" + FedoraPolicyStore.FESL_POLICY_DATASTREAM + "\" STATE=\"" + datastreamState
-                         + "\" CONTROL_GROUP=\"X\">");
-            foxml.append("<foxml:datastreamVersion ID=\"POLICY.0\" MIMETYPE=\"text/xml\" LABEL=\"XACML policy datastream\">");
-
-            foxml.append("  <foxml:xmlContent>");
+            foxml.append("<foxml:datastream ID=\""
+                    + FedoraPolicyStore.FESL_POLICY_DATASTREAM + "\" STATE=\"");
+            foxml.append(datastreamState);
+            foxml.append("\" CONTROL_GROUP=\"X\">"
+                    + "<foxml:datastreamVersion ID=\"POLICY.0\" MIMETYPE=\"text/xml\" LABEL=\"XACML policy datastream\">"
+                    + "  <foxml:xmlContent>");
 
             // the policy
             foxml.append(getPolicy(policy));
 
-            foxml.append("    </foxml:xmlContent>");
-
-            foxml.append("  </foxml:datastreamVersion>");
-            foxml.append("</foxml:datastream>");
+            foxml.append("    </foxml:xmlContent>"
+                    + "  </foxml:datastreamVersion>"
+                    + "</foxml:datastream>");
         }
 
 

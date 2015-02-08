@@ -4,9 +4,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
-import com.sun.xacml.attr.AttributeDesignator;
-
 import org.fcrepo.server.security.xacml.pdp.finder.AttributeFinderException;
+
+import org.jboss.security.xacml.sunxacml.attr.AttributeDesignator;
 
 
 
@@ -33,7 +33,7 @@ public class AttributeFinderConfig {
      * @return
      */
     public Designator get(int designator) {
-        return designators.get(new Integer(designator));
+        return designators.get(Integer.valueOf(designator));
     }
     /**
      * Get a Designator based on the XACML target name (in lower case)
@@ -66,7 +66,7 @@ public class AttributeFinderConfig {
             if (des == null) {
                 des = new Designator();
             }
-            designators.put(new Integer(target), des);
+            designators.put(Integer.valueOf(target), des);
             return des;
         } else {
             throw new AttributeFinderException("Invalid attribute designator name " + designatorName);
@@ -89,83 +89,6 @@ public class AttributeFinderConfig {
             return AttributeDesignator.ACTION_TARGET;
         } else {
             return -1;
-        }
-    }
-
-    /**
-     * Encapsulates a set of attributes for this designator (ie for XACML target corresponding to a target designator)
-     *
-     * @author Stephen Bayliss
-     * @version $Id$
-     */
-    public class Designator {
-        private final Map<String, Attribute> attributes;
-
-        protected Designator() {
-            attributes = new HashMap<String, Attribute>();
-        }
-
-        /**
-         * Gets an attribute by name
-         * @param attributeName
-         * @return
-         */
-        public Attribute get(String attributeName) {
-            return attributes.get(attributeName);
-        }
-        /**
-         * Get all attribute names for this designator (XACML target)
-         * @return
-         */
-        public Set<String> getAttributeNames() {
-            return attributes.keySet();
-        }
-        /**
-         * Add/update an attribute for this target.  Note that the attribute will have
-         * no configuration (empty configuration is created).  Returns the attribued added/updated
-         * @param attributeName
-         * @return
-         */
-        public Attribute put(String attributeName) {
-            Attribute attr = attributes.get(attributeName);
-            if (attr == null) {
-                attr = new Attribute();
-            }
-            attributes.put(attributeName, attr);
-            return attr;
-        }
-
-        /**
-         * Encapsulates an attribute together with
-         * name/value configuration items
-         *
-         * @author Stephen Bayliss
-         * @version $Id$
-         */
-        public class Attribute {
-            private final Map<String, String> options;
-
-            protected Attribute() {
-                options = new HashMap<String, String>();
-            }
-            /**
-             * Get named config item for this attribute
-             * @param optionName
-             * @return
-             */
-            public String get(String optionName) {
-                return options.get(optionName);
-            }
-            /**
-             * Add or update a config item for this attribute
-             * @param optionName
-             * @param optionValue
-             * @return
-             */
-            public String put(String optionName, String optionValue) {
-                options.put(optionName, optionValue);
-                return optionValue;
-            }
         }
     }
 

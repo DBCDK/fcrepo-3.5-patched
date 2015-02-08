@@ -21,15 +21,17 @@ package org.fcrepo.server.security.jaas;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
-
 import java.security.Principal;
-
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
+import javax.security.auth.Subject;
+import javax.security.auth.callback.CallbackHandler;
+import javax.security.auth.login.LoginContext;
+import javax.security.auth.login.LoginException;
 import javax.servlet.Filter;
 import javax.servlet.FilterChain;
 import javax.servlet.FilterConfig;
@@ -39,21 +41,14 @@ import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import javax.security.auth.Subject;
-import javax.security.auth.callback.CallbackHandler;
-import javax.security.auth.login.LoginContext;
-import javax.security.auth.login.LoginException;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.http.FilterConfigBean;
-
 import org.fcrepo.server.security.jaas.auth.AuthHttpServletRequestWrapper;
 import org.fcrepo.server.security.jaas.auth.handler.UsernamePasswordCallbackHandler;
 import org.fcrepo.server.security.jaas.util.Base64;
 import org.fcrepo.server.security.jaas.util.SubjectUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A Servlet Filter for protecting resources. This filter uses JAAS for
@@ -141,6 +136,7 @@ public class AuthFilterJAAS
         filterConfigBean.addInitParameter("roleAttributeNames", names);
     }
 
+    @Override
     public void init(FilterConfig config) throws ServletException {
         this.filterConfig = config;
         if (this.filterConfig == null) {
@@ -153,7 +149,7 @@ public class AuthFilterJAAS
     public void init() throws ServletException {
         // get FEDORA_HOME. This being set is mandatory.
         String fedoraHome = Constants.FEDORA_HOME;
-        if (fedoraHome == null || "".equals(fedoraHome)) {
+        if (fedoraHome == null || fedoraHome.isEmpty()) {
             String msg = "FEDORA_HOME environment variable not set";
             throw new ServletException(msg);
         }
@@ -169,7 +165,7 @@ public class AuthFilterJAAS
         String tmp = null;
 
         tmp = filterConfig.getInitParameter("jaas.config.location");
-        if (tmp != null && !"".equals(tmp)) {
+        if (tmp != null && !tmp.isEmpty()) {
             jaasConfigLocation = tmp;
             if (logger.isDebugEnabled()) {
                 logger.debug("using location from init file: "
@@ -178,7 +174,7 @@ public class AuthFilterJAAS
         }
 
         tmp = filterConfig.getInitParameter("jaas.config.name");
-        if (tmp != null && !"".equals(tmp)) {
+        if (tmp != null && !tmp.isEmpty()) {
             jaasConfigName = tmp;
             if (logger.isDebugEnabled()) {
                 logger.debug("using name from init file: " + jaasConfigName);
@@ -241,6 +237,7 @@ public class AuthFilterJAAS
      * @see javax.servlet.Filter#doFilter(javax.servlet.ServletRequest,
      * javax.servlet.ServletResponse, javax.servlet.FilterChain)
      */
+    @Override
     public void doFilter(ServletRequest request,
                          ServletResponse response,
                          FilterChain chain) throws IOException,
@@ -261,7 +258,7 @@ public class AuthFilterJAAS
         // test path for API-A methods, maybe regex to make it explicit)
         boolean doChallenge = true;
         if (!authnAPIA) {
-            if (req.getMethod().equals("GET")) {
+            if (req.getMethod().equals("GET") || req.getMethod().equals("HEAD")) {
                 String requestPath = req.getPathInfo();
                 if (requestPath == null) requestPath = ""; // null is returned eg for /fedora/objects? - API-A, so we still want to do the below...
                 String fullPath = req.getRequestURI();
@@ -272,6 +269,8 @@ public class AuthFilterJAAS
                 boolean isGetDatastream =
                         requestPath.contains("/datastreams/")
                                 && !requestPath.endsWith("/content");
+                isGetDatastream = isGetDatastream || (requestPath.endsWith("/datastreams")
+                                && Boolean.valueOf(request.getParameter("profiles")));
                 boolean isGetRelationships =
                         requestPath.endsWith("/relationships");
                 boolean isValidate = requestPath.endsWith("/validate");
@@ -290,8 +289,8 @@ public class AuthFilterJAAS
         }
 
         if (logger.isDebugEnabled()) {
-            logger.debug("incoming filter: " + this.getClass().getName());
-            logger.debug("session-id: " + req.getSession().getId());
+            logger.debug("incoming filter: {}", this.getClass().getName());
+            logger.debug("session-id: {}", req.getSession().getId());
         }
 
         Subject subject = authenticate(req);
@@ -334,6 +333,7 @@ public class AuthFilterJAAS
         }
     }
 
+    @Override
     public void destroy() {
         logger.info("destroying servlet filter: " + this.getClass().getName());
         filterConfig = null;
@@ -368,7 +368,7 @@ public class AuthFilterJAAS
      */
     private Subject authenticate(HttpServletRequest req) {
         String authorization = req.getHeader("authorization");
-        if (authorization == null || "".equals(authorization.trim())) {
+        if (authorization == null || authorization.trim().isEmpty()) {
             return null;
         }
 
@@ -385,7 +385,7 @@ public class AuthFilterJAAS
             byte[] data = Base64.decode(authorization.substring(6));
             auth = new String(data);
         } catch (IOException e) {
-            logger.error(e.getMessage());
+            logger.error(e.toString());
             return null;
         }
 
@@ -403,7 +403,7 @@ public class AuthFilterJAAS
             loginContext = new LoginContext(jaasConfigName, handler);
             loginContext.login();
         } catch (LoginException le) {
-            logger.error(le.getMessage());
+            logger.error(le.toString());
             return null;
         }
 
@@ -455,9 +455,9 @@ public class AuthFilterJAAS
         }
 
         if (logger.isDebugEnabled()) {
-            logger.debug("found userPrincipal ["
-                    + userPrincipal.getClass().getName() + "]: "
-                    + userPrincipal.getName());
+            logger.debug("found userPrincipal [{}]: {}",
+                         userPrincipal.getClass().getName(),
+                         userPrincipal.getName());
         }
 
         return userPrincipal;
@@ -472,13 +472,14 @@ public class AuthFilterJAAS
      * @return a set of strings that represent the users roles.
      */
     private Set<String> getUserRoles(Subject subject) {
-        Set<String> userRoles = new HashSet<String>();
+        Set<String> userRoles = null;
 
         // get roles from specified classes
         Set<Principal> principals = subject.getPrincipals();
         if (roleClassNames != null && roleClassNames.size() > 0) {
             for (Principal p : principals) {
                 if (roleClassNames.contains(p.getClass().getName())) {
+                    if (userRoles == null) userRoles = new HashSet<String>();
                     userRoles.add(p.getName());
                 }
             }
@@ -487,17 +488,17 @@ public class AuthFilterJAAS
         // get roles from specified attributes
         Map<String, Set<String>> attributes =
                 SubjectUtils.getAttributes(subject);
-        if (attributes != null) {
-            for (String key : attributes.keySet()) {
-                if (roleAttributeNames.contains(key)) {
-                    userRoles.addAll(attributes.get(key));
-                }
+        for (String key : attributes.keySet()) {
+            if (roleAttributeNames.contains(key)) {
+                if (userRoles == null) userRoles = new HashSet<String>();
+                userRoles.addAll(attributes.get(key));
             }
         }
 
+        if (userRoles == null) userRoles = Collections.emptySet();
         if (logger.isDebugEnabled()) {
             for (String r : userRoles) {
-                logger.debug("found role: " + r);
+                logger.debug("found role: {}", r);
             }
         }
 
@@ -514,7 +515,7 @@ public class AuthFilterJAAS
      */
     private void addRolesToSubject(Subject subject, Set<String> userRoles) {
         if (userRoles == null) {
-            userRoles = new HashSet<String>();
+            userRoles = Collections.emptySet();
         }
 
         Map<String, Set<String>> attributes =
@@ -522,14 +523,14 @@ public class AuthFilterJAAS
 
         Set<String> roles = attributes.get(ROLE_KEY);
         if (roles == null) {
-            roles = new HashSet<String>();
+            roles = new HashSet<String>(userRoles);
             attributes.put(ROLE_KEY, roles);
+        } else {
+            roles.addAll(userRoles);
         }
-
-        for (String role : userRoles) {
-            roles.add(role);
-            if (logger.isDebugEnabled()) {
-                logger.debug("added role: " + role);
+        if (logger.isDebugEnabled()) {
+            for (String role : userRoles) {
+                logger.debug("added role: {}", role);
             }
         }
     }
@@ -551,18 +552,16 @@ public class AuthFilterJAAS
                                           HttpServletRequest request) {
         Map<String, Set<String>> attributes =
                 SubjectUtils.getAttributes(subject);
-        if (attributes == null) {
-            attributes = new HashMap<String, Set<String>>();
-        }
 
         // get the fedoraRole attribute or create it.
         Set<String> roles = attributes.get(FEDORA_ROLE_KEY);
         if (roles == null) {
-            roles = new HashSet<String>();
+            roles = new HashSet<String>(userRoles);
             attributes.put(FEDORA_ROLE_KEY, roles);
+        } else {
+            roles.addAll(userRoles);
         }
 
-        roles.addAll(userRoles);
 
         request.setAttribute(FEDORA_ATTRIBUTES_KEY, attributes);
     }

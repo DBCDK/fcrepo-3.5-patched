@@ -5,9 +5,7 @@
 package org.fcrepo.server.security.xacml.pep.rest.objectshandlers;
 
 import java.io.IOException;
-
 import java.net.URI;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -15,19 +13,16 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import com.sun.xacml.attr.AnyURIAttribute;
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.StringAttribute;
-import com.sun.xacml.ctx.RequestCtx;
-
+import org.fcrepo.common.Constants;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.pep.PEPException;
+import org.fcrepo.server.security.xacml.pep.ResourceAttributes;
+import org.fcrepo.server.security.xacml.pep.rest.filters.AbstractFilter;
+import org.fcrepo.server.security.xacml.util.LogUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.fcrepo.common.Constants;
-
-import org.fcrepo.server.security.xacml.pep.PEPException;
-import org.fcrepo.server.security.xacml.pep.rest.filters.AbstractFilter;
-import org.fcrepo.server.security.xacml.util.LogUtil;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
 
 /**
 * Handles REST API method getDatastreamHistory
@@ -51,38 +46,27 @@ extends AbstractFilter {
                                     HttpServletResponse response)
             throws IOException, ServletException {
         if (logger.isDebugEnabled()) {
-            logger.debug(this.getClass().getName() + "/handleRequest!");
+            logger.debug("{}/handleRequest!", this.getClass().getName());
         }
 
-        String path = request.getPathInfo();
-        String[] parts = path.split("/");
-
-        String pid = parts[1];
-        String dsid = parts[3].replaceAll(".xml", "");
+        String[] parts = getPathParts(request);
+        // -/objects/{pid}/datastreams/{dsID}/history
+        if (parts.length < 5) {
+            logger.error("Not enough path components on the URI: {}", request.getRequestURI());
+            throw new ServletException("Not enough path components on the URI: " + request.getRequestURI());
+        }
 
         RequestCtx req = null;
         Map<URI, AttributeValue> actions = new HashMap<URI, AttributeValue>();
-        Map<URI, AttributeValue> resAttr = new HashMap<URI, AttributeValue>();
+        Map<URI, AttributeValue> resAttr;
         try {
-            if (pid != null && !"".equals(pid)) {
-                resAttr.put(Constants.OBJECT.PID.getURI(),
-                            new StringAttribute(pid));
-            }
-            if (pid != null && !"".equals(pid)) {
-                resAttr.put(new URI(XACML_RESOURCE_ID),
-                            new AnyURIAttribute(new URI(pid)));
-            }
-            if (dsid != null && !"".equals(dsid)) {
-                resAttr.put(Constants.DATASTREAM.ID.getURI(),
-                            new StringAttribute(dsid));
-            }
+            resAttr = ResourceAttributes.getResources(parts);
 
             actions.put(Constants.ACTION.ID.getURI(),
-                        new StringAttribute(Constants.ACTION.GET_DATASTREAM_HISTORY
-                                .getURI().toASCIIString()));
+                        Constants.ACTION.GET_DATASTREAM_HISTORY
+                                .getStringAttribute());
             actions.put(Constants.ACTION.API.getURI(),
-                        new StringAttribute(Constants.ACTION.APIM.getURI()
-                                .toASCIIString()));
+                        Constants.ACTION.APIM.getStringAttribute());
 
             req =
                     getContextHandler().buildRequest(getSubjects(request),
@@ -91,10 +75,9 @@ extends AbstractFilter {
                                                      getEnvironment(request));
 
             LogUtil.statLog(request.getRemoteUser(),
-                            Constants.ACTION.GET_DATASTREAM_HISTORY.getURI()
-                                    .toASCIIString(),
-                            pid,
-                            dsid);
+                            Constants.ACTION.GET_DATASTREAM_HISTORY.uri,
+                            parts[1],
+                            parts[3]);
         } catch (Exception e) {
             logger.error(e.getMessage(), e);
             throw new ServletException(e.getMessage(), e);
@@ -102,14 +85,5 @@ extends AbstractFilter {
 
         return req;
     }
-
-    @Override
-    public RequestCtx handleResponse(HttpServletRequest request,
-                                     HttpServletResponse response)
-            throws IOException, ServletException {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
 
 }

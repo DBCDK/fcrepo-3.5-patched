@@ -1,13 +1,13 @@
 package org.fcrepo.server.security.xacml.pdp.data;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 
+import org.fcrepo.server.security.xacml.pdp.finder.policy.PolicyReader;
+import org.fcrepo.server.security.xacml.util.AttributeBean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import org.fcrepo.server.security.xacml.util.AttributeBean;
 
 
 /**
@@ -38,8 +38,8 @@ public abstract class XPathPolicyIndex
             new String[] {"Subject", "Resource", "Action", "Environment"};
 
 
-    protected XPathPolicyIndex() throws PolicyIndexException {
-        super();
+    protected XPathPolicyIndex(PolicyReader policyReader) throws PolicyIndexException {
+        super(policyReader);
     }
 
 
@@ -49,7 +49,7 @@ public abstract class XPathPolicyIndex
      * @return a map of variable name / variable values
      */
     // FIXME: public for some external testing. -> protected
-    public static Map<String, String> getXpathVariables(Map<String, Set<AttributeBean>> attributeMap) {
+    public static Map<String, String> getXpathVariables(Map<String, Collection<AttributeBean>> attributeMap) {
         // Set all the bind variables in the query context
 
         Map<String, String> variables = new HashMap<String, String>();
@@ -117,17 +117,21 @@ public abstract class XPathPolicyIndex
      * @param r number of resource-id values
      * @return
      */
-    protected static String getXpath(Map<String, Set<AttributeBean>> attributeMap) {
-
-        int sections = 0;
+    protected static String getXpath(Map<String, Collection<AttributeBean>> attributeMap) {
         StringBuilder sb = new StringBuilder();
+        getXpath(attributeMap, sb);
+        return sb.toString();
+    }
+    
+    protected static void getXpath(Map<String, Collection<AttributeBean>> attributeMap, StringBuilder sb) {
+        int sections = 0;
 
         // FIXME:
         // this from the original dbxml implementation
         // "r" is the count of resource values where the attribute ID is xacml resource-id
         // not clear why this is actually needed but the query generator tests for a zero value
         int resourceValueCount = 0;
-        for (AttributeBean b : attributeMap.get("resourceAttributes")) {
+        for (AttributeBean b : attributeMap.get(RESOURCE_KEY)) {
             if (b.getId().equals(XACML_RESOURCE_ID)) {
                 resourceValueCount = resourceValueCount + b.getValues().size();
             }
@@ -258,7 +262,6 @@ public abstract class XPathPolicyIndex
         }
         sb.append("]");
 
-        return sb.toString();
     }
 
 

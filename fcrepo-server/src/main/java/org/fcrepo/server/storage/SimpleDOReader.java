@@ -4,22 +4,15 @@
  */
 package org.fcrepo.server.storage;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
+import static org.fcrepo.common.Constants.MODEL;
+
 import java.io.InputStream;
-
-import java.text.SimpleDateFormat;
-
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-
-import org.jrdf.graph.ObjectNode;
-import org.jrdf.graph.PredicateNode;
-import org.jrdf.graph.SubjectNode;
 
 import org.fcrepo.common.Models;
 import org.fcrepo.server.Context;
@@ -41,10 +34,12 @@ import org.fcrepo.server.storage.types.MethodParmDef;
 import org.fcrepo.server.storage.types.ObjectMethodsDef;
 import org.fcrepo.server.storage.types.RelationshipTuple;
 import org.fcrepo.utilities.DateUtility;
+import org.fcrepo.utilities.ReadableByteArrayOutputStream;
+import org.jrdf.graph.ObjectNode;
+import org.jrdf.graph.PredicateNode;
+import org.jrdf.graph.SubjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static org.fcrepo.common.Constants.MODEL;
 
 
 
@@ -59,6 +54,14 @@ public class SimpleDOReader
 
     private static final Logger logger =
             LoggerFactory.getLogger(SimpleDOReader.class);
+    
+    private static final Datastream[] DATASTREAM_TYPE =
+            new Datastream[0];
+
+    private static final Date[] DATE_TYPE =
+            new Date[0];
+    
+    private static final String[] EMPTY_STRING_ARRAY = new String[0];
 
     protected final DigitalObject m_obj;
 
@@ -71,9 +74,6 @@ public class SimpleDOReader
     private final String m_exportFormat;
 
     private String m_storageFormat;
-
-    private final SimpleDateFormat m_formatter =
-            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
 
     public SimpleDOReader(Context context,
                           RepositoryReader repoReader,
@@ -117,6 +117,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public DigitalObject getObject() {
         return m_obj;
     }
@@ -124,6 +125,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public Date getCreateDate() {
         return m_obj.getCreateDate();
     }
@@ -131,6 +133,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public Date getLastModDate() {
         return m_obj.getLastModDate();
     }
@@ -138,6 +141,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public String getOwnerId() {
         return m_obj.getOwnerId();
     }
@@ -145,6 +149,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public List<AuditRecord> getAuditRecords() {
         return m_obj.getAuditRecords();
     }
@@ -153,29 +158,30 @@ public class SimpleDOReader
      * Return the object as an XML input stream in the internal serialization
      * format.
      */
+    @Override
     public InputStream GetObjectXML() throws ObjectIntegrityException,
                                              StreamIOException, UnsupportedTranslationException, ServerException {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        ReadableByteArrayOutputStream bytes = new ReadableByteArrayOutputStream(4096);
         m_translator.serialize(m_obj,
                                bytes,
                                m_storageFormat,
                                "UTF-8",
                                DOTranslationUtility.SERIALIZE_STORAGE_INTERNAL);
-        return new ByteArrayInputStream(bytes.toByteArray());
+        return bytes.toInputStream();
     }
 
     /**
      * {@inheritDoc}
      */
+    @Override
     public InputStream Export(String format, String exportContext)
             throws ObjectIntegrityException, StreamIOException,
                    UnsupportedTranslationException, ServerException {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         int transContext;
         // first, set the translation context...
-        logger.debug("Export context: " + exportContext);
+        logger.debug("Export context: {}", exportContext);
 
-        if (exportContext == null || exportContext.equals("")
+        if (exportContext == null || exportContext.isEmpty()
             || exportContext.equalsIgnoreCase("default")) {
             // null and default is set to PUBLIC translation
             transContext = DOTranslationUtility.SERIALIZE_EXPORT_PUBLIC;
@@ -189,26 +195,30 @@ public class SimpleDOReader
             throw new UnsupportedTranslationException("Export context "
                                                       + exportContext + " is not valid.");
         }
+
+        // allocate the ByteArrayOutputStream with a 4k initial capacity to constrain copying up
+        ReadableByteArrayOutputStream bytes = new ReadableByteArrayOutputStream(4096);
         // now serialize for export in the proper XML format...
-        if (format == null || format.equals("")
+        if (format == null || format.isEmpty()
             || format.equalsIgnoreCase("default")) {
-            logger.debug("Export in default format: " + m_exportFormat);
+            logger.debug("Export in default format: {}", m_exportFormat);
             m_translator.serialize(m_obj,
                                    bytes,
                                    m_exportFormat,
                                    "UTF-8",
                                    transContext);
         } else {
-            logger.debug("Export in format: " + format);
+            logger.debug("Export in format: {}", format);
             m_translator.serialize(m_obj, bytes, format, "UTF-8", transContext);
         }
 
-        return new ByteArrayInputStream(bytes.toByteArray());
+        return bytes.toInputStream();
     }
 
     /**
      * @deprecated in Fedora 3.0, use Export instead
      */
+    @Override
     @Deprecated
     public InputStream ExportObject(String format, String exportContext)
             throws ObjectIntegrityException, StreamIOException,
@@ -219,6 +229,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public String GetObjectPID() {
         return m_obj.getPid();
     }
@@ -226,6 +237,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public String GetObjectLabel() {
         return m_obj.getLabel();
     }
@@ -233,6 +245,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public String GetObjectState() {
         if (m_obj.getState() == null) {
             return "A"; // shouldn't happen, but if it does don't die
@@ -240,15 +253,18 @@ public class SimpleDOReader
         return m_obj.getState();
     }
 
+    @Override
     public List<String> getContentModels() throws ServerException {
 
-        List<String> list = new ArrayList<String>();
-        for (RelationshipTuple rel : getRelationships(MODEL.HAS_MODEL,null)) {
+        Set<RelationshipTuple> rels = getRelationships(MODEL.HAS_MODEL,null); 
+        List<String> list = new ArrayList<String>(rels.size());
+        for (RelationshipTuple rel : rels) {
             list.add(rel.object);
         }
         return list;
     }
 
+    @Override
     public boolean hasContentModel(ObjectNode contentModel)
             throws ServerException {
         return hasRelationship(MODEL.HAS_MODEL,contentModel);
@@ -257,6 +273,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public String[] ListDatastreamIDs(String state) {
         Iterator<String> iter = m_obj.datastreamIdIterator();
         ArrayList<String> al = new ArrayList<String>();
@@ -273,19 +290,13 @@ public class SimpleDOReader
                 }
             }
         }
-        iter = al.iterator();
-        String[] out = new String[al.size()];
-        int i = 0;
-        while (iter.hasNext()) {
-            out[i] = iter.next();
-            i++;
-        }
-        return out;
+        return al.toArray(EMPTY_STRING_ARRAY);
     }
 
     /**
      * {@inheritDoc}
      */
+    @Override
     public Datastream getDatastream(String dsID, String versionID) {
         for (Datastream ds : m_obj.datastreams(dsID)) {
             if (ds.DSVersionID.equals(versionID)) {
@@ -298,12 +309,12 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public Datastream GetDatastream(String datastreamID, Date versDateTime) {
         // get the one with the closest creation date
         // without going over
-        Datastream closestWithoutGoingOver = null;
-        Datastream latestCreated = null;
-        long bestTimeDifference = -1;
+        Datastream result = null;
+        long bestTimeDifference = Long.MAX_VALUE;
         long latestCreateTime = -1;
         long vTime = -1;
         if (versDateTime != null) {
@@ -311,63 +322,57 @@ public class SimpleDOReader
         }
         for (Datastream ds : m_obj.datastreams(datastreamID)) {
             if (versDateTime == null) {
-                if (ds.DSCreateDT.getTime() > latestCreateTime) {
-                    latestCreateTime = ds.DSCreateDT.getTime();
-                    latestCreated = ds;
+                if (ds.DSCreateDT == null || ds.DSCreateDT.getTime() > latestCreateTime || result == null) {
+                    result = ds;
+                    if (ds.DSCreateDT != null) latestCreateTime = ds.DSCreateDT.getTime();
                 }
             } else {
-                long diff = vTime - ds.DSCreateDT.getTime();
+                //TODO If none of the versions have a create date, what should behavior be?
+                long diff = (ds.DSCreateDT == null)? vTime : vTime - ds.DSCreateDT.getTime();
                 if (diff >= 0) {
-                    if (diff < bestTimeDifference || bestTimeDifference == -1) {
+                    if (diff < bestTimeDifference) {
                         bestTimeDifference = diff;
-                        closestWithoutGoingOver = ds;
+                        result = ds;
                     }
                 }
             }
         }
-        if (versDateTime == null) {
-            return latestCreated;
-        } else {
-            return closestWithoutGoingOver;
-        }
+        return result;
     }
 
     /**
      * {@inheritDoc}
      */
+    @Override
     public Date[] getDatastreamVersions(String datastreamID) {
         ArrayList<Date> versionDates = new ArrayList<Date>();
+        
         for (Datastream d : m_obj.datastreams(datastreamID)) {
             versionDates.add(d.DSCreateDT);
         }
-        return versionDates.toArray(new Date[0]);
+        return versionDates.toArray(DATE_TYPE);
     }
 
     /**
      * {@inheritDoc}
      */
+    @Override
     public Datastream[] GetDatastreams(Date versDateTime, String state) {
         String[] ids = ListDatastreamIDs(null);
-        ArrayList<Datastream> al = new ArrayList<Datastream>();
+        ArrayList<Datastream> al = new ArrayList<Datastream>(ids.length);
         for (String element : ids) {
             Datastream ds = GetDatastream(element, versDateTime);
             if (ds != null && (state == null || ds.DSState.equals(state))) {
                 al.add(ds);
             }
         }
-        Datastream[] out = new Datastream[al.size()];
-        Iterator<Datastream> iter = al.iterator();
-        int i = 0;
-        while (iter.hasNext()) {
-            out[i] = iter.next();
-            i++;
-        }
-        return out;
+        return al.toArray(DATASTREAM_TYPE);
     }
 
     /**
      * {@inheritDoc}
      */
+    @Override
     public String[] getObjectHistory(String PID) {
         String[] dsIDs = ListDatastreamIDs(null);
         TreeSet<String> modDates = new TreeSet<String>();
@@ -377,7 +382,7 @@ public class SimpleDOReader
                 modDates.add(DateUtility.convertDateToString(element2));
             }
         }
-        return modDates.toArray(new String[0]);
+        return modDates.toArray(EMPTY_STRING_ARRAY);
     }
 
     /**
@@ -428,7 +433,7 @@ public class SimpleDOReader
 
     protected String getWhenString(Date versDateTime) {
         if (versDateTime != null) {
-            return m_formatter.format(versDateTime);
+            return DateUtility.formatMillisTZ(versDateTime);
         } else {
             return "the current time";
         }
@@ -437,6 +442,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public ObjectMethodsDef[] listMethods(Date versDateTime)
             throws ServerException {
         ArrayList<MethodDef> methodList = new ArrayList<MethodDef>();
@@ -524,6 +530,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public boolean hasRelationship(SubjectNode subject, PredicateNode predicate, ObjectNode object) {
         return m_obj.hasRelationship(subject, predicate, object);
     }
@@ -531,6 +538,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public boolean hasRelationship(PredicateNode predicate, ObjectNode object) {
         return m_obj.hasRelationship(predicate, object);
     }
@@ -538,6 +546,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public Set<RelationshipTuple> getRelationships(SubjectNode subject,
                                                    PredicateNode predicate,
                                                    ObjectNode object) {
@@ -547,6 +556,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public Set<RelationshipTuple> getRelationships(PredicateNode predicate,
                                                    ObjectNode object) {
         return m_obj.getRelationships(predicate, object);
@@ -554,6 +564,7 @@ public class SimpleDOReader
     /**
      * {@inheritDoc}
      */
+    @Override
     public Set<RelationshipTuple> getRelationships() {
         return m_obj.getRelationships();
     }

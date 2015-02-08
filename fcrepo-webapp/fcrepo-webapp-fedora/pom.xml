@@ -1,54 +1,79 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
     <groupId>org.fcrepo</groupId>
     <artifactId>fcrepo-webapp</artifactId>
-    <version>3.5</version>
+    <version>3.8.0</version>
   </parent>
 
   <artifactId>fcrepo-webapp-fedora</artifactId>
   <packaging>war</packaging>
   <name>Fedora Webapp</name>
 
+  <profiles>
+    <profile>
+      <id>fedora-home-is-defined</id>
+      <activation>
+        <property>
+          <name>fedora.home</name>
+        </property>
+      </activation>
+      <properties>
+        <fedora.home>${fedora.home}</fedora.home>
+      </properties>
+      <build>
+      <plugins>
+	      <plugin>
+	        <groupId>org.apache.maven.plugins</groupId>
+	        <artifactId>maven-remote-resources-plugin</artifactId>
+	        <executions>
+	          <execution>
+	            <id>process-remote-resources</id>
+	            <goals>
+	              <goal>process</goal>
+	            </goals>
+		        <configuration>
+		          <resourceBundles>
+		            <resourceBundle>org.fcrepo:fcrepo-shared-resources:${project.version}</resourceBundle>
+		          </resourceBundles>
+                  <outputDirectory>${project.build.directory}/shared</outputDirectory>
+                  <attachToMain>false</attachToMain>
+		        </configuration>
+	          </execution>
+	          </executions>
+	      </plugin>
+	      <plugin>
+	        <groupId>org.apache.maven.plugins</groupId>
+	        <artifactId>maven-resources-plugin</artifactId>
+	        <executions>
+	          <execution>
+	            <id>copy-context</id>
+	            <phase>validate</phase>
+	            <goals>
+	              <goal>copy-resources</goal>
+	            </goals>
+	            <configuration>
+			        <outputDirectory>${project.build.directory}/${project.artifactId}-${project.version}/META-INF</outputDirectory>
+				    <resources>
+				      <resource>
+				        <directory>${project.build.directory}/shared/webapp-context</directory>
+				        <filtering>true</filtering>
+				        <includes>
+				        </includes>
+				      </resource>
+				    </resources>
+	            </configuration>
+	          </execution>
+	        </executions>
+	      </plugin>
+      </plugins>
+      </build>
+    </profile>
+  </profiles>
   <build>
     <plugins>
-      <plugin>
-        <artifactId>maven-antrun-plugin</artifactId>
-        <executions>
-
-          <execution>
-            <!-- update axis' configuration file (server-config.wsdd) requires 
-              that the java files are compiled thus, perform this task in the "process-classes" 
-              phase -->
-            <id>Update server-config.wsdd</id>
-            <phase>process-classes</phase>
-            <configuration>
-              <tasks>
-                <!-- update src/main/webapp/WEB-INF/server-config.wsdd -->
-                <java classname="org.apache.axis.utils.Admin" fork="true"
-                  classpathref="maven.compile.classpath" dir="${project.build.outputDirectory}">
-                  <arg value="server" />
-                  <arg
-                    value="${basedir}/../../fcrepo-common/target/generated-sources/axistools/wsdl2java/org/fcrepo/server/management/deploy.wsdd" />
-                  <arg
-                    value="${basedir}/../../fcrepo-common/target/generated-sources/axistools/wsdl2java/org/fcrepo/server/access/deploy.wsdd" />
-                  <sysproperty key="logback.configurationFile"
-                    value="${basedir}/src/test/resources/logback.xml" />
-                </java>
-              </tasks>
-            </configuration>
-            <goals>
-              <goal>run</goal>
-            </goals>
-          </execution>
-
-        </executions>
-      </plugin>
-
-
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-war-plugin</artifactId>
@@ -57,33 +82,9 @@
             <resource>
               <directory>${basedir}/src/main/resources</directory>
             </resource>
-            <resource>
-              <directory>${project.build.outputDirectory}</directory>
-              <targetPath>WEB-INF</targetPath>
-              <includes>
-                <include>server-config.wsdd</include>
-              </includes>
-            </resource>
-            <resource>
-              <!-- this is terrible. brittle. FIXME -->
-              <directory>${project.basedir}/../../fcrepo-security/fcrepo-security-pep/src/main/resources</directory>
-              <targetPath>WEB-INF/classes</targetPath>
-              <includes>
-                <include>config-melcoe-pep.xml</include>
-                <include>config-melcoe-pep-mapping.xml</include>
-              </includes>
-            </resource>
-            <resource>
-              <!-- this is terrible. brittle. FIXME -->
-              <directory>${project.basedir}/../../fcrepo-security/fcrepo-security-pep/src/main/resources</directory>
-              <targetPath>WEB-INF</targetPath>
-              <includes>
-                <include>melcoe-pep-server-config.wsdd</include>
-              </includes>
-            </resource>
           </webResources>
           <archive>
-            <manifestFile>${project.build.outputDirectory}/META-INF/MANIFEST.MF</manifestFile>
+            <manifestFile>${project.build.directory}/${project.artifactId}-${project.version}/META-INF/MANIFEST.MF</manifestFile>
             <manifest>
               <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
             </manifest>
@@ -98,7 +99,6 @@
       <plugin>
         <groupId>org.apache.felix</groupId>
         <artifactId>maven-bundle-plugin</artifactId>
-        <version>2.0.1</version>
         <executions>
           <execution>
             <id>bundle-manifest</id>
@@ -109,6 +109,7 @@
           </execution>
         </executions>
         <configuration>
+          <manifestLocation>${project.build.directory}/${project.artifactId}-${project.version}/META-INF/</manifestLocation>
           <supportedProjectTypes>
             <supportedProjectType>jar</supportedProjectType>
             <supportedProjectType>bundle</supportedProjectType>
@@ -145,24 +146,30 @@
               org.xml.sax;resolution:=optional,
               org.xml.sax.helpers;resolution:=optional
             </Import-Package>
-
-
-
             <!-- | each module can override these defaults in their osgi.bnd 
               file -->
             <_include>-osgi.bnd</_include>
           </instructions>
         </configuration>
+        
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-remote-resources-plugin</artifactId>
+        <executions>
+        </executions>
       </plugin>
 
     </plugins>
   </build>
+
 
   <dependencies>
     <dependency>
       <groupId>javax.servlet</groupId>
       <artifactId>servlet-api</artifactId>
     </dependency>
+
 
     <dependency>
       <groupId>org.fcrepo</groupId>
@@ -209,29 +216,34 @@
     </dependency>
 
     <dependency>
+      <groupId>org.fcrepo</groupId>
+      <artifactId>fcrepo-security-http</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
       <groupId>mysql</groupId>
       <artifactId>mysql-connector-java</artifactId>
-      <version>5.1.15</version>
+      <version>5.1.20</version>
     </dependency>
-    
+
     <dependency>
-      <groupId>postgresql</groupId>
+      <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-      <version>9.0-801.jdbc4</version>
+      <version>9.3-1102-jdbc41</version>
     </dependency>
-        
+
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>jcl-over-slf4j</artifactId>
       <scope>compile</scope>
     </dependency>
-    
+
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
       <scope>compile</scope>
     </dependency>
-    
   </dependencies>
 
 </project>

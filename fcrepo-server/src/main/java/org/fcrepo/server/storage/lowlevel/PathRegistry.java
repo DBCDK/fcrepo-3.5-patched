@@ -43,6 +43,8 @@ public abstract class PathRegistry {
         registryName = (String) configuration.get("registryName");
         storeBases = (String[]) configuration.get("storeBases");
     }
+    
+    public abstract boolean exists(String pid) throws LowlevelStorageException;
 
     public abstract String get(String pid) throws LowlevelStorageException;
 
@@ -79,7 +81,7 @@ public abstract class PathRegistry {
     }
 
     public static final boolean stringNull(String string) {
-        return null == string || string.equals("");
+        return null == string || string.isEmpty();
     }
 
     private final void traverseFiles(File[] files,
@@ -125,17 +127,14 @@ public abstract class PathRegistry {
                             switch (operation) {
                                 case REPORT_FILES: {
                                     if (report == FULL_REPORT) {
-                                        logger.info("file [" + path
-                                                + "] would have pid [" + pid
-                                                + "]");
+                                        logger.info("file [{}] would have pid [{}]", path, pid);
                                     }
                                     break;
                                 }
                                 case REBUILD: {
                                     put(pid, path);
                                     if (report == FULL_REPORT) {
-                                        logger.info("added to registry: [" + pid
-                                                + "] ==> [" + path + "]");
+                                        logger.info("added to registry: [{}] ==> [{}]", pid, path);
                                     }
                                     break;
                                 }
@@ -184,6 +183,6 @@ public abstract class PathRegistry {
         traverseFiles(files, operation, stopOnError, report);
     }
 
-    protected abstract Enumeration<String> keys() throws LowlevelStorageException,
+    public abstract Enumeration<String> keys() throws LowlevelStorageException,
             LowlevelStorageInconsistencyException;
 }

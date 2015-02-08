@@ -4,26 +4,22 @@
  */
 package org.fcrepo.test.integration.cma;
 
-import org.apache.axis.AxisFault;
-
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Ignore;
-import org.junit.Test;
-
-import org.fcrepo.client.FedoraClient;
-import org.fcrepo.server.access.FedoraAPIA;
-import org.fcrepo.server.types.gen.ObjectMethodsDef;
-import org.fcrepo.test.FedoraServerTestCase;
-
-
-
-import static org.fcrepo.test.integration.cma.Util.filterMethods;
-
 import static junit.framework.Assert.assertEquals;
 import static junit.framework.Assert.assertNotSame;
 import static junit.framework.Assert.assertTrue;
 import static junit.framework.Assert.fail;
+import static org.fcrepo.test.integration.cma.Util.filterMethods;
+
+import org.apache.cxf.binding.soap.SoapFault;
+import org.fcrepo.client.FedoraClient;
+import org.fcrepo.server.access.FedoraAPIAMTOM;
+import org.fcrepo.server.types.gen.ObjectMethodsDef;
+import org.fcrepo.test.FedoraServerTestCase;
+import org.junit.AfterClass;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Ignore;
+import org.junit.Test;
 
 
 /**
@@ -85,7 +81,9 @@ public class SharedDeploymentTests {
 
     private static final String SDEF_4_METHOD = "content4";
 
-    private static FedoraClient m_client;
+    private static FedoraClient s_client;
+
+    private static int s_items_ingested = 0;
 
     public static junit.framework.Test suite() {
         return new junit.framework.JUnit4TestAdapter(SharedDeploymentTests.class);
@@ -94,19 +92,30 @@ public class SharedDeploymentTests {
     @BeforeClass
     public static void bootstrap() throws Exception {
 
-        m_client =
+        s_client =
                 new FedoraClient(FedoraServerTestCase.getBaseURL(),
                                  FedoraServerTestCase.getUsername(),
                                  FedoraServerTestCase.getPassword());
-        Util.ingestTestObjects(SHARED_DEPLOYMENT_BASE);
+        s_items_ingested = Util.ingestTestObjects(s_client, SHARED_DEPLOYMENT_BASE);
+    }
+
+    @AfterClass
+    public static void cleanUp() throws Exception {
+        s_client.shutdown();
+        FedoraServerTestCase.purgeDemoObjects(s_client);
+    }
+
+    @Before
+    public void setUp() {
+        assertTrue("Nothing was ingested from " + Util.resourcePath(SHARED_DEPLOYMENT_BASE), s_items_ingested > 0);
     }
 
     @Test
     public void testListMethods1() throws Exception {
-        FedoraAPIA apia = m_client.getAPIA();
+        FedoraAPIAMTOM apia = s_client.getAPIAMTOM();
         ObjectMethodsDef[] methods;
 
-        methods = filterMethods(apia.listMethods(OBJECT_1_PID, null));
+        methods = filterMethods(apia.listMethods(OBJECT_1_PID, null).toArray(new ObjectMethodsDef[0]));
 
         assertEquals("Wrong number of methods", 1, methods.length);
         assertEquals("Wrong method SDep", SDEF_1_PID, methods[0]
@@ -116,10 +125,10 @@ public class SharedDeploymentTests {
 
     @Test
     public void testListMethods2() throws Exception {
-        FedoraAPIA apia = m_client.getAPIA();
+        FedoraAPIAMTOM apia = s_client.getAPIAMTOM();
         ObjectMethodsDef[] methods;
 
-        methods = filterMethods(apia.listMethods(OBJECT_2_PID, null));
+        methods = filterMethods(apia.listMethods(OBJECT_2_PID, null).toArray(new ObjectMethodsDef[0]));
 
         assertEquals("Wrong number of methods!", 1, methods.length);
         assertEquals("Wrong method SDef!", SDEF_2_PID, methods[0]
@@ -129,10 +138,10 @@ public class SharedDeploymentTests {
 
     @Test
     public void testListMethods1_2() throws Exception {
-        FedoraAPIA apia = m_client.getAPIA();
+        FedoraAPIAMTOM apia = s_client.getAPIAMTOM();
         ObjectMethodsDef[] methods;
 
-        methods = filterMethods(apia.listMethods(OBJECT_1_2_PID, null));
+        methods = filterMethods(apia.listMethods(OBJECT_1_2_PID, null).toArray(new ObjectMethodsDef[0]));
         assertEquals("Too many methods!", 2, methods.length);
         assertNotSame("SDefs are duplicated", methods[0]
                 .getServiceDefinitionPID(), methods[1]
@@ -144,10 +153,10 @@ public class SharedDeploymentTests {
 
     @Test
     public void testListMethods3() throws Exception {
-        FedoraAPIA apia = m_client.getAPIA();
+        FedoraAPIAMTOM apia = s_client.getAPIAMTOM();
         ObjectMethodsDef[] methods;
 
-        methods = filterMethods(apia.listMethods(OBJECT_3_PID, null));
+        methods = filterMethods(apia.listMethods(OBJECT_3_PID, null).toArray(new ObjectMethodsDef[0]));
         assertEquals("Too many methods!", 2, methods.length);
         assertNotSame("SDefs are duplicated", methods[0]
                 .getServiceDefinitionPID(), methods[1]
@@ -159,10 +168,10 @@ public class SharedDeploymentTests {
 
     @Test
     public void testListMethods4() throws Exception {
-        FedoraAPIA apia = m_client.getAPIA();
+        FedoraAPIAMTOM apia = s_client.getAPIAMTOM();
         ObjectMethodsDef[] methods;
 
-        methods = filterMethods(apia.listMethods(OBJECT_4_PID, null));
+        methods = filterMethods(apia.listMethods(OBJECT_4_PID, null).toArray(new ObjectMethodsDef[0]));
         assertEquals("Too many methods!", 3, methods.length);
         assertNotSame("SDefs are duplicated", methods[0]
                 .getServiceDefinitionPID(), methods[1]
@@ -195,21 +204,21 @@ public class SharedDeploymentTests {
         try {
             getDissemination(OBJECT_1_PID, SDEF_1_PID, SDEF_2_METHOD);
             fail("Was able to call wrong method on SDef1");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
 
         try {
             getDissemination(OBJECT_1_PID, SDEF_2_PID, SDEF_2_METHOD);
             fail("Was able use the wrong SDef!");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
 
         try {
             getDissemination(OBJECT_1_PID, SDEF_2_PID, SDEF_1_METHOD);
             fail("Was able use the wrong SDef and method!");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
     }
@@ -224,21 +233,21 @@ public class SharedDeploymentTests {
         try {
             getDissemination(OBJECT_2_PID, SDEF_2_PID, SDEF_1_METHOD);
             fail("Was able to call wrong method on SDef2");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
 
         try {
             getDissemination(OBJECT_2_PID, SDEF_1_PID, SDEF_1_METHOD);
             fail("Was able use the wrong SDef!");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
 
         try {
             getDissemination(OBJECT_2_PID, SDEF_1_PID, SDEF_2_METHOD);
             fail("Was able use the wrong SDef and method!");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
     }
@@ -256,14 +265,14 @@ public class SharedDeploymentTests {
         try {
             getDissemination(OBJECT_1_2_PID, SDEF_1_PID, SDEF_2_METHOD);
             fail("Was able to call wrong method on SDef1");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
 
         try {
             getDissemination(OBJECT_1_2_PID, SDEF_2_PID, SDEF_1_METHOD);
             fail("Was able use the wrong method on SDef2!");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
     }
@@ -281,14 +290,14 @@ public class SharedDeploymentTests {
         try {
             getDissemination(OBJECT_3_PID, SDEF_1_PID, SDEF_2_METHOD);
             fail("Was able to call wrong method on SDef1");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
 
         try {
             getDissemination(OBJECT_3_PID, SDEF_2_PID, SDEF_1_METHOD);
             fail("Was able use the wrong method on SDef2!");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
     }
@@ -311,42 +320,42 @@ public class SharedDeploymentTests {
         try {
             getDissemination(OBJECT_4_PID, SDEF_1_PID, SDEF_2_METHOD);
             fail("Was able to call wrong method on SDef1");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
 
         try {
             getDissemination(OBJECT_4_PID, SDEF_1_PID, SDEF_4_METHOD);
             fail("Was able to call wrong method on SDef1");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
 
         try {
             getDissemination(OBJECT_4_PID, SDEF_2_PID, SDEF_1_METHOD);
             fail("Was able use the wrong method on SDef2!");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
 
         try {
             getDissemination(OBJECT_4_PID, SDEF_2_PID, SDEF_4_METHOD);
             fail("Was able use the wrong method on SDef2!");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
 
         try {
             getDissemination(OBJECT_4_PID, SDEF_4_PID, SDEF_1_METHOD);
             fail("Was able use the wrong method on SDef4!");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
 
         try {
             getDissemination(OBJECT_4_PID, SDEF_4_PID, SDEF_2_METHOD);
             fail("Was able use the wrong method on SDef4!");
-        } catch (AxisFault e) {
+        } catch (SoapFault e) {
             /* Expected */
         }
 
@@ -354,12 +363,7 @@ public class SharedDeploymentTests {
 
     private String getDissemination(String pid, String sDef, String method)
             throws Exception {
-        return Util.getDissemination(m_client, pid, sDef, method);
-    }
-
-    @AfterClass
-    public static void cleanup() throws Exception {
-        FedoraServerTestCase.purgeDemoObjects();
+        return Util.getDissemination(s_client, pid, sDef, method);
     }
 
 }

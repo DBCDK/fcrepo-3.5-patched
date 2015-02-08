@@ -27,23 +27,21 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.apache.axis.AxisFault;
+import org.fcrepo.common.Constants;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.pep.PEPException;
+import org.fcrepo.server.security.xacml.pep.ResourceAttributes;
+import org.fcrepo.server.security.xacml.util.LogUtil;
+import org.fcrepo.server.utilities.CXFUtility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.fcrepo.common.Constants;
-import org.fcrepo.server.security.xacml.pep.PEPException;
-import org.fcrepo.server.security.xacml.util.LogUtil;
-
-import com.sun.xacml.attr.AnyURIAttribute;
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.StringAttribute;
-import com.sun.xacml.ctx.RequestCtx;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
 
 
 /**
  * Handles the getObjectHistory operation.
- * 
+ *
  * @author nishen@melcoe.mq.edu.au
  */
 public class GetObjectHistoryFilter
@@ -54,7 +52,7 @@ public class GetObjectHistoryFilter
 
     /**
      * Default constructor.
-     * 
+     *
      * @throws PEPException
      */
     public GetObjectHistoryFilter()
@@ -68,49 +66,31 @@ public class GetObjectHistoryFilter
      * org.fcrepo.server.security.xacml.pep.rest.filters.RESTFilter#handleRequest(javax.servlet
      * .http.HttpServletRequest, javax.servlet.http.HttpServletResponse)
      */
+    @Override
     public RequestCtx handleRequest(HttpServletRequest request,
                                     HttpServletResponse response)
             throws IOException, ServletException {
-        if (request.getPathInfo() == null) {
-            logger.error("Bad request: " + request.getRequestURI());
-            throw new ServletException("Bad request: "
-                    + request.getRequestURI());
+        String[] parts = getPathParts(request);
+        if (parts.length < 2) {
+            logger.error("Not enough path components on the URI: {}", request.getRequestURI());
+            throw new ServletException("Not enough path components on the URI: " + request.getRequestURI());
         }
 
-        String[] parts = request.getPathInfo().split("/");
-        if (parts.length < 2) {
-            logger.info("Not enough path components on the URI.");
-            throw new ServletException("Not enough path components on the URI.");
-        }
+        String pid = parts[1];
 
         RequestCtx req = null;
 
-        String pid = null;
-
-        pid = parts[1];
-
         Map<URI, AttributeValue> actions = new HashMap<URI, AttributeValue>();
-        Map<URI, AttributeValue> resAttr = new HashMap<URI, AttributeValue>();
+        Map<URI, AttributeValue> resAttr;
 
         try {
-            if (pid != null && !"".equals(pid)) {
-                resAttr.put(Constants.OBJECT.PID.getURI(),
-                            new StringAttribute(pid));
-            }
-            // XACML 1.0 conformance. resource-id is mandatory. Remove when
-            // switching to 2.0
-            if (pid != null && !"".equals(pid)) {
-                resAttr
-                        .put(new URI("urn:oasis:names:tc:xacml:1.0:resource:resource-id"),
-                             new AnyURIAttribute(new URI(pid)));
-            }
+            resAttr = ResourceAttributes.getResources(pid);
 
             actions.put(Constants.ACTION.ID.getURI(),
-                        new StringAttribute(Constants.ACTION.GET_OBJECT_HISTORY
-                                .getURI().toASCIIString()));
+                        Constants.ACTION.GET_OBJECT_HISTORY
+                                .getStringAttribute());
             actions.put(Constants.ACTION.API.getURI(),
-                        new StringAttribute(Constants.ACTION.APIA.getURI()
-                                .toASCIIString()));
+                        Constants.ACTION.APIA.getStringAttribute());
 
             req =
                     getContextHandler().buildRequest(getSubjects(request),
@@ -119,27 +99,14 @@ public class GetObjectHistoryFilter
                                                      getEnvironment(request));
 
             LogUtil.statLog(request.getRemoteUser(),
-                            Constants.ACTION.GET_OBJECT_HISTORY.getURI()
-                                    .toASCIIString(),
+                            Constants.ACTION.GET_OBJECT_HISTORY.uri,
                             pid,
                             null);
         } catch (Exception e) {
             logger.error(e.getMessage(), e);
-            throw AxisFault.makeFault(e);
+            CXFUtility.getFault(e);
         }
 
         return req;
-    }
-
-    /*
-     * (non-Javadoc)
-     * @see
-     * org.fcrepo.server.security.xacml.pep.rest.filters.RESTFilter#handleResponse(javax.servlet
-     * .http.HttpServletRequest, javax.servlet.http.HttpServletResponse)
-     */
-    public RequestCtx handleResponse(HttpServletRequest request,
-                                     HttpServletResponse response)
-            throws IOException, ServletException {
-        return null;
     }
 }

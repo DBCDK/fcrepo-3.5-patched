@@ -38,11 +38,13 @@ import javax.swing.JPasswordField;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
-import org.fcrepo.common.Constants;
-import org.fcrepo.server.access.FedoraAPIA;
-import org.fcrepo.server.management.FedoraAPIM;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.fcrepo.common.Constants;
+
+import org.fcrepo.server.access.FedoraAPIAMTOM;
+import org.fcrepo.server.management.FedoraAPIMMTOM;
 
 /**
  * Launch a dialog for logging into a Fedora repository.
@@ -57,15 +59,15 @@ public class LoginDialog
 
     private static final long serialVersionUID = 1L;
 
-    private final JComboBox m_serverComboBox;
+    private final JComboBox<String> m_serverComboBox;
 
-    private final JComboBox m_protocolComboBox;
+    private final JComboBox<String> m_protocolComboBox;
 
-    private final JComboBox m_usernameComboBox;
+    private final JComboBox<String> m_usernameComboBox;
 
     private final JPasswordField m_passwordField;
 
-    private final JComboBox m_contextComboBox;
+    private final JComboBox<String> m_contextComboBox;
 
     private String m_lastUsername = "fedoraAdmin";
 
@@ -101,13 +103,13 @@ public class LoginDialog
         JLabel passwordLabel = new JLabel("Password");
         JLabel contextLabel = new JLabel("Context");
 
-        m_serverComboBox = new JComboBox();
+        m_serverComboBox = new JComboBox<String>();
         m_serverComboBox.setEditable(true);
-        m_protocolComboBox = new JComboBox();
+        m_protocolComboBox = new JComboBox<String>();
         m_protocolComboBox.setEditable(true);
-        m_contextComboBox = new JComboBox();
+        m_contextComboBox = new JComboBox<String>();
         m_contextComboBox.setEditable(true);
-        m_usernameComboBox = new JComboBox();
+        m_usernameComboBox = new JComboBox<String>();
         m_usernameComboBox.setEditable(true);
         m_passwordField = new JPasswordField();
 
@@ -141,6 +143,7 @@ public class LoginDialog
 
             private static final long serialVersionUID = 1L;
 
+            @Override
             public void actionPerformed(ActionEvent evt) {
                 dispose();
             }
@@ -389,8 +392,8 @@ public class LoginDialog
             }
 
             // set SOAP stubs for Administrator
-            Administrator.APIA = fc.getAPIA();
-            Administrator.APIM = fc.getAPIM();
+            Administrator.APIA = fc.getAPIAMTOM();
+            Administrator.APIM = fc.getAPIMMTOM();
 
         } catch (Exception e) {
             if (e.getMessage().indexOf("Unauthorized") != -1
@@ -419,14 +422,17 @@ public class LoginDialog
             m_passField = pf;
         }
 
+        @Override
         public void changedUpdate(DocumentEvent e) {
             dataChanged();
         }
 
+        @Override
         public void insertUpdate(DocumentEvent e) {
             dataChanged();
         }
 
+        @Override
         public void removeUpdate(DocumentEvent e) {
             dataChanged();
         }
@@ -459,10 +465,11 @@ public class LoginDialog
             m_button = button;
         }
 
+        @Override
         public void actionPerformed(ActionEvent evt) {
             if (m_button.isEnabled()) {
-                FedoraAPIA oldAPIA = Administrator.APIA;
-                FedoraAPIM oldAPIM = Administrator.APIM;
+                FedoraAPIAMTOM oldAPIA = Administrator.APIA;
+                FedoraAPIMMTOM oldAPIM = Administrator.APIM;
                 try {
                     // pull out values and do a quick syntax check
                     String hostPort =
@@ -484,17 +491,17 @@ public class LoginDialog
                     }
                     String protocol =
                             (String) m_protocolComboBox.getSelectedItem();
-                    if (protocol.equals("")) {
+                    if (protocol.isEmpty()) {
                         throw new IOException("No protocol provided.");
                     }
                     String context = (String) m_contextComboBox.getSelectedItem();
-                    if (context.equals("")){
+                    if (context.isEmpty()){
                         throw new IOException("No context provided");
                     }
 
                     String username =
                             (String) m_usernameComboBox.getSelectedItem();
-                    if (username.equals("")) {
+                    if (username.isEmpty()) {
                         throw new IOException("No username provided.");
                     }
                     String pass = new String(m_passwordField.getPassword());

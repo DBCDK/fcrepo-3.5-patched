@@ -2,8 +2,7 @@
 package org.fcrepo.server.security.xacml.pdp.finder.attribute;
 
 import java.net.URI;
-import java.net.URISyntaxException;
-
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.Iterator;
@@ -17,64 +16,66 @@ import javax.naming.directory.InitialDirContext;
 import javax.naming.directory.SearchControls;
 import javax.naming.directory.SearchResult;
 
-import com.sun.xacml.EvaluationCtx;
-import com.sun.xacml.attr.AttributeFactory;
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.BagAttribute;
-import com.sun.xacml.attr.StandardAttributeFactory;
-import com.sun.xacml.cond.EvaluationResult;
-import com.sun.xacml.finder.AttributeFinderModule;
-
+import org.fcrepo.server.security.xacml.pdp.finder.AttributeFinderException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.fcrepo.server.security.xacml.pdp.finder.AttributeFinderConfigUtil;
-import org.fcrepo.server.security.xacml.util.AttributeFinderConfig;
+import org.fcrepo.common.Constants;
+import org.fcrepo.common.policy.xacml1.XACML1SubjectCategoryNamespace;
+
+import org.jboss.security.xacml.sunxacml.EvaluationCtx;
+import org.jboss.security.xacml.sunxacml.attr.AttributeFactory;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
+import org.jboss.security.xacml.sunxacml.attr.BagAttribute;
+import org.jboss.security.xacml.sunxacml.attr.StandardAttributeFactory;
+import org.jboss.security.xacml.sunxacml.cond.EvaluationResult;
 
 public class LDAPAttributeFinder
-        extends AttributeFinderModule {
+        extends DesignatorAttributeFinderModule {
 
     private static final Logger logger =
             LoggerFactory.getLogger(LDAPAttributeFinder.class);
+    
+    private static final URI STRING_DATATYPE = URI.create("http://www.w3.org/2001/XMLSchema#string");
 
-    private AttributeFactory attributeFactory = null;
 
-    private AttributeFinderConfig attributes = null;
+    private final AttributeFactory attributeFactory = StandardAttributeFactory.getFactory();
 
     private Hashtable<String, String> dirEnv = null;
 
-    private Map<String, String> options = null;
+    private Map<String, String> m_options = null;
 
     private InitialDirContext ctx = null;
 
-    public LDAPAttributeFinder() {
+    public LDAPAttributeFinder(Map<String, String> options) {
         try {
-            attributes =
-                    AttributeFinderConfigUtil.getAttributeFinderConfig(this
-                            .getClass().getName());
-            logger.info("Initialised AttributeFinder:"
-                            + this.getClass().getName());
 
-            if (logger.isDebugEnabled()) {
-                logger.debug("registering the following attributes: ");
-                for (int desNum : attributes.getDesignatorIds()) {
-                    for (String attrName : attributes.get(desNum).getAttributeNames()) {
-                        logger.debug(desNum + ": " + attrName);
-                    }
-                }
-            }
-
-            options =
-                    AttributeFinderConfigUtil.getOptionMap(this.getClass()
-                            .getName());
+            m_options =
+                    options;
             dirEnv = new Hashtable<String, String>(options);
-            attributeFactory = StandardAttributeFactory.getFactory();
 
             ctx = new InitialDirContext(dirEnv);
         } catch (Exception e) {
             logger.error("Attribute finder not initialised:"
                     + this.getClass().getName(), e);
         }
+    }
+
+    public void init() throws AttributeFinderException {
+        if (emptyAttributeMap()) {
+            logger.warn(this.getClass().getName() + " configured with no registered attributes");
+            return;
+        }
+        if (logger.isDebugEnabled()) {
+            logger.debug("registering the following attributes: ");
+            for (int desNum : m_attributes.keySet()) {
+                for (String attrName : m_attributes.get(desNum).keySet()) {
+                    logger.debug(desNum + ": " + attrName);
+                }
+            }
+        }
+        logger.info("Initialised AttributeFinder:"
+                    + this.getClass().getName());
     }
 
     /**
@@ -85,18 +86,6 @@ public class LDAPAttributeFinder
     @Override
     public boolean isDesignatorSupported() {
         return true;
-    }
-
-    /**
-     * Returns a <code>Set</code> with a single <code>Integer</code> specifying
-     * that environment attributes are supported by this module.
-     *
-     * @return a <code>Set</code> with
-     *         <code>AttributeDesignator.ENVIRONMENT_TARGET</code> included
-     */
-    @Override
-    public Set<Integer> getSupportedDesignatorTypes() {
-        return attributes.getDesignatorIds();
     }
 
     /**
@@ -130,40 +119,32 @@ public class LDAPAttributeFinder
                                           EvaluationCtx context,
                                           int designatorType) {
         String user = null;
-        try {
-            URI userId = new URI("urn:fedora:names:fedora:2.1:subject:loginId");
-            URI userType = new URI("http://www.w3.org/2001/XMLSchema#string");
-            URI category =
-                    new URI("urn:oasis:names:tc:xacml:1.0:subject-category:access-subject");
+        URI userId = Constants.SUBJECT.LOGIN_ID.getURI();
+        URI category = XACML1SubjectCategoryNamespace.getInstance().ACCESS_SUBJECT.getURI();
 
-            EvaluationResult userER =
-                    context.getSubjectAttribute(userType, userId, category);
-            if (userER == null) {
-                return new EvaluationResult(BagAttribute
-                        .createEmptyBag(attributeType));
-            }
-
-            AttributeValue userAV = userER.getAttributeValue();
-            if (userAV == null) {
-                return new EvaluationResult(BagAttribute
-                        .createEmptyBag(attributeType));
-            }
-
-            user = userAV.encode();
-            if (logger.isDebugEnabled()) {
-                logger.debug("LDAPAttributeFinder: Getting info for " + user);
-            }
-        } catch (URISyntaxException use) {
-            logger.error(use.getMessage());
+        EvaluationResult userER =
+                context.getSubjectAttribute(STRING_DATATYPE, userId, category);
+        if (userER == null) {
             return new EvaluationResult(BagAttribute
                     .createEmptyBag(attributeType));
+        }
+
+        AttributeValue userAV = userER.getAttributeValue();
+        if (userAV == null) {
+            return new EvaluationResult(BagAttribute
+                    .createEmptyBag(attributeType));
+        }
+
+        user = userAV.encode();
+        if (logger.isDebugEnabled()) {
+            logger.debug("LDAPAttributeFinder: Getting info for " + user);
         }
 
         // figure out which attribute we're looking for
         String attrName = attributeId.toString();
 
         // we only know about registered attributes from config file
-        if (attributes.get(designatorType) == null) {
+        if (m_attributes.get(designatorType) == null) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Does not know about designatorType: "
                         + designatorType);
@@ -173,7 +154,7 @@ public class LDAPAttributeFinder
         }
 
         Set<String> allowedAttributes =
-                attributes.get(designatorType).getAttributeNames();
+                m_attributes.get(designatorType).keySet();
         if (!allowedAttributes.contains(attrName)) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Does not know about attribute: " + attrName);
@@ -198,8 +179,8 @@ public class LDAPAttributeFinder
                                                  String attribute,
                                                  URI type) {
         String[] attrsReturned = new String[] {attribute};
-        String base = options.get("searchbase");
-        String filter = "(" + options.get("id-attribute") + "=" + user + ")";
+        String base = m_options.get("searchbase");
+        String filter = "(" + m_options.get("id-attribute") + "=" + user + ")";
 
         SearchControls searchControls = new SearchControls();
         searchControls.setSearchScope(SearchControls.SUBTREE_SCOPE);
@@ -209,12 +190,12 @@ public class LDAPAttributeFinder
 
         Set<AttributeValue> bagValues = new HashSet<AttributeValue>();
         try {
-            NamingEnumeration ne = ctx.search(base, filter, searchControls);
+            NamingEnumeration<SearchResult> ne = ctx.search(base, filter, searchControls);
 
             while (ne.hasMore()) {
                 SearchResult result = (SearchResult) ne.next();
                 Attributes attrs = result.getAttributes();
-                NamingEnumeration neas = attrs.getAll();
+                NamingEnumeration<? extends Attribute> neas = attrs.getAll();
 
                 while (neas.hasMoreElements()) {
                     Attribute attr = (Attribute) neas.nextElement();
@@ -222,7 +203,7 @@ public class LDAPAttributeFinder
                         continue;
                     }
 
-                    NamingEnumeration nea = attr.getAll();
+                    NamingEnumeration<?> nea = attr.getAll();
                     while (nea.hasMoreElements()) {
                         String value = (String) nea.nextElement();
                         if (logger.isDebugEnabled()) {
@@ -259,7 +240,8 @@ public class LDAPAttributeFinder
     }
 
     public static void main(String[] args) throws Exception {
-        LDAPAttributeFinder finder = new LDAPAttributeFinder();
+        HashMap<String,String> test = new HashMap<String, String>();
+        LDAPAttributeFinder finder = new LDAPAttributeFinder(test);
         URI type = new URI("http://www.w3.org/2001/XMLSchema#string");
 
         EvaluationResult result =
@@ -268,7 +250,7 @@ public class LDAPAttributeFinder
                                            type);
         BagAttribute bag = (BagAttribute) result.getAttributeValue();
 
-        Iterator i = bag.iterator();
+        Iterator<?> i = bag.iterator();
         while (i.hasNext()) {
             AttributeValue a = (AttributeValue) i.next();
             logger.info("value: " + a.encode());

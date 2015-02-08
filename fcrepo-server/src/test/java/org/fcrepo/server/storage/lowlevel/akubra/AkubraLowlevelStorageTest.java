@@ -4,30 +4,29 @@
  */
 package org.fcrepo.server.storage.lowlevel.akubra;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-
-import org.apache.commons.io.IOUtils;
-
-import org.junit.Before;
-import org.junit.Test;
+import java.util.Map;
 
 import org.akubraproject.mem.MemBlobStore;
-
+import org.apache.commons.io.IOUtils;
 import org.fcrepo.common.FaultException;
-
 import org.fcrepo.server.errors.LowlevelStorageException;
 import org.fcrepo.server.errors.ObjectAlreadyInLowlevelStorageException;
 import org.fcrepo.server.errors.ObjectNotInLowlevelStorageException;
-
-import static org.junit.Assert.assertEquals;
+import org.fcrepo.server.storage.FedoraStorageHintProvider;
+import org.fcrepo.server.storage.MockFedoraHintsProvider;
+import org.junit.Before;
+import org.junit.Test;
 
 /**
  * Unit tests for {@link AkubraLowlevelStorage}
@@ -64,6 +63,7 @@ public class AkubraLowlevelStorageTest {
     @Test (expected=ObjectAlreadyInLowlevelStorageException.class)
     public void testAddExistingObject() throws LowlevelStorageException {
         instance.addObject(OBJ_KEY, toStream(OBJ_CONTENT));
+        assertTrue(instance.objectExists(OBJ_KEY));
         instance.addObject(OBJ_KEY, toStream(OBJ_CONTENT));
     }
 
@@ -272,6 +272,33 @@ public class AkubraLowlevelStorageTest {
                      instance.getDatastreamSize(DS_KEY));
 
 
+    }
+    
+    @Test
+    public void testAddDatastreamWithHints() throws Exception {        
+        FedoraStorageHintProvider provider = new MockFedoraHintsProvider();
+        Map<String, String> hints = provider.getHintsForAboutToBeStoredDatastream(null, null);
+        instance.addDatastream(DS_KEY, toStream(DS_CONTENT), hints);
+    }
+    @Test
+    public void testReplaceDatastreamWithHints() throws Exception {        
+        FedoraStorageHintProvider provider = new MockFedoraHintsProvider();
+        Map<String, String> hints = provider.getHintsForAboutToBeStoredDatastream(null, null);
+        instance.addDatastream(DS_KEY, toStream(DS_CONTENT), hints);
+        instance.replaceDatastream(DS_KEY, toStream(DS_CONTENT), hints);
+    }
+    @Test
+    public void testAddObjectWithHints() throws Exception {        
+        FedoraStorageHintProvider provider = new MockFedoraHintsProvider();
+        Map<String, String> hints = provider.getHintsForAboutToBeStoredObject(null);
+        instance.addObject(OBJ_KEY, toStream(OBJ_CONTENT), hints);
+    }
+    @Test
+    public void testReplaceObjectWithHints() throws Exception {        
+        FedoraStorageHintProvider provider = new MockFedoraHintsProvider();
+        Map<String, String> hints = provider.getHintsForAboutToBeStoredObject(null);
+        instance.addObject(OBJ_KEY, toStream(OBJ_CONTENT), hints);
+        instance.replaceObject(OBJ_KEY, toStream(OBJ_CONTENT), hints);
     }
 
 

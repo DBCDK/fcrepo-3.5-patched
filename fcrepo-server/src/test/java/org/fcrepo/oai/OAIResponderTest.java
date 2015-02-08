@@ -40,6 +40,7 @@ public class OAIResponderTest
 
     protected final Date obj1Date = new Date(1025503628000L); // 2002-07-01T06:07:08Z
     protected final Date obj2Date = new Date(1262474665000L); // 2010-01-02T23:24:25Z
+    protected final Set<String> emptySet = Collections.emptySet();
 
     static class MockOAIProvider implements OAIProvider {
 
@@ -182,7 +183,7 @@ public class OAIResponderTest
             }
         };
 
-        OAIResponder responder = new OAIResponder(provider);
+        OAIResponder responder = new OAIResponder(provider, null);
 
         StringWriter writer = new StringWriter();
 
@@ -194,8 +195,7 @@ public class OAIResponderTest
         Date earliestDatestamp = new Date(0);
 
         responder.respondToIdentify(args, "http://localhost:8080/fedora/oai", "repositoryName", "protocolVersion", earliestDatestamp, DeletedRecordSupport.TRANSIENT,
-                Collections.emptySet(), Collections.emptySet(), Collections.emptySet(),
-                new PrintWriter(writer));
+                emptySet, emptySet, emptySet, new PrintWriter(writer));
 
         String expectedXml =
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"+
@@ -244,14 +244,14 @@ public class OAIResponderTest
                 assertEquals(untilStr, actualUntil);
 
                 List ret = new ArrayList();
-                ret.add(new SimpleHeader("oai:domain:obj:1", obj1Date, Collections.emptySet(), true));
-                ret.add(new SimpleHeader("oai:domain:obj:2", obj2Date, Collections.emptySet(), false));
+                ret.add(new SimpleHeader("oai:domain:obj:1", obj1Date, emptySet, true));
+                ret.add(new SimpleHeader("oai:domain:obj:2", obj2Date, emptySet, false));
 
                 return ret;
             }
         };
 
-        OAIResponder responder = new OAIResponder(provider);
+        OAIResponder responder = new OAIResponder(provider, null);
         Map args = new HashMap();
 
         args.put("verb", "ListIdentifiers");
@@ -278,14 +278,14 @@ public class OAIResponderTest
                 assertEquals("2010-12-24T23:59:59.999Z", actualUntil);
 
                 List ret = new ArrayList();
-                ret.add(new SimpleHeader("oai:domain:obj:1", obj1Date, Collections.emptySet(), true));
-                ret.add(new SimpleHeader("oai:domain:obj:2", obj2Date, Collections.emptySet(), false));
+                ret.add(new SimpleHeader("oai:domain:obj:1", obj1Date, emptySet, true));
+                ret.add(new SimpleHeader("oai:domain:obj:2", obj2Date, emptySet, false));
 
                 return ret;
             }
         };
 
-        OAIResponder responder = new OAIResponder(provider);
+        OAIResponder responder = new OAIResponder(provider, null);
         Map args = new HashMap();
 
         args.put("verb", "ListIdentifiers");
@@ -305,7 +305,7 @@ public class OAIResponderTest
                 return DateGranularitySupport.SECONDS;
             }
         };
-        OAIResponder responder = new OAIResponder(provider);
+        OAIResponder responder = new OAIResponder(provider, null);
 
         StringWriter writer = new StringWriter();
 
@@ -314,8 +314,8 @@ public class OAIResponderTest
         args.put("verb", "identify");
 
         List<Header> headers = new ArrayList<Header>();
-        headers.add(new SimpleHeader("oai:domain:obj:1", obj1Date, Collections.emptySet(), true));
-        headers.add(new SimpleHeader("oai:domain:obj:2", obj2Date, Collections.emptySet(), false));
+        headers.add(new SimpleHeader("oai:domain:obj:1", obj1Date, emptySet, true));
+        headers.add(new SimpleHeader("oai:domain:obj:2", obj2Date, emptySet, false));
 
         // Invoke tested method
         responder.respondToListIdentifiers(args, "http://localhost:8080/fedora/oai", headers, null, new PrintWriter(writer));
@@ -368,17 +368,17 @@ public class OAIResponderTest
                 assertEquals(untilStr, actualUntil);
 
                 List ret = new ArrayList();
-                ret.add(new SimpleRecord(new SimpleHeader("oai:domain:obj:1", obj1Date, Collections.emptySet(), true),
-                        "", Collections.emptySet()));
+                ret.add(new SimpleRecord(new SimpleHeader("oai:domain:obj:1", obj1Date, emptySet, true),
+                        "", emptySet));
 
-                ret.add(new SimpleRecord(new SimpleHeader("oai:domain:obj:2", obj2Date, Collections.emptySet(), false),
-                        "", Collections.emptySet()));
+                ret.add(new SimpleRecord(new SimpleHeader("oai:domain:obj:2", obj2Date, emptySet, false),
+                        "", emptySet));
 
                 return ret;
             }
         };
 
-        OAIResponder responder = new OAIResponder(provider);
+        OAIResponder responder = new OAIResponder(provider, null);
         Map args = new HashMap();
 
         args.put("verb", "ListRecords");

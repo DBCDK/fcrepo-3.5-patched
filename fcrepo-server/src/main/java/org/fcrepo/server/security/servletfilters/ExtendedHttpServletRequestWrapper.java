@@ -6,6 +6,7 @@ package org.fcrepo.server.security.servletfilters;
 
 import java.security.Principal;
 
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Hashtable;
@@ -96,13 +97,13 @@ public class ExtendedHttpServletRequestWrapper
     }
 
     public final boolean isUserSponsored() {
-        return !(sponsoredUser == null || "".equals(sponsoredUser));
+        return !(sponsoredUser == null || sponsoredUser.isEmpty());
     }
 
     protected boolean isSponsoredUserRequested() {
         String sponsoredUser = getFromHeader();
         boolean isSponsoredUserRequested =
-                !(sponsoredUser == null || "".equals(sponsoredUser));
+                !(sponsoredUser == null || sponsoredUser.isEmpty());
         return isSponsoredUserRequested;
     }
 
@@ -124,14 +125,16 @@ public class ExtendedHttpServletRequestWrapper
         return remoteUser;
     }
 
-    private final Map authenticatedAttributes = new Hashtable();
+    private final Map<String, Map<String, Set<?>>> authenticatedAttributes =
+            new Hashtable<String, Map<String,Set<?>>>();
 
-    private final Map sponsoredAttributes = new Hashtable();
+    private final Map<String, Map<String, Set<?>>> sponsoredAttributes =
+            new Hashtable<String, Map<String,Set<?>>>();
 
-    public final void auditInnerMap(Map map) {
+    public final void auditInnerMap(Map<String,?> map) {
         if (logger.isDebugEnabled()) {
-            for (Iterator it = map.keySet().iterator(); it.hasNext();) {
-                String key = (String) it.next();
+            for (Iterator<String> it = map.keySet().iterator(); it.hasNext();) {
+                String key = it.next();
                 Object value = map.get(key);
                 StringBuffer sb = new StringBuffer(key + "==");
                 String comma = "";
@@ -152,7 +155,7 @@ public class ExtendedHttpServletRequestWrapper
                     sb.append("]");
                 } else if (value instanceof Set) {
                     sb.append("{");
-                    for (Iterator it2 = ((Set) value).iterator(); it2.hasNext();) {
+                    for (Iterator<?> it2 = ((Set<?>) value).iterator(); it2.hasNext();) {
                         Object o = it2.next();
                         if (o instanceof String) {
                             sb.append(comma + o);
@@ -171,9 +174,9 @@ public class ExtendedHttpServletRequestWrapper
         }
     }
 
-    public final void auditInnerSet(Set set) {
+    public final void auditInnerSet(Set<?> set) {
         if (logger.isDebugEnabled()) {
-            for (Iterator it = set.iterator(); it.hasNext();) {
+            for (Iterator<?> it = set.iterator(); it.hasNext();) {
                 Object value = it.next();
                 if (value instanceof String) {
                     logger.debug((String) value);
@@ -184,29 +187,16 @@ public class ExtendedHttpServletRequestWrapper
         }
     }
 
-    public final void auditOuterMap(Map map, String desc) {
+    public final void auditOuterMap(Map<String, Map<String, Set<?>>> authenticatedAttributes2,
+            String desc) {
         if (logger.isDebugEnabled()) {
             logger.debug("");
             logger.debug("auditing " + desc);
-            for (Iterator it = map.keySet().iterator(); it.hasNext();) {
-                Object key = it.next();
-                Object inner = map.get(key);
-                String authority = "";
-                if (key instanceof String) {
-                    authority = (String) key;
-                } else {
-                    authority = "<authority not a string>";
-                }
-                if (inner instanceof Map) {
-                    logger.debug(authority + " maps to . . .");
-                    auditInnerMap((Map) inner);
-                } else if (inner instanceof Set) {
-                    logger.debug(authority + " maps to . . .");
-                    auditInnerSet((Set) inner);
-                } else {
-                    logger.debug(authority + " maps to an unknown object=="
-                            + map.getClass().getName());
-                }
+            for (Iterator<String> it = authenticatedAttributes2.keySet().iterator(); it.hasNext();) {
+                String authority = it.next();
+                Map<String,Set<?>> inner = authenticatedAttributes2.get(authority);
+                logger.debug("{} maps to . . .", authority);
+                auditInnerMap(inner);
             }
         }
     }
@@ -224,14 +214,14 @@ public class ExtendedHttpServletRequestWrapper
     public boolean getAttributeDefined(String key)
             throws AuthzOperationalException {
         boolean defined = false;
-        Map map = null;
+        Map<String, Map<String,Set<?>>> map = null;
         if (isUserSponsored()) {
             map = sponsoredAttributes;
         } else {
             map = authenticatedAttributes;
         }
-        for (Iterator iterator = map.values().iterator(); iterator.hasNext();) {
-            Map attributesFromOneAuthority = (Map) iterator.next();
+        for (Iterator<Map<String, Set<?>>> iterator = map.values().iterator(); iterator.hasNext();) {
+            Map<?,?> attributesFromOneAuthority = (Map<?,?>) iterator.next();
             if (attributesFromOneAuthority.containsKey(key)) {
                 defined = true;
                 break;
@@ -240,35 +230,35 @@ public class ExtendedHttpServletRequestWrapper
         return defined;
     }
 
-    public Set getAttributeValues(String key) throws AuthzOperationalException {
-        Set accumulatedValues4Key = null;
-        Map map = null;
+    public Set<?> getAttributeValues(String key) throws AuthzOperationalException {
+        Set<Object> accumulatedValues4Key = null;
+        Map<String,Map<String,Set<?>>> map = null;
         if (isUserSponsored()) {
             map = sponsoredAttributes;
         } else {
             map = authenticatedAttributes;
         }
-        for (Iterator iterator = map.values().iterator(); iterator.hasNext();) {
-            Map attributesFromOneAuthority = (Map) iterator.next();
+        for (Iterator<Map<String, Set<?>>> iterator = map.values().iterator(); iterator.hasNext();) {
+            Map<String, Set<?>> attributesFromOneAuthority = iterator.next();
             if (attributesFromOneAuthority.containsKey(key)) {
-                Set someValues4Key = (Set) attributesFromOneAuthority.get(key);
+                Set<?> someValues4Key = (Set<?>) attributesFromOneAuthority.get(key);
                 if (someValues4Key != null && !someValues4Key.isEmpty()) {
                     if (accumulatedValues4Key == null) {
-                        accumulatedValues4Key = new HashSet();
+                        accumulatedValues4Key = new HashSet<Object>();
                     }
                     accumulatedValues4Key.addAll(someValues4Key);
                 }
             }
         }
         if (accumulatedValues4Key == null) {
-            accumulatedValues4Key = IMMUTABLE_NULL_SET;
+            accumulatedValues4Key = Collections.emptySet();
         }
         return accumulatedValues4Key;
     }
 
     public boolean hasAttributeValues(String key)
             throws AuthzOperationalException {
-        Set temp = getAttributeValues(key);
+        Set<?> temp = getAttributeValues(key);
         return !temp.isEmpty();
     }
 
@@ -279,33 +269,27 @@ public class ExtendedHttpServletRequestWrapper
         return isAttributeDefined;
     }
 
-    private void putIntoMap(Map map, String key, Object value) throws Exception {
+    private void putMapIntoMap(Map<String, Map<String, Set<?>>> sponsoredAttributes2,
+            String key, Map<String, Set<?>> attributes) throws Exception {
         if (wrapperWriteLocked) {
             throw new Exception();
         }
         if (!isAuthenticated()) {
             throw new Exception("can't collect user roles/attributes/groups until after authentication");
         }
-        if (map == null || key == null || value == null) {
-            throw new Exception("null parm, map==" + map + ", key==" + key
-                    + ", value==" + value);
+        if (sponsoredAttributes2 == null || key == null || attributes == null) {
+            throw new Exception("null parm, map==" + sponsoredAttributes2 + ", key==" + key
+                    + ", value==" + attributes);
         }
-        if (map.containsKey(key)) {
+        if (sponsoredAttributes2.containsKey(key)) {
             throw new Exception("map already contains key==" + key);
         }
-        logger.debug("mapping " + key + " => " + value + " in " + map);
-        map.put(key, value);
+        logger.debug("mapping {} => {} in {}", key, attributes, sponsoredAttributes2);
+        sponsoredAttributes2.put(key, attributes);
     }
 
-    private void putMapIntoMap(Map map, String key, Object value)
-            throws Exception {
-        if (!(value instanceof Map)) {
-            throw new Exception("input parm must be a map");
-        }
-        putIntoMap(map, key, value);
-    }
-
-    public void addAttributes(String authority, Map attributes)
+    @Override
+    public void addAttributes(String authority, Map<String, Set<?>> attributes)
             throws Exception {
         if (isUserSponsored()) {
             // after user is sponsored, only sponsored-user roles/attributes/groups are collected
@@ -316,23 +300,22 @@ public class ExtendedHttpServletRequestWrapper
         }
     }
 
-    private Map getAllAttributes(Map attributeGroup) {
-        Map all = new Hashtable();
-        for (Iterator it = attributeGroup.values().iterator(); it.hasNext();) {
-            Map m = (Map) it.next();
+    private Map<String, Set<?>> getAllAttributes(Map<String, Map<String, Set<?>>> attributeGroup) {
+        Map<String, Set<?>> all = new Hashtable<String, Set<?>>();
+        for (Iterator<Map<String, Set<?>>> it = attributeGroup.values().iterator();
+                it.hasNext();) {
+            Map<String, Set<?>> m = it.next();
             all.putAll(m);
         }
         return all;
     }
 
-    public Map getAllAttributes() throws AuthzOperationalException {
-        Map all = null;
+    public Map<String, Set<?>> getAllAttributes() throws AuthzOperationalException {
         if (isUserSponsored()) {
-            all = getAllAttributes(sponsoredAttributes);
+            return getAllAttributes(sponsoredAttributes);
         } else {
-            all = getAllAttributes(authenticatedAttributes);
+            return getAllAttributes(authenticatedAttributes);
         }
-        return all;
     }
 
     public static final String BASIC = "Basic";
@@ -343,12 +326,12 @@ public class ExtendedHttpServletRequestWrapper
         String[] usernamePassword = null;
 
         String msg = here + "header intact";
-        if (header == null || "".equals(header)) {
+        if (header == null || header.isEmpty()) {
             String exceptionMsg = msg + FAILED;
             logger.error(exceptionMsg + ", header==" + header);
             throw new Exception(exceptionMsg);
         }
-        logger.debug(msg + SUCCEEDED);
+        logger.debug("{}{}", msg, SUCCEEDED);
 
         String authschemeUsernamepassword[] = header.split("\\s+");
 
@@ -358,7 +341,7 @@ public class ExtendedHttpServletRequestWrapper
             logger.error(exceptionMsg + ", header==" + header);
             throw new Exception(exceptionMsg);
         }
-        logger.debug(msg + SUCCEEDED);
+        logger.debug("{}{}", msg, SUCCEEDED);
 
         msg = here + "auth scheme";
         String authscheme = authschemeUsernamepassword[0];
@@ -367,74 +350,71 @@ public class ExtendedHttpServletRequestWrapper
             logger.error(exceptionMsg + ", authscheme==" + authscheme);
             throw new Exception(exceptionMsg);
         }
-        logger.debug(msg + SUCCEEDED);
+        logger.debug("{}{}", msg, SUCCEEDED);
 
         msg = here + "digest non-null";
         String usernamepassword = authschemeUsernamepassword[1];
-        if (usernamepassword == null || "".equals(usernamepassword)) {
+        if (usernamepassword == null || usernamepassword.isEmpty()) {
             String exceptionMsg = msg + FAILED;
             logger.error(exceptionMsg + ", usernamepassword==" + usernamepassword);
             throw new Exception(exceptionMsg);
         }
-        logger.debug(msg + SUCCEEDED + ", usernamepassword==" + usernamepassword);
+        logger.debug("{}{}, usernamepassword=={}", msg, SUCCEEDED,
+                usernamepassword);
 
         byte[] encoded = usernamepassword.getBytes();
-        msg = here + "digest base64-encoded";
-        if (!Base64.isArrayByteBase64(encoded)) {
-            String exceptionMsg = msg + FAILED;
+        if (!Base64.isBase64(encoded)) {
+            String exceptionMsg = here + "digest base64-encoded" + FAILED;
             logger.error(exceptionMsg + ", encoded==" + encoded);
             throw new Exception(exceptionMsg);
         }
         if (logger.isDebugEnabled()) {
-            logger.debug(msg + SUCCEEDED + ", encoded==" + encoded);
+            logger.debug("{}digest base64-encoded{}, encoded=={}",
+                    here, SUCCEEDED,encoded);
         }
 
         byte[] decodedAsByteArray = Base64.decodeBase64(encoded);
-        logger.debug(here + "got decoded bytes" + SUCCEEDED
-                + ", decodedAsByteArray==" + decodedAsByteArray);
+        logger.debug("{}got decoded bytes{}, decodedAsByteArray=={}",
+                here, SUCCEEDED, decodedAsByteArray);
 
         String decoded = new String(decodedAsByteArray); //decodedAsByteArray.toString();
-        logger.debug(here + "got decoded string" + SUCCEEDED + ", decoded=="
-                + decoded);
+        logger.debug("{}got decoded string{}, decoded=={}",
+                here, SUCCEEDED, decoded);
 
-        msg = here + "digest decoded";
-        if (decoded == null || "".equals(decoded)) {
+        if (decoded == null || decoded.isEmpty()) {
             String exceptionMsg = msg + FAILED;
             logger.error(exceptionMsg + ", digest decoded==" + decoded);
             throw new Exception(exceptionMsg);
         }
-        logger.debug(msg + SUCCEEDED);
+        logger.debug("{}digest decoded{}", here, SUCCEEDED);
 
-        String DELIMITER = ":";
-        if (decoded == null) {
-            logger.error("decoded user/password is null . . . returning 0-length strings");
-            usernamePassword = new String[2];
-            usernamePassword[0] = "";
-            usernamePassword[1] = "";
-        } else if (decoded.indexOf(DELIMITER) < 0) {
+        char DELIMITER = ':';
+        if (decoded.indexOf(DELIMITER) < 0) {
             String exceptionMsg = "decoded user/password lacks delimiter";
             logger.error(exceptionMsg + " . . . throwing exception");
             throw new Exception(exceptionMsg);
-        } else if (decoded.startsWith(DELIMITER)) {
+        } else if (decoded.charAt(0) == DELIMITER) {
             logger.error("decoded user/password is lacks user . . . returning 0-length strings");
             usernamePassword = new String[2];
             usernamePassword[0] = "";
             usernamePassword[1] = "";
-        } else if (decoded.endsWith(DELIMITER)) { // no password, e.g., user == "guest"
+        } else if (decoded.charAt(decoded.length()-1) == DELIMITER) { // no password, e.g., user == "guest"
             usernamePassword = new String[2];
             usernamePassword[0] = decoded.substring(0, decoded.length() - 1);
             usernamePassword[1] = "";
         } else { // usual, expected case
-            usernamePassword = decoded.split(DELIMITER);
+            usernamePassword = new String[2];
+            int ix = decoded.indexOf(DELIMITER);
+            usernamePassword[0] = decoded.substring(0, ix);
+            usernamePassword[1] = decoded.substring(ix + 1);
         }
 
-        msg = here + "user/password split";
         if (usernamePassword.length != 2) {
-            String exceptionMsg = msg + FAILED;
+            String exceptionMsg = here + "user/password split" + FAILED;
             logger.error(exceptionMsg + ", digest decoded==" + decoded);
             throw new Exception(exceptionMsg);
         }
-        logger.debug(msg + SUCCEEDED);
+        logger.debug("{}user/password split{}", here, SUCCEEDED);
 
         return usernamePassword;
     }
@@ -444,14 +424,14 @@ public class ExtendedHttpServletRequestWrapper
     public final String getAuthorizationHeader() {
         logger.debug("getAuthorizationHeader()");
         logger.debug("getting this headers");
-        for (Enumeration enu = getHeaderNames(); enu.hasMoreElements();) {
+        for (Enumeration<?> enu = getHeaderNames(); enu.hasMoreElements();) {
             String name = (String) enu.nextElement();
             logger.debug("another headername==" + name);
             String value = getHeader(name);
             logger.debug("another headervalue==" + value);
         }
         logger.debug("getting super headers");
-        for (Enumeration enu = super.getHeaderNames(); enu.hasMoreElements();) {
+        for (Enumeration<?> enu = super.getHeaderNames(); enu.hasMoreElements();) {
             String name = (String) enu.nextElement();
             logger.debug("another headername==" + name);
             String value = super.getHeader(name);
@@ -470,15 +450,15 @@ public class ExtendedHttpServletRequestWrapper
         if (username == null) {
             logger.debug("username==null, so will grok now");
             String authorizationHeader = getAuthorizationHeader();
-            logger.debug("authorizationHeader==" + authorizationHeader);
-            if (authorizationHeader != null && !"".equals(authorizationHeader)) {
+            logger.debug("authorizationHeader=={}", authorizationHeader);
+            if (authorizationHeader != null && !authorizationHeader.isEmpty()) {
                 logger.debug("authorizationHeader is intact");
                 String[] usernamePassword =
                         parseUsernamePassword(authorizationHeader);
                 logger.debug("usernamePassword[] length=="
                         + usernamePassword.length);
                 username = usernamePassword[0];
-                logger.debug("username (usernamePassword[0])==" + username);
+                logger.debug("username (usernamePassword[0])=={}", username);
                 if (super.getRemoteUser() == null) {
                     logger.debug("had none before");
                 } else if (super.getRemoteUser() == username
@@ -489,20 +469,20 @@ public class ExtendedHttpServletRequestWrapper
                 }
             }
         }
-        logger.debug("return user==" + username);
+        logger.debug("return user=={}", username);
         return username;
     }
 
     public final String getPassword() throws Exception {
         if (password == null) {
             String authorizationHeader = getAuthorizationHeader();
-            if (authorizationHeader != null && !"".equals(authorizationHeader)) {
+            if (authorizationHeader != null && !authorizationHeader.isEmpty()) {
                 String[] usernamePassword =
                         parseUsernamePassword(authorizationHeader);
                 password = usernamePassword[1];
             }
         }
-        logger.debug("return password==" + password);
+        logger.debug("return password=={}", password);
         return password;
     }
 
@@ -537,11 +517,13 @@ public class ExtendedHttpServletRequestWrapper
 
     @Override
     public boolean isSecure() {
-        logger.debug("super.isSecure()==" + super.isSecure());
-        logger.debug("this.getLocalPort()==" + getLocalPort());
-        logger.debug("this.getProtocol()==" + getProtocol());
-        logger.debug("this.getServerPort()==" + getServerPort());
-        logger.debug("this.getRequestURI()==" + getRequestURI());
+        if (logger.isDebugEnabled()){
+            logger.debug("super.isSecure()=={}", super.isSecure());
+            logger.debug("this.getLocalPort()=={}", getLocalPort());
+            logger.debug("this.getProtocol()=={}", getProtocol());
+            logger.debug("this.getServerPort()=={}", getServerPort());
+            logger.debug("this.getRequestURI()=={}", getRequestURI());
+        }
         return super.isSecure();
     }
 

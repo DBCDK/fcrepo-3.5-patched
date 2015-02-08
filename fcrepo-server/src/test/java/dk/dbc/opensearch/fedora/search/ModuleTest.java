@@ -1217,7 +1217,7 @@ public class ModuleTest
 
         final Set< RelationshipTuple > relationships = new LinkedHashSet< RelationshipTuple >();
         relationships.add( new RelationshipTuple( subject, predicate, object,
-            true, "") );
+            true, null) );
 
         ingestObjectWithRelationships( subject, new String[]{ "demo object1" },
             "", "unit test", relationships );
@@ -1275,9 +1275,9 @@ public class ModuleTest
 
         final Set< RelationshipTuple > relationships = new LinkedHashSet< RelationshipTuple >();
         relationships.add( new RelationshipTuple( subject, predicate1, object1,
-            true, "") );
+            true, null) );
         relationships.add( new RelationshipTuple( subject, predicate2, object2,
-            true, "") );
+            true, null) );
 
         ingestObjectWithRelationships( subject, new String[]{ "demo object1" },
             "", "unit test", relationships );

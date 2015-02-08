@@ -10,7 +10,6 @@ import java.io.FileOutputStream;
 import java.io.PrintStream;
 
 import java.util.Enumeration;
-import java.util.Hashtable;
 import java.util.Properties;
 
 import org.fcrepo.common.Constants;
@@ -46,9 +45,6 @@ class BatchAdditions
     private String namespaceDeclarations = null;
 
     private int startObject = 0;
-
-    //map METS elements names to directory names used in staging tree
-    private static final Hashtable metadataCategories = new Hashtable();
 
     //populated in constructor
     String[] datastreams = null;
@@ -94,6 +90,7 @@ class BatchAdditions
                 String temp = new String(buffer, 0, bytesRead);
                 sbuffer.append(temp);
             }
+            fileInputStream.close();
             contents = new String(sbuffer);
         } catch (Exception e) {
             System.err.println("exception in content read " + e.getMessage());
@@ -106,7 +103,7 @@ class BatchAdditions
                                               String context,
                                               String objectname,
                                               int indents) {
-        Enumeration elementNames = metadataProperties.propertyNames(); //metadataCategories.keys();
+        Enumeration<?> elementNames = metadataProperties.propertyNames(); //metadataCategories.keys();
         String tabs = "STRING NOT ASSIGNED TO";
         {
             StringBuffer temp = new StringBuffer();
@@ -123,9 +120,9 @@ class BatchAdditions
                         metadataProperties.getProperty(elementName); //metadataCategories.get(elementName);
                 String parentPath = context + directoryName;
                 String fileName = getFilename(parentPath, objectname);
-                if (fileName != null && !fileName.equals("")) {
+                if (fileName != null && !fileName.isEmpty()) {
                     String metadata = getContents(parentPath + FS + fileName);
-                    if (metadata != null && !metadata.equals("")) {
+                    if (metadata != null && !metadata.isEmpty()) {
                         out.println(tabs + "\t<metadata id=\"" + elementName
                                 + "\">");
                         out.println(metadata);
@@ -262,10 +259,6 @@ class BatchAdditions
         datastreams = new String[datastreamDirectories.length];
         for (int i = 0; i < datastreamDirectories.length; i++) {
             if (datastreamDirectories[i].isDirectory()) {
-                String directoryName = datastreamDirectories[i].getName();
-                if (metadataCategories.get(directoryName) != null) {
-                    throw new Exception();
-                }
                 datastreams[i] = datastreamDirectories[i].getName();
             }
         }
@@ -308,7 +301,7 @@ class BatchAdditions
                                 objectname,
                                 1);
                 out.println("\t<datastreams>");
-                Enumeration ddatastreams = dataProperties.propertyNames();
+                Enumeration<?> ddatastreams = dataProperties.propertyNames();
                 while (ddatastreams.hasMoreElements()) {
                     String ndatastream = (String) ddatastreams.nextElement();
                     String datastream = dataProperties.getProperty(ndatastream);

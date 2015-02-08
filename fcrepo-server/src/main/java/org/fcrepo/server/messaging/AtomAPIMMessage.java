@@ -4,17 +4,15 @@
  */
 package org.fcrepo.server.messaging;
 
-import java.io.ByteArrayOutputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.Writer;
-
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
-
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -22,23 +20,23 @@ import java.util.List;
 import java.util.UUID;
 
 import org.apache.abdera.Abdera;
+import org.apache.abdera.factory.Factory;
 import org.apache.abdera.model.Category;
 import org.apache.abdera.model.Document;
 import org.apache.abdera.model.Entry;
 import org.apache.abdera.parser.Parser;
-
+import org.apache.abdera.writer.WriterFactory;
 import org.dom4j.DocumentException;
-
-import org.trippi.RDFFormat;
-import org.trippi.TrippiException;
-
 import org.fcrepo.common.Constants;
 import org.fcrepo.server.errors.MessagingException;
 import org.fcrepo.server.storage.types.RelationshipTuple;
 import org.fcrepo.server.storage.types.TupleArrayTripleIterator;
 import org.fcrepo.utilities.DateUtility;
+import org.fcrepo.utilities.ReadableByteArrayOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.trippi.RDFFormat;
+import org.trippi.TrippiException;
 
 
 /**
@@ -85,7 +83,16 @@ public class AtomAPIMMessage
     private static final Logger logger =
             LoggerFactory.getLogger(AtomAPIMMessage.class);
 
-    private final Abdera abdera = new Abdera();
+    private final static Abdera abdera = new Abdera();
+
+    private final static Factory abderaFactory = abdera.getFactory();
+
+    private final static Parser abderaParser = abdera.getParser();
+
+    private final static WriterFactory abderaWriterFactory = abdera.getWriterFactory();
+
+    private final static org.apache.abdera.writer.Writer abderaWriter
+                                                             = abderaWriterFactory.getWriter("prettyxml");
 
     private final static String TYPES_NS = Constants.TYPES.uri;
 
@@ -94,6 +101,10 @@ public class AtomAPIMMessage
     private final static String versionPredicate = Constants.VIEW.VERSION.uri;
 
     private final static String formatPredicate = "http://www.fedora.info/definitions/1/0/types/formatURI";
+    
+    private final static String nullstring = "null";
+    private final static String delimiter = ", ";
+
 
     private static FedoraTypes fedoraTypes;
 
@@ -118,6 +129,8 @@ public class AtomAPIMMessage
     private final Object returnVal;
 
     private final Entry entry;
+
+    private String stringValue = null;
 
     public AtomAPIMMessage(FedoraMethod method, String fedoraBaseUrl, String serverVersion, String format)
             throws MessagingException {
@@ -148,7 +161,7 @@ public class AtomAPIMMessage
             author = "unknown";
         }
 
-        entry = abdera.getFactory().newEntry();
+        entry = abderaFactory.newEntry();
         entry.declareNS(Constants.XML_XSD.uri, "xsd");
         entry.declareNS(TYPES_NS, TYPES_PREFIX);
 
@@ -157,20 +170,20 @@ public class AtomAPIMMessage
         setAuthor();
         setTitle();
         addMethodParameters();
-        if (pid != null || !pid.equals("")) {
+        if (pid != null || !pid.isEmpty()) {
             entry.setSummary(pid);
         }
         setReturnValue();
 
-        if (serverVersion != null && !serverVersion.equals(""))
+        if (serverVersion != null && !serverVersion.isEmpty())
             entry.addCategory(versionPredicate, serverVersion, null);
-        if (format != null && !format.equals(""))
+        if (format != null && !format.isEmpty())
             entry.addCategory(formatPredicate, format, null);
     }
 
     public AtomAPIMMessage(String messageText) {
-        Parser parser = abdera.getParser();
-        Document<Entry> entryDoc = parser.parse(new StringReader(messageText));
+        //Parser parser = abdera.getParser();
+        Document<Entry> entryDoc = abderaParser.parse(new StringReader(messageText));
         entry = entryDoc.getRoot();
         methodName = entry.getTitle();
         date = entry.getUpdated();
@@ -243,7 +256,7 @@ public class AtomAPIMMessage
         }
         String javaType = obj.getClass().getCanonicalName();
         String term;
-        if (javaType.equals("java.util.Date")) {
+        if (javaType != null && javaType.equals("java.util.Date")) { // several circumstances yield null canonical names
             term = DateUtility.convertDateToXSDString((Date) obj);
         } else if (xsdType.equals("fedora-types:ArrayOfString")) {
             term = array2string(obj);
@@ -256,14 +269,14 @@ public class AtomAPIMMessage
             TupleArrayTripleIterator iter =
                     new TupleArrayTripleIterator(new ArrayList<RelationshipTuple>(Arrays
                             .asList(tuples)));
-            ByteArrayOutputStream os = new ByteArrayOutputStream();
+            ReadableByteArrayOutputStream os = new ReadableByteArrayOutputStream();
             try {
                 iter.toStream(os, RDFFormat.NOTATION_3, false);
             } catch (TrippiException e) {
                 e.printStackTrace();
             }
-            term = new String(os.toByteArray());
-        } else if (javaType.equals("java.lang.String")) {
+            term = os.getString(Charset.forName("UTF-8"));
+        } else if (javaType != null && javaType.equals("java.lang.String")) {
             term = (String) obj;
             term = term.replaceAll("\"", "'");
         } else {
@@ -277,20 +290,24 @@ public class AtomAPIMMessage
      */
     @Override
     public String toString() {
-        Writer sWriter = new StringWriter();
+        if (stringValue == null) {
+            Writer sWriter = new StringWriter();
 
-        try {
-            entry.writeTo(abdera.getWriterFactory().getWriter("prettyxml"), sWriter);
-        } catch (IOException e) {
-            logger.error(e.getMessage());
+            try {
+                entry.writeTo(abderaWriter, sWriter);
+            } catch (IOException e) {
+                logger.error(e.getMessage());
+            }
+            stringValue = sWriter.toString();
         }
-        return sWriter.toString();
+        return stringValue;
     }
 
     /**
      *
      * {@inheritDoc}
      */
+    @Override
     public String getBaseUrl() {
         return fedoraBaseUrl;
     }
@@ -299,6 +316,7 @@ public class AtomAPIMMessage
      *
      * {@inheritDoc}
      */
+    @Override
     public Date getDate() {
         return date;
     }
@@ -307,6 +325,7 @@ public class AtomAPIMMessage
      *
      * {@inheritDoc}
      */
+    @Override
     public String getMethodName() {
         return methodName;
     }
@@ -315,6 +334,7 @@ public class AtomAPIMMessage
      *
      * {@inheritDoc}
      */
+    @Override
     public String getPID() {
         return pid;
     }
@@ -327,6 +347,7 @@ public class AtomAPIMMessage
      *
      * {@inheritDoc}
      */
+    @Override
     public String getFormat() {
         return format;
     }
@@ -335,6 +356,7 @@ public class AtomAPIMMessage
      *
      * {@inheritDoc}
      */
+    @Override
     public String getServerVersion() {
         return serverVersion;
     }
@@ -365,8 +387,6 @@ public class AtomAPIMMessage
     }
 
     private static String array2string(Object array) {
-        String nullstring = "null";
-        String delimiter = ", ";
         if (array == null) {
             return nullstring;
         }

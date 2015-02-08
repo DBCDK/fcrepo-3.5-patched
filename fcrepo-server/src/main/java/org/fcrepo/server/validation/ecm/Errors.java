@@ -1,10 +1,10 @@
 package org.fcrepo.server.validation.ecm;
 
-import org.fcrepo.server.storage.types.RelationshipTuple;
+import java.util.Date;
+
+import org.fcrepo.utilities.DateUtility;
 import org.xml.sax.SAXException;
 import org.xml.sax.SAXParseException;
-
-import java.io.IOException;
 
 /**
  * Created by IntelliJ IDEA.
@@ -75,6 +75,12 @@ public class Errors {
                "class '" + requiredTarget + "'";
     }
 
+    public static String missingObjectViolation(String subject, String relation, String requiredTarget, String target) {
+           return "The relation '" + relation + "' in '"+subject+"'  is restricted to values from " +
+                  "class '" + requiredTarget + "', but refers to object '"+target+"' which does not exist";
+       }
+
+
     public static String someValuesFromViolationNoSuchRelation(String subject, String ontologyrelation,
                                                                String requiredTarget) {
         return "The relation '" + ontologyrelation + "' in '"+subject+"'  should have at least one" +
@@ -109,5 +115,11 @@ public class Errors {
     public static String schemaCannotParse(String contentmodel, String datastreamID, SAXException e) {
         //TODO
         return null;  //To change body of created methods use File | Settings | File Templates.
+    }
+    
+    public static String doesNotExistAsOfDateTime(String subject, Date createDate, Date asOfDateTime) {
+        return "The object " + subject + 
+        " did not yet exist as of " + DateUtility.formatMillisTZ(asOfDateTime) +
+        " (created " + DateUtility.formatMillisTZ(createDate) + ")";
     }
 }

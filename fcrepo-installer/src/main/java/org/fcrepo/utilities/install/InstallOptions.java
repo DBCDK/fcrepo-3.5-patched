@@ -9,7 +9,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -28,6 +27,8 @@ public class InstallOptions {
 
     public static final String APIA_AUTH_REQUIRED = "apia.auth.required";
 
+    public static final String UPSTREAM_AUTH_ENABLED = "upstream.auth.enabled";
+    
     public static final String SSL_AVAILABLE = "ssl.available";
 
     public static final String APIA_SSL_REQUIRED = "apia.ssl.required";
@@ -181,6 +182,7 @@ public class InstallOptions {
             _map.put(DATABASE_JDBCURL, includedJDBCURL);
             _map.put(DATABASE_DRIVERCLASS, EMBEDDED_DATABASE_DRIVERCLASSNAME);
             _map.put(XACML_ENABLED, Boolean.toString(false));
+            _map.put(UPSTREAM_AUTH_ENABLED, Boolean.toString(false));
             _map.put(FESL_AUTHN_ENABLED, Boolean.toString(true));
             _map.put(FESL_AUTHZ_ENABLED, Boolean.toString(false));
             _map.put(LLSTORE_TYPE, null); // akubra-fs
@@ -253,8 +255,11 @@ public class InstallOptions {
                 dbValidated = validateDatabaseConnection();
             }
         }
-
-        inputOption(FESL_AUTHN_ENABLED);
+        inputOption(UPSTREAM_AUTH_ENABLED);
+        if (getBooleanValue(UPSTREAM_AUTH_ENABLED,false)) {
+        		// disable FESL authN if upstream authN is enabled
+        		_map.put(FESL_AUTHN_ENABLED, Boolean.toString(false));
+        }
         inputOption(FESL_AUTHZ_ENABLED);
         if (getValue(FESL_AUTHZ_ENABLED).equals(Boolean.toString(true))) {
             // Disable legacy authz if FeSL is enabled

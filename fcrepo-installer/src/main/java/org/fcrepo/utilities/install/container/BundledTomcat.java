@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.io.InputStream;
 
 import org.dom4j.DocumentException;
-
 import org.fcrepo.utilities.FileUtils;
 import org.fcrepo.utilities.Zip;
 import org.fcrepo.utilities.install.Distribution;
@@ -22,12 +21,13 @@ import org.fcrepo.utilities.install.InstallationFailedException;
 /**
  * The profile for the servlet container bundled with the Fedora installer.
  * History: 
+ *  Release 3.6.1 bundled Tomcat 6.0.35.
+ *  Release 3.5 bundled Tomcat 6.0.29.
  *  Release 3.3 bundled Tomcat 6.0.20.
  * 	Release 3.0 bundled Tomcat 5.5.26. 
  * 	Release 2.2 bundled Tomcat 5.0.28.
  * 
  * @author Edwin Shin
- * @version $Id$
  */
 public class BundledTomcat
         extends Tomcat {
@@ -86,14 +86,17 @@ public class BundledTomcat
             // nothing to do
             return;
         }
+
         try {
             InputStream is = getDist().get(Distribution.KEYSTORE);
             File keystore = getIncludedKeystore();
-
-            if (!FileUtils.copy(is, new FileOutputStream(keystore))) {
-                throw new InstallationFailedException("Copy to "
-                        + keystore.getAbsolutePath() + " failed.");
+            FileOutputStream out = new FileOutputStream(keystore);
+            if (!FileUtils.copy(is, out)) {
+                throw new InstallationFailedException("Copy to " +
+                        keystore.getAbsolutePath() + " failed.");
             }
+            out.close();
+
         } catch (IOException e) {
             throw new InstallationFailedException(e.getMessage(), e);
         }
@@ -108,5 +111,9 @@ public class BundledTomcat
 	protected void setCommonLib() {
 		commonLib = new File(getTomcatHome(), "lib" + File.separator);
 	}
-    
+
+	@Override
+    protected void installFedoraContext() {
+        // no-op in Tomcat 7.x
+    }
 }

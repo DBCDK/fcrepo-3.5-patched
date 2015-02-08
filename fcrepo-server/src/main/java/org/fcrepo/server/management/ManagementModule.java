@@ -6,7 +6,6 @@ package org.fcrepo.server.management;
 
 import java.io.File;
 import java.io.InputStream;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -15,9 +14,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.fcrepo.server.Context;
 import org.fcrepo.server.Module;
 import org.fcrepo.server.Server;
@@ -25,6 +21,7 @@ import org.fcrepo.server.errors.ModuleInitializationException;
 import org.fcrepo.server.errors.ModuleShutdownException;
 import org.fcrepo.server.errors.ServerException;
 import org.fcrepo.server.proxy.AbstractInvocationHandler;
+import org.fcrepo.server.proxy.ModuleConfiguredInvocationHandler;
 import org.fcrepo.server.proxy.ProxyFactory;
 import org.fcrepo.server.security.Authorization;
 import org.fcrepo.server.storage.DOManager;
@@ -32,6 +29,8 @@ import org.fcrepo.server.storage.ExternalContentManager;
 import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.RelationshipTuple;
 import org.fcrepo.server.storage.types.Validation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author Edwin Shin
@@ -106,7 +105,13 @@ public class ManagementModule
             m_tempDir = getServer().getUploadDir();
             if (!m_tempDir.isDirectory()) {
                 m_tempDir.mkdirs();
+                if (!m_tempDir.isDirectory()) {
+                    throw new ModuleInitializationException(
+                            "Failed to create temp dir at " +
+                                    m_tempDir.toString(), getRole());
+                }
             }
+
             // put leftovers in hash, while saving highest id as m_lastId
             m_uploadStartTime = new Hashtable<String, Long>();
             String[] fNames = m_tempDir.list();
@@ -132,7 +137,7 @@ public class ManagementModule
         // initialize variables pertaining to checksumming datastreams.
         String auto = getParameter("autoChecksum");
         logger.debug("Got Parameter: autoChecksum = " + auto);
-        if (auto.equalsIgnoreCase("true")) {
+        if (auto != null && auto.equalsIgnoreCase("true")) {
             Datastream.autoChecksum = true;
             Datastream.defaultChecksumType = getParameter("checksumAlgorithm");
         }
@@ -157,15 +162,15 @@ public class ManagementModule
     public void postInitModule() throws ModuleInitializationException {
         // Verify required modules have been loaded
         m_manager =
-                (DOManager) getServer()
-                        .getModule("org.fcrepo.server.storage.DOManager");
+                getServer()
+                        .getBean("org.fcrepo.server.storage.DOManager", DOManager.class);
         if (m_manager == null) {
             throw new ModuleInitializationException("Can't get a DOManager "
                                                     + "from Server.getModule", getRole());
         }
         m_contentManager =
-                (ExternalContentManager) getServer()
-                        .getModule("org.fcrepo.server.storage.ExternalContentManager");
+                getServer()
+                        .getBean("org.fcrepo.server.storage.ExternalContentManager", ExternalContentManager.class);
         if (m_contentManager == null) {
             throw new ModuleInitializationException("Can't get an ExternalContentManager "
                                                     + "from Server.getModule",
@@ -173,8 +178,8 @@ public class ManagementModule
         }
 
         m_fedoraXACMLModule =
-                (Authorization) getServer()
-                        .getModule("org.fcrepo.server.security.Authorization");
+                getServer()
+                        .getBean("org.fcrepo.server.security.Authorization", Authorization.class);
         if (m_fedoraXACMLModule == null) {
             throw new ModuleInitializationException(
                     "Can't get Authorization module (in default management) from Server.getModule",
@@ -210,6 +215,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public String addDatastream(Context context,
                                 String pid,
                                 String dsID,
@@ -243,6 +249,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public boolean addRelationship(Context context,
                                    String pid,
                                    String relationship,
@@ -260,6 +267,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public String compareDatastreamChecksum(Context context,
                                             String pid,
                                             String dsID,
@@ -271,6 +279,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public InputStream export(Context context,
                               String pid,
                               String format,
@@ -282,6 +291,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public Datastream getDatastream(Context context,
                                     String pid,
                                     String datastreamID,
@@ -292,6 +302,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public Datastream[] getDatastreamHistory(Context context,
                                              String pid,
                                              String datastreamID)
@@ -302,6 +313,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public Datastream[] getDatastreams(Context context,
                                        String pid,
                                        Date asOfDateTime,
@@ -312,6 +324,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public String[] getNextPID(Context context, int numPIDs, String namespace)
             throws ServerException {
         return mgmt.getNextPID(context, numPIDs, namespace);
@@ -320,6 +333,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public InputStream getObjectXML(Context context, String pid, String encoding)
             throws ServerException {
         return mgmt.getObjectXML(context, pid, encoding);
@@ -328,6 +342,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public RelationshipTuple[] getRelationships(Context context,
                                                 String pid,
                                                 String relationship)
@@ -338,6 +353,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public InputStream getTempStream(String id) throws ServerException {
         return mgmt.getTempStream(id);
     }
@@ -345,6 +361,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public String ingest(Context context,
                          InputStream serialization,
                          String logMessage,
@@ -362,6 +379,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public Date modifyDatastreamByReference(Context context,
                                             String pid,
                                             String datastreamID,
@@ -392,6 +410,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public Date modifyDatastreamByValue(Context context,
                                         String pid,
                                         String datastreamID,
@@ -421,6 +440,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public Date modifyObject(Context context,
                              String pid,
                              String state,
@@ -441,6 +461,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public Date[] purgeDatastream(Context context,
                                   String pid,
                                   String datastreamID,
@@ -458,6 +479,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public Date purgeObject(Context context,
                             String pid,
                             String logMessage) throws ServerException {
@@ -467,6 +489,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public boolean purgeRelationship(Context context,
                                      String pid,
                                      String relationship,
@@ -484,6 +507,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public Validation validate(Context context, String pid,
                                Date asOfDateTime) throws ServerException {
         return mgmt.validate(context, pid, asOfDateTime);
@@ -492,6 +516,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public String putTempStream(Context context, InputStream in)
             throws ServerException {
         return mgmt.putTempStream(context, in);
@@ -500,6 +525,7 @@ public class ManagementModule
     /**
      * {@inheritDoc}
      */
+    @Override
     public Date setDatastreamState(Context context,
                                    String pid,
                                    String dsID,
@@ -511,6 +537,7 @@ public class ManagementModule
     /**
      * {@inheritDoce}
      */
+    @Override
     public Date setDatastreamVersionable(Context context,
                                          String pid,
                                          String dsID,
@@ -565,6 +592,9 @@ public class ManagementModule
         for (int i = 0; i < pNames.size(); i++) {
             invocationHandlers[i] =
                     getInvocationHandler(getParameter(pNames.get(i)));
+            if (invocationHandlers[i] instanceof ModuleConfiguredInvocationHandler) {
+                ((ModuleConfiguredInvocationHandler)invocationHandlers[i]).init(this.getServer());
+            }
         }
 
         return invocationHandlers;

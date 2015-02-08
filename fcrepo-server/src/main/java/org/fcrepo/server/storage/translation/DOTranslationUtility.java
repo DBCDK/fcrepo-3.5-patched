@@ -4,6 +4,12 @@
  */
 package org.fcrepo.server.storage.translation;
 
+import static org.fcrepo.common.Models.CONTENT_MODEL_3_0;
+import static org.fcrepo.common.Models.FEDORA_OBJECT_3_0;
+import static org.fcrepo.common.Models.SERVICE_DEFINITION_3_0;
+import static org.fcrepo.common.Models.SERVICE_DEPLOYMENT_3_0;
+
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -11,11 +17,8 @@ import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
-
 import java.nio.charset.Charset;
-
 import java.text.ParseException;
-
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -47,11 +50,6 @@ import org.fcrepo.server.utilities.StreamUtility;
 import org.fcrepo.utilities.DateUtility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static org.fcrepo.common.Models.CONTENT_MODEL_3_0;
-import static org.fcrepo.common.Models.FEDORA_OBJECT_3_0;
-import static org.fcrepo.common.Models.SERVICE_DEFINITION_3_0;
-import static org.fcrepo.common.Models.SERVICE_DEPLOYMENT_3_0;
 
 /**
  * Utility methods for usage by digital object serializers and deserializers.
@@ -228,7 +226,11 @@ public abstract class DOTranslationUtility
             XMLInputFactory.newInstance();
 
     // initialize static class with stuff that's used by all DO Serializerers
-    static {
+    public static void init(Server server) {
+        init(server.getHomeDir());
+    }
+    
+    public static void init(File serverHome) {
         // get host port from system properties (for testing without server instance)
         String fedoraServerHost = System.getProperty("fedora.hostname");
         String fedoraServerPort = System.getProperty("fedora.port");
@@ -252,7 +254,7 @@ public abstract class DOTranslationUtility
                 || fedoraAppServerContext == null) {
             // if fedoraServerHost or fedoraServerPort system properties
             // are not defined, read them from server configuration
-            ServerConfiguration config = Server.getConfig();
+            ServerConfiguration config = Server.getConfig(serverHome);
             fedoraServerHost =
                     config.getParameter("fedoraServerHost",Parameter.class).getValue();
             fedoraServerPort =
@@ -330,7 +332,7 @@ public abstract class DOTranslationUtility
         // Second pass: convert non-fedora-app-context URLs via variable substitution
         output = s_fedoraLocalPattern.matcher(output).replaceAll(s_hostInfo);
 
-        logger.debug("makeAbsoluteURLs: input=" + input + ", output=" + output);
+        logger.debug("makeAbsoluteURLs: input={}, output={}", input, output);
         return output;
     }
 
@@ -379,7 +381,7 @@ public abstract class DOTranslationUtility
                         .replaceAll(s_fedoraLocalPattern.pattern());
         }
 
-        logger.debug("makeFedoraLocalURLs: input=" + input + ", output=" + output);
+        logger.debug("makeFedoraLocalURLs: input={}, output={}", input, output);
         return output;
     }
 
@@ -400,7 +402,7 @@ public abstract class DOTranslationUtility
         // (i.e., getItem), and replace with new API-A-LITE syntax.
 
         output = s_getItemPattern.matcher(input).replaceAll("/");
-        logger.debug("convertGetItemURLs: input=" + input + ", output=" + output);
+        logger.debug("convertGetItemURLs: input={}, output={}", input, output);
         return output;
     }
 
@@ -424,10 +426,11 @@ public abstract class DOTranslationUtility
     public static Datastream normalizeDSLocationURLs(String PID,
                                                      Datastream origDS,
                                                      int transContext) {
-        Datastream ds = origDS.copy();
         if (transContext == AS_IS) {
-            return ds;
+            return origDS;
         }
+
+        Datastream ds = origDS.copy();
         if (transContext == DOTranslationUtility.DESERIALIZE_INSTANCE) {
             if (ds.DSControlGrp.equals("E") || ds.DSControlGrp.equals("R")) {
                 // MAKE ABSOLUTE REPO URLs
@@ -581,17 +584,17 @@ public abstract class DOTranslationUtility
     public static Datastream setDatastreamDefaults(Datastream ds)
             throws ObjectIntegrityException {
 
-        if ((ds.DSMIME == null || ds.DSMIME.equals(""))
+        if ((ds.DSMIME == null || ds.DSMIME.isEmpty())
                 && ds.DSControlGrp.equalsIgnoreCase("X")) {
             ds.DSMIME = "text/xml";
         }
 
-        if (ds.DSState == null || ds.DSState.equals("")) {
+        if (ds.DSState == null || ds.DSState.isEmpty()) {
             ds.DSState = "A";
         }
 
         // For METS backward compatibility
-        if (ds.DSInfoType == null || ds.DSInfoType.equals("")
+        if (ds.DSInfoType == null || ds.DSInfoType.isEmpty()
                 || ds.DSInfoType.equalsIgnoreCase("OTHER")) {
             ds.DSInfoType = "UNSPECIFIED";
         }
@@ -751,14 +754,17 @@ public abstract class DOTranslationUtility
                         }
 
                         DatastreamXMLMetadata xd = (DatastreamXMLMetadata) d;
-                        logger.debug(obj.getPid() + " : normalising URLs in "
-                                + dsid);
-                        xd.xmlContent =
-                                DOTranslationUtility
-                                        .normalizeInlineXML(new String(xd.xmlContent,
-                                                                       "UTF-8"),
-                                                            transContext)
-                                        .getBytes(characterEncoding);
+                        if (logger.isDebugEnabled())
+                            logger.debug("{} : normalising URLs in {}",
+                                    obj.getPid(), dsid);
+                        String origContent = new String(xd.xmlContent, "UTF-8");
+                        String normal = DOTranslationUtility
+                                .normalizeInlineXML(origContent,
+                                        transContext);
+                        if (!normal.equals(origContent) || !"UTF-8".equalsIgnoreCase(characterEncoding)){
+                            xd.xmlContent = normal.getBytes(characterEncoding);
+                        }
+                        xd.DSSize = xd.xmlContent.length;
                     }
                 }
             }
@@ -773,14 +779,17 @@ public abstract class DOTranslationUtility
         // set default to true.
         diss.dissVersionable = true;
 
-        if (diss.dissState == null || diss.dissState.equals("")) {
+        if (diss.dissState == null || diss.dissState.isEmpty()) {
             diss.dissState = "A";
         }
         return diss;
     }
 
     protected static String oneString(String[] idList) {
-        StringBuffer out = new StringBuffer();
+        if (idList.length == 0) return "";
+        int bufLen = idList.length - 1; // the number of spaces we'll add
+        for (String val: idList) bufLen += val.length();
+        StringBuilder out = new StringBuilder(bufLen);
         for (int i = 0; i < idList.length; i++) {
             if (i > 0) {
                 out.append(' ');
@@ -800,7 +809,7 @@ public abstract class DOTranslationUtility
      */
     public static String getStateAttribute(DigitalObject obj) throws ObjectIntegrityException {
 
-            if (obj.getState() == null || obj.getState().equals("")) {
+            if (obj.getState() == null || obj.getState().isEmpty()) {
                 return MODEL.ACTIVE.localName;
             } else {
                 switch (obj.getState().charAt(0)) {
@@ -838,7 +847,7 @@ public abstract class DOTranslationUtility
             return "I";
         } else if (MODEL.ACTIVE.looselyMatches(rawValue, true)
                     || rawValue == null
-                    || rawValue.equals("")) {
+                    || rawValue.isEmpty()) {
             return "A";
         } else {
                 throw new ParseException("Could not interpret state value of '"
@@ -875,23 +884,23 @@ public abstract class DOTranslationUtility
      */
     protected static void validateAudit(AuditRecord audit)
             throws ObjectIntegrityException {
-        if (audit.id == null || audit.id.equals("")) {
+        if (audit.id == null || audit.id.isEmpty()) {
             throw new ObjectIntegrityException("Audit record must have id.");
         }
-        if (audit.date == null || audit.date.equals("")) {
+        if (audit.date == null) {
             throw new ObjectIntegrityException("Audit record must have date.");
         }
-        if (audit.processType == null || audit.processType.equals("")) {
+        if (audit.processType == null || audit.processType.isEmpty()) {
             throw new ObjectIntegrityException("Audit record must have processType.");
         }
-        if (audit.action == null || audit.action.equals("")) {
+        if (audit.action == null || audit.action.isEmpty()) {
             throw new ObjectIntegrityException("Audit record must have action.");
         }
         if (audit.componentID == null) {
             audit.componentID = ""; // for backwards compatibility, no error on null
             // throw new ObjectIntegrityException("Audit record must have componentID.");
         }
-        if (audit.responsibility == null || audit.responsibility.equals("")) {
+        if (audit.responsibility == null || audit.responsibility.isEmpty()) {
             throw new ObjectIntegrityException("Audit record must have responsibility.");
         }
     }
@@ -1018,14 +1027,14 @@ public abstract class DOTranslationUtility
     private static void appendOpenElement(PrintWriter writer,
                                           QName element,
                                           boolean declareNamespace) {
-        writer.print("<");
+        writer.print('<');
         writer.print(element.qName);
         if (declareNamespace) {
             writer.print(" xmlns:");
             writer.print(element.namespace.prefix);
             writer.print("=\"");
             writer.print(element.namespace.uri);
-            writer.print("\"");
+            writer.print('"');
         }
         writer.print(">\n");
     }
@@ -1034,12 +1043,12 @@ public abstract class DOTranslationUtility
                                           QName element,
                                           QName attribute,
                                           String attributeContent) {
-        writer.print("<");
+        writer.print('<');
         writer.print(element.qName);
-        writer.print(" ");
+        writer.print(' ');
         writer.print(attribute.localName);
         writer.print("=\"");
-        writer.print(StreamUtility.enc(attributeContent));
+        StreamUtility.enc(attributeContent, writer);
         writer.print("\">\n");
     }
 
@@ -1053,22 +1062,22 @@ public abstract class DOTranslationUtility
                                           QName element,
                                           QName attribute,
                                           String attributeContent) {
-        writer.print("<");
+        writer.print('<');
         writer.print(element.qName);
-        writer.print(" ");
+        writer.print(' ');
         writer.print(attribute.localName);
         writer.print("=\"");
-        writer.print(StreamUtility.enc(attributeContent));
+        StreamUtility.enc(attributeContent, writer);
         writer.print("\"/>\n");
     }
 
     private static void appendFullElement(PrintWriter writer,
                                           QName element,
                                           String elementContent) {
-        writer.print("<");
+        writer.print('<');
         writer.print(element.qName);
-        writer.print(">");
-        writer.print(StreamUtility.enc(elementContent));
+        writer.print('>');
+        StreamUtility.enc(elementContent, writer);
         writer.print("</");
         writer.print(element.qName);
         writer.print(">\n");

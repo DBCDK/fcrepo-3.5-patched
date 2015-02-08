@@ -19,51 +19,52 @@
 package org.fcrepo.server.security.xacml.pep.ws.operations;
 
 
-import org.apache.axis.MessageContext;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import javax.xml.ws.handler.soap.SOAPMessageContext;
 
 import org.fcrepo.common.Constants;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.pep.ContextHandler;
 import org.fcrepo.server.security.xacml.pep.PEPException;
 import org.fcrepo.server.security.xacml.util.LogUtil;
-
-import com.sun.xacml.ctx.RequestCtx;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
  * @author nishen@melcoe.mq.edu.au
  */
 public class ResumeFindObjectsHandler
-        extends AbstractOperationHandler {
+        extends FieldSearchResultHandler {
 
     private static final Logger logger =
             LoggerFactory.getLogger(ResumeFindObjectsHandler.class);
 
-    private FieldSearchResultHandler resultHandler = null;
-
-    public ResumeFindObjectsHandler()
+    public ResumeFindObjectsHandler(ContextHandler contextHandler)
             throws PEPException {
-        super();
-        resultHandler = new FieldSearchResultHandler();
+        super(contextHandler);
     }
 
-    public RequestCtx handleResponse(MessageContext context)
+    @Override
+    public RequestCtx handleResponse(SOAPMessageContext context)
             throws OperationHandlerException {
         if (logger.isDebugEnabled()) {
             logger.debug("ResumeFindObjectsHandler/handleResponse!");
         }
-        return resultHandler.handleResponse(context);
+        return super.handleResponse(context);
     }
 
-    public RequestCtx handleRequest(MessageContext context)
+    @Override
+    public RequestCtx handleRequest(SOAPMessageContext context)
             throws OperationHandlerException {
         if (logger.isDebugEnabled()) {
             logger.debug("ResumeFindObjectsHandler/handleRequest!");
         }
 
-        LogUtil.statLog(context.getUsername(), Constants.ACTION.FIND_OBJECTS
-                .getURI().toASCIIString(), "FedoraRepository", null);
+        LogUtil.statLog(getUser(context),
+                Constants.ACTION.FIND_OBJECTS.uri,
+                Constants.FEDORA_REPOSITORY_PID.uri,
+                null);
 
-        return resultHandler.handleRequest(context);
+        return super.handleRequest(context);
     }
 }

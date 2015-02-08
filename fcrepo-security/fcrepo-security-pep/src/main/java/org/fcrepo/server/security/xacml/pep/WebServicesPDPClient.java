@@ -18,33 +18,37 @@
 
 package org.fcrepo.server.security.xacml.pep;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.net.URL;
+import java.util.List;
 import java.util.Map;
 
-
-import org.apache.axis.client.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import org.fcrepo.server.security.xacml.pdp.client.MelcoePDPSOAP11BindingStub;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.pdp.client.MelcoePDP;
+import org.fcrepo.server.security.xacml.pdp.client.MelcoePDPPortType;
+import org.jboss.security.xacml.sunxacml.ctx.ResponseCtx;
 
 /**
  * This is the Web Services based client for the MelcoePDP. It uses the classes
- * in org.fcrepo.server.security.xacml.pdp.client which are the Web Service client stubs.
- * 
+ * in org.fcrepo.server.security.xacml.pdp.client which are the Web Service
+ * client stubs.
+ *
  * @author nishen@melcoe.mq.edu.au
  */
 public class WebServicesPDPClient
         implements PDPClient {
 
-    private static final Logger logger =
-            LoggerFactory.getLogger(WebServicesPDPClient.class);
+    private static final Logger logger = LoggerFactory
+            .getLogger(WebServicesPDPClient.class);
 
-    private MelcoePDPSOAP11BindingStub client = null;
+    private MelcoePDPPortType client = null;
 
     /**
      * Initialises the WebServicesPEPClient class.
-     * 
+     *
      * @param options
      *        a Map of options for this class
      * @throws PEPException
@@ -53,12 +57,11 @@ public class WebServicesPDPClient
             throws PEPException {
         try {
             String serviceEndpoint = options.get("ServiceEndpoint");
-            if (serviceEndpoint == null || "".equals(serviceEndpoint)) {
+            if (serviceEndpoint == null || serviceEndpoint.isEmpty()) {
                 throw new PEPException("The serviceEnpoint option has not been set in the configuration file.");
             }
-            client =
-                    new MelcoePDPSOAP11BindingStub(new URL(serviceEndpoint),
-                                                   new Service());
+            MelcoePDP service = new MelcoePDP(new URL("wsdl"));//TODO
+            client = service.getMelcoePDPSOAP11PortHttp();
         } catch (Exception e) {
             logger.error("Could not initialise the PEP Client.");
             throw new PEPException("Could not initialise the PEP Client.", e);
@@ -67,8 +70,10 @@ public class WebServicesPDPClient
 
     /*
      * (non-Javadoc)
-     * @see org.fcrepo.server.security.xacml.pep.PEPClient#evaluate(java.lang.String)
+     * @see
+     * org.fcrepo.server.security.xacml.pep.PEPClient#evaluate(java.lang.String)
      */
+    @Override
     public String evaluate(String request) throws PEPException {
         if (logger.isDebugEnabled()) {
             logger.debug("Resolving String request:\n" + request);
@@ -85,13 +90,31 @@ public class WebServicesPDPClient
         return response;
     }
 
+    public ResponseCtx evaluate(RequestCtx request) throws PEPException {
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            request.encode(bos);
+            String response = this.client.evaluate(bos.toString());
+            ByteArrayInputStream bis = new ByteArrayInputStream(response.getBytes());
+            return ResponseCtx.getInstance(bis);
+        } catch (Exception e) {
+            logger.error("Error evaluating request.", e);
+            throw new PEPException("Error evaluating request", e);
+        }
+    }
     /*
      * (non-Javadoc)
-     * @see org.fcrepo.server.security.xacml.pep.PEPClient#evaluateBatch(java.lang.String[])
+     * @see
+     * org.fcrepo.server.security.xacml.pep.PEPClient#evaluateBatch(java.lang
+     * .String[])
      */
-    public String evaluateBatch(String[] request) throws PEPException {
+    @Override
+    public String evaluateBatch(List<String> request) throws PEPException {
+        if (request == null) {
+            throw new NullPointerException("evaluateBatch(request=null)");
+        }
         if (logger.isDebugEnabled()) {
-            logger.debug("Resolving request batch (" + request.length
+            logger.debug("Resolving request batch (" + request.size()
                     + " requests)");
         }
 

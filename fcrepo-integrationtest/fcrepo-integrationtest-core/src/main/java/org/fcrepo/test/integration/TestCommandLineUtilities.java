@@ -5,22 +5,26 @@
 
 package org.fcrepo.test.integration;
 
+import static junit.framework.Assert.assertEquals;
+import static junit.framework.Assert.assertNotNull;
+import static junit.framework.Assert.assertTrue;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 
-import junit.framework.Test;
-import junit.framework.TestSuite;
+import junit.framework.JUnit4TestAdapter;
 
 import org.fcrepo.client.FedoraClient;
-
 import org.fcrepo.common.Constants;
-
-import org.fcrepo.server.management.FedoraAPIM;
-
-import org.fcrepo.test.DemoObjectTestSetup;
+import org.fcrepo.server.management.FedoraAPIMMTOM;
 import org.fcrepo.test.FedoraServerTestCase;
-
 import org.fcrepo.utilities.ExecUtility;
+import org.junit.After;
+import org.junit.AfterClass;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Test;
+import org.junit.runner.JUnitCore;
 
 /**
  * @author Edwin Shin
@@ -34,6 +38,8 @@ public class TestCommandLineUtilities
     static ByteArrayOutputStream sbErr = null;
 
     static TestCommandLineUtilities curTest = null;
+    
+    private static FedoraClient s_client;
 
     private static final String RESOURCEBASE =
         System.getProperty("fcrepo-integrationtest-core.classes") != null ? System
@@ -49,14 +55,24 @@ public class TestCommandLineUtilities
 
     private static File logDir = null;
     private static File buildDir = null;
-
-
-    public static Test suite() {
-        TestSuite suite = new TestSuite("Command Line Utilities TestSuite");
-        suite.addTestSuite(TestCommandLineUtilities.class);
-        return new DemoObjectTestSetup(suite);
+    
+    @BeforeClass
+    public static void bootStrap() throws Exception {
+        String baseURL =
+                getProtocol() + "://" + getHost() + ":" + getPort() + "/"
+                        + getFedoraAppServerContext();
+        s_client = new FedoraClient(baseURL, getUsername(), getPassword());
+        // do we actually use the demo objects in this suite of tests?
+        //ingestDemoObjects(s_client);
+    }
+    
+    @AfterClass
+    public static void cleanUp() throws Exception {
+        purgeDemoObjects(s_client);
+        s_client.shutdown();
     }
 
+    @Test
     public void testFedoraIngestAndPurge() {
         System.out.println("Ingesting object test:1001");
         ingestFoxmlFile(new File(RESOURCEBASE
@@ -78,6 +94,7 @@ public class TestCommandLineUtilities
         System.out.println("Ingest and purge test succeeded");
     }
 
+    @Test
     public void testBatchBuildAndBatchIngestAndPurge() throws Exception {
         System.out.println("Building batch objects");
         batchBuild(new File(RESOURCEBASE
@@ -95,23 +112,19 @@ public class TestCommandLineUtilities
         batchIngest(buildDir,
                     new File(LOGDIR + "/junit_ingest.log"));
         err = sbErr.toString();
-        if (err.indexOf("10 objects successfully ingested into Fedora") == -1) {
-            System.out
-                    .println("Didn't find expected string in output:\n" + err);
-            assertEquals(true, false);
-        }
-        assertEquals(err
-                             .indexOf("10 objects successfully ingested into Fedora") != -1,
-                     true);
+        assertTrue("Response did not contain expected string re: objects successfully ingested: <reponse>"
+                + err + "</reponse>",
+                err.contains("10 objects successfully ingested into Fedora"));
         String batchObjs[] =
                 {"test:0001", "test:0002", "test:0003", "test:0004",
                  "test:0005", "test:0006", "test:0007", "test:0008",
                  "test:0009", "test:0010"};
         System.out.println("Purging batch objects");
-        purgeFast(batchObjs);
+        purgeFast(batchObjs, "testBatchBuildAndBatchIngestAndPurge-purge(array)");
         System.out.println("Build and ingest test succeeded");
     }
 
+    @Test
     public void testBatchBuildIngestAndPurge() throws Exception {
         System.out.println("Building and Ingesting batch objects");
         batchBuildIngest(new File(RESOURCEBASE
@@ -122,25 +135,22 @@ public class TestCommandLineUtilities
                          new File(LOGDIR
                                   + "/junit_buildingest.log"));
         String err = sbErr.toString();
-        assertEquals("Response did not contain expected string re: FOXML XML documents: <reponse>"
+        assertTrue("Response did not contain expected string re: FOXML XML documents: <reponse>"
                              + err + "</response>",
-                     err
-                             .indexOf("10 Fedora FOXML XML documents successfully created") != -1,
-                     true);
-        assertEquals("Response did not contain expected string re: objects successfully ingested: <reponse>"
+                     err.contains("10 Fedora FOXML XML documents successfully created"));
+        assertTrue("Response did not contain expected string re: objects successfully ingested: <reponse>"
                              + err + "</reponse",
-                     err
-                             .indexOf("10 objects successfully ingested into Fedora") != -1,
-                     true);
+                     err.contains("10 objects successfully ingested into Fedora"));
         String batchObjs[] =
                 {"test:0001", "test:0002", "test:0003", "test:0004",
                  "test:0005", "test:0006", "test:0007", "test:0008",
                  "test:0009", "test:0010"};
         System.out.println("Purging batch objects");
-        purgeFast(batchObjs);
+        purgeFast(batchObjs, "testBatchBuildIngestAndPurge-purge(array)");
         System.out.println("Build/ingest test succeeded");
     }
 
+    @Test
     public void testBatchModify() throws Exception {
         // Note: test will fail if default control group for DC datastreams (fedora.fcfg) is not X
         // as the modify script specifies control group "X" when modifying DC
@@ -160,12 +170,13 @@ public class TestCommandLineUtilities
         }
         assertEquals(String.format("%s; %s", out, err), false, out
                 .indexOf("25 modify directives successfully processed.") == -1);
-        assertEquals(false, out.indexOf("0 modify directives failed.") == -1);
+        assertEquals(String.format("%s; %s", out, err), false, out.indexOf("0 modify directives failed.") == -1);
         System.out.println("Purging batch modify object");
-        purgeFast("test:1002");
+        purgeFast("test:1002", "testBatchModify-purge");
         System.out.println("Batch modify test succeeded");
     }
 
+    @Test
     public void testBatchPurge() throws Exception {
         System.out.println("Batch purging objects from file containing PIDs");
 
@@ -186,33 +197,30 @@ public class TestCommandLineUtilities
         batchPurge(new File("/bogus/file"));
         String out = sbOut.toString();
         String err = sbErr.toString();
-        assertEquals("Response did not contain expected string re: java.io.FileNotFoundException: <reponse>"
+        assertTrue("Response did not contain expected string re: java.io.FileNotFoundException: <response>"
                      + err + "</response>",
-                     err.indexOf("java.io.FileNotFoundException") != -1,
-                     true);
+                     err.contains("java.io.FileNotFoundException"));
         /* try to purge the objects from the valid file */
         batchPurge(new File(base + "/test-objects/test-batch-purge-file.txt"));
         out = sbOut.toString();
         err = sbErr.toString();
-        assertEquals("Response did not contain expected string re: objects successfully purged: <reponse>"
+        assertTrue("Response did not contain expected string re: objects successfully purged: <response>"
                      + out + "</response>",
-                     out.indexOf("10 objects successfully purged.") != -1,
-                     true);
+                     out.contains("10 objects successfully purged."));
         /* make sure they're gone */
         batchPurge(new File(base + "/test-objects/test-batch-purge-file.txt"));
         out = sbOut.toString();
         err = sbErr.toString();
-        assertEquals("Response did not contain expected string re: ObjectNotInLowlevelStorageException: <reponse>"
+        assertTrue("Response did not contain expected string re: Object not found in low-level storage: <response>"
                      + err + "</response>",
-                     err.indexOf("ObjectNotInLowlevelStorageException") != -1,
-                     true);
-        assertEquals("Response did not contain expected string re: objects successfully purged: <reponse>"
+                     err.contains("Object not found in low-level storage"));
+        assertTrue("Response did not contain expected string re: objects successfully purged: <response>"
                      + out + "</response>",
-                     out.indexOf("0 objects successfully purged.") != -1,
-                     true);
+                     out.contains("0 objects successfully purged."));
         System.out.println("Batch purge test succeeded");
     }
 
+    @Test
     public void testExport() throws Exception {
         System.out.println("Testing fedora-export");
         System.out.println("Ingesting object test:1001");
@@ -243,10 +251,11 @@ public class TestCommandLineUtilities
         if (outFile2.exists()) {
             outFile2.delete();
         }
-        purgeFast("test:1001");
+        purgeFast("test:1001", "testExport-purge");
         System.out.println("Export test succeeded");
     }
 
+    @Test
     public void testValidatePolicy() {
         System.out.println("Testing Validate Policies");
 
@@ -266,6 +275,7 @@ public class TestCommandLineUtilities
         System.out.println("Validate Policies test succeeded");
     }
 
+    @Test
     public void testFindObjects() {
         System.out.println("Testing Find Objects");
         execute(FEDORA_HOME + "/client/bin/fedora-find",
@@ -288,6 +298,7 @@ public class TestCommandLineUtilities
         //      assertEquals(testDir.isDirectory(), true);
         File testFiles[] = testDir.listFiles(new java.io.FilenameFilter() {
 
+            @Override
             public boolean accept(File dir, String name) {
                 if ((name.toLowerCase().startsWith("permit") || name
                         .toLowerCase().startsWith("deny"))
@@ -341,24 +352,20 @@ public class TestCommandLineUtilities
                 getFedoraAppServerContext());
     }
 
-    private static void purgeFast(String pid) throws Exception {
-        getAPIM().purgeObject(pid, "because", false);
+    private static void purgeFast(String pid, String logMsg) throws Exception {
+        getAPIM().purgeObject(pid, "purgeFast-single", false);
     }
 
-    private static void purgeFast(String[] pids) throws Exception {
-        FedoraAPIM apim = getAPIM();
+    private static void purgeFast(String[] pids, String logMsg) throws Exception {
+        FedoraAPIMMTOM apim = getAPIM();
         for (String element : pids) {
-            apim.purgeObject(element, "because", false);
+            apim.purgeObject(element, logMsg, false);
         }
     }
 
-    private static FedoraAPIM getAPIM() throws Exception {
-        String baseURL =
-                getProtocol() + "://" + getHost() + ":" + getPort() + "/"
-                        + getFedoraAppServerContext();
-        FedoraClient client =
-                new FedoraClient(baseURL, getUsername(), getPassword());
-        return client.getAPIM();
+    private static FedoraAPIMMTOM getAPIM() throws Exception {
+        FedoraAPIMMTOM result = s_client.getAPIMMTOM();
+        return result;
     }
 
     private void batchBuild(File objectTemplateFile,
@@ -410,7 +417,7 @@ public class TestCommandLineUtilities
                 getPassword(),
                 objectPurgeFile.getAbsoluteFile().toURI().toString(),
                 getProtocol(),
-                "because",
+                "batch-purge",
                 getFedoraAppServerContext());
     }
 
@@ -454,7 +461,7 @@ public class TestCommandLineUtilities
         }
     }
 
-    @Override
+    @Before
     public void setUp() throws Exception {
         sbOut = new ByteArrayOutputStream();
         sbErr = new ByteArrayOutputStream();
@@ -471,7 +478,7 @@ public class TestCommandLineUtilities
         }
     }
 
-    @Override
+    @After
     public void tearDown() throws Exception {
         System.out.println("Deleting temporary build and log directories");
         if (buildDir.exists() && buildDir.isDirectory()) {
@@ -497,8 +504,12 @@ public class TestCommandLineUtilities
         }
     }
 
+    public static junit.framework.Test suite() {
+        return new JUnit4TestAdapter(TestCommandLineUtilities.class);
+    }
+
     public static void main(String[] args) {
-        junit.textui.TestRunner.run(TestCommandLineUtilities.class);
+        JUnitCore.runClasses(TestCommandLineUtilities.class);
     }
 
 }

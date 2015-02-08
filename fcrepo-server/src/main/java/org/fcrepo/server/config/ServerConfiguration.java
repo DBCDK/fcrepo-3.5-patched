@@ -4,7 +4,6 @@
  */
 package org.fcrepo.server.config;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -19,6 +18,8 @@ import java.util.List;
 import java.util.Properties;
 
 import org.fcrepo.common.Constants;
+import org.fcrepo.server.utilities.StreamUtility;
+import org.fcrepo.utilities.ReadableByteArrayOutputStream;
 
 
 /**
@@ -30,6 +31,17 @@ public class ServerConfiguration
         extends Configuration
         implements Constants {
 
+			private final String DEPRECATION_WARNING =
+			"\n<!--\n\n" +
+			"WARNING! ACHTUNG! ATTENZIONE!\n\n" +
+			"This configuration file is considered a legacy service and will eventually be deprecated.\n" +
+			"The recommended means of configuration is now Fedora's Spring configuration facility, as\n" +
+			"documented here:\n\n" +
+			"https://wiki.duraspace.org/display/FEDORA36/Spring+Configuration\n\n" +
+			"and here:\n\n" +
+			"https://wiki.duraspace.org/display/FEDORA36/Spring+Security\n\n" +
+			"-->\n\n";		
+			
     private String m_className;
 
     private final List<ModuleConfiguration> m_moduleConfigurations;
@@ -50,10 +62,9 @@ public class ServerConfiguration
      * Make an exact copy of this ServerConfiguration.
      */
     public ServerConfiguration copy() throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ReadableByteArrayOutputStream out = new ReadableByteArrayOutputStream();
         serialize(out);
-        return new ServerConfigurationParser(new ByteArrayInputStream(out
-                .toByteArray())).parse();
+        return new ServerConfigurationParser(out.toInputStream()).parse();
     }
 
     /**
@@ -61,7 +72,7 @@ public class ServerConfiguration
      * trailing spaces from the property values before applying them.
      */
     public void applyProperties(Properties props) {
-        Iterator iter = props.keySet().iterator();
+        Iterator<?> iter = props.keySet().iterator();
         while (iter.hasNext()) {
             String fullName = (String) iter.next();
             String value = props.getProperty(fullName).trim();
@@ -112,6 +123,7 @@ public class ServerConfiguration
     public void serialize(OutputStream xmlStream) throws IOException {
         PrintStream out = new PrintStream(xmlStream);
         out.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+		out.println(DEPRECATION_WARNING);
         out.println("<server xmlns=\"" + FCFG.uri + "\" class=\"" + m_className
                 + "\">");
 
@@ -150,23 +162,25 @@ public class ServerConfiguration
     private void serializeParameters(Collection<Parameter> params, int indentBy, PrintStream out) {
         Iterator<Parameter> paramIter = params.iterator();
         while (paramIter.hasNext()) {
-            out.println(getParamXMLString(paramIter.next(),
-                                          indentBy));
+            getParamXMLString(paramIter.next(),
+                                          indentBy, out);
+            out.append('\n');
         }
     }
 
-    private String spaces(int num) {
-        StringBuffer out = new StringBuffer();
+    private void spaces(int num, PrintStream out) {
         for (int i = 0; i < num; i++) {
             out.append(' ');
         }
-        return out.toString();
     }
 
-    private String getParamXMLString(Parameter p, int indentBy) {
-        StringBuffer out = new StringBuffer();
-        out.append(spaces(indentBy) + "<param name=\"" + p.getName()
-                + "\" value=\"" + enc(p.getValue()) + "\"");
+    private String getParamXMLString(Parameter p, int indentBy, PrintStream out) {
+        spaces(indentBy, out);
+        out.append("<param name=\"");
+        out.append(p.getName());
+        out.append("\" value=\"");
+        StreamUtility.enc(p.getValue(), out);
+        out.append('"');
         if (p.getIsFilePath() != false) {
             out.append(" isFilePath=\"true\"");
         }
@@ -176,88 +190,38 @@ public class ServerConfiguration
                 String profileName = iter.next();
                 String profileVal =
                         p.getProfileValues().get(profileName);
-                out.append(" " + profileName + "value=\"" + enc(profileVal)
-                        + "\"");
+                out.append(" " + profileName + "value=\"");
+                StreamUtility.enc(profileVal, out);
+                out.append('"');
             }
         }
         String comment = strip(p.getComment());
         if (comment != null) {
-            out.append(">\n" + spaces(indentBy + 2) + "<comment>"
-                    + enc(comment) + "</comment>\n" + spaces(indentBy)
-                    + "</param>");
+            out.append(">\n");
+            spaces(indentBy + 2, out);
+            out.append("<comment>");
+            StreamUtility.enc(comment, out);
+            out.append("</comment>\n");
+            spaces(indentBy, out);
+            out.append("</param>");
         } else {
             out.append("/>");
         }
         return out.toString();
     }
 
-    private String enc(String in) {
-        StringBuffer out = new StringBuffer();
-        for (int i = 0; i < in.length(); i++) {
-            char c = in.charAt(i);
-            if (c == '<') {
-                out.append("&lt;");
-            } else if (c == '>') {
-                out.append("&gt;");
-            } else if (c == '\'') {
-                out.append("&apos;");
-            } else if (c == '\"') {
-                out.append("&quot;");
-            } else if (c == '&') {
-                out.append("&amp;");
-            } else {
-                out.append(c);
-            }
-        }
-        return out.toString();
-    }
-
     // strip leading and trailing whitespace and \n, return null if
     // resulting string is empty in incoming string is null.
-    private String strip(String in) {
+    private static String strip(String in) {
         if (in == null) {
             return null;
         }
-        String out = stripTrailing(stripLeading(in));
+        String out = in.trim();
         if (out.length() == 0) {
             return null;
         } else {
             return out;
         }
-    }
-
-    private static String stripLeading(String in) {
-        StringBuffer out = new StringBuffer();
-        boolean foundNonWhitespace = false;
-        for (int i = 0; i < in.length(); i++) {
-            char c = in.charAt(i);
-            if (foundNonWhitespace) {
-                out.append(c);
-            } else {
-                if (c != ' ' && c != '\t' && c != '\n') {
-                    foundNonWhitespace = true;
-                    out.append(c);
-                }
-            }
-        }
-        return out.toString();
-    }
-
-    private static String stripTrailing(String in) {
-        StringBuffer out = new StringBuffer();
-        boolean foundNonWhitespace = false;
-        for (int i = in.length() - 1; i >= 0; i--) {
-            char c = in.charAt(i);
-            if (foundNonWhitespace) {
-                out.insert(0, c);
-            } else {
-                if (c != ' ' && c != '\t' && c != '\n') {
-                    foundNonWhitespace = true;
-                    out.insert(0, c);
-                }
-            }
-        }
-        return out.toString();
     }
 
     public String getClassName() {

@@ -2,6 +2,7 @@
  * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
+
 package org.fcrepo.server.storage;
 
 import java.io.ByteArrayInputStream;
@@ -12,13 +13,13 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
-
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -26,18 +27,14 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.Map.Entry;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.Models;
-
 import org.fcrepo.server.Context;
 import org.fcrepo.server.Module;
 import org.fcrepo.server.ReadOnlyContext;
@@ -65,6 +62,7 @@ import org.fcrepo.server.search.FieldSearchQuery;
 import org.fcrepo.server.search.FieldSearchResult;
 import org.fcrepo.server.search.ObjectFields;
 import org.fcrepo.server.search.Operator;
+import org.fcrepo.server.storage.lowlevel.ICheckable;
 import org.fcrepo.server.storage.lowlevel.ILowlevelStorage;
 import org.fcrepo.server.storage.translation.DOTranslationUtility;
 import org.fcrepo.server.storage.translation.DOTranslator;
@@ -80,11 +78,12 @@ import org.fcrepo.server.utilities.DCField;
 import org.fcrepo.server.utilities.DCFields;
 import org.fcrepo.server.utilities.SQLUtility;
 import org.fcrepo.server.utilities.StreamUtility;
+import org.fcrepo.server.validation.DOObjectValidator;
 import org.fcrepo.server.validation.DOValidator;
-import org.fcrepo.server.validation.DOValidatorImpl;
 import org.fcrepo.server.validation.ValidationUtility;
-
-
+import org.fcrepo.utilities.ReadableByteArrayOutputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Manages the reading and writing of digital objects by instantiating an
@@ -94,14 +93,38 @@ import org.fcrepo.server.validation.ValidationUtility;
  * @author Chris Wilper
  * @version $Id$
  */
-public class DefaultDOManager
-        extends Module
-        implements DOManager {
+public class DefaultDOManager extends Module
+implements DOManager {
 
-    private static final Logger logger =
-            LoggerFactory.getLogger(DefaultDOManager.class);
-
+    private static final Logger logger = LoggerFactory
+            .getLogger(DefaultDOManager.class);
+    
     private static final Pattern URL_PROTOCOL = Pattern.compile("^\\w+:\\/.*$");
+    
+    public static String CMODEL_QUERY =
+        "SELECT cModel, sDef, sDep, mDate " +
+        " FROM modelDeploymentMap, doFields " +
+        " WHERE doFields.pid = modelDeploymentMap.sDep";
+
+
+    public static String REGISTERED_PID_QUERY =
+            "SELECT doPID FROM doRegistry WHERE doPID=?";
+    
+    public static String INSERT_PID_QUERY =
+            "INSERT INTO doRegistry (doPID, ownerId, label) VALUES (?, ?, ?)";
+
+    public static String PID_VERSION_QUERY =
+            "SELECT systemVersion FROM doRegistry WHERE doPID=?";
+
+    public static String PID_VERSION_UPDATE =
+            "UPDATE doRegistry SET systemVersion=? WHERE doPID=?";
+    
+    private static String INSERT_MODEL_DEPLOYMENT =
+            "INSERT INTO modelDeploymentMap (cModel, sDef, sDep) VALUES (?, ?, ?)";
+
+    private static String DELETE_MODEL_DEPLOYMENT =
+            "DELETE FROM modelDeploymentMap "
+                    + "WHERE cModel = ? AND sDef =? AND sDep = ?";
 
     private String m_pidNamespace;
 
@@ -116,10 +139,16 @@ public class DefaultDOManager
     protected PIDGenerator m_pidGenerator;
 
     protected DOTranslator m_translator;
-
+    
     protected ILowlevelStorage m_permanentStore;
+    
+    protected boolean m_checkableStore;
+
+    protected FedoraStorageHintProvider m_hintProvider;
 
     protected DOValidator m_validator;
+
+    private DOObjectValidator m_objectValidator;
 
     protected FieldSearch m_fieldSearch;
 
@@ -140,7 +169,6 @@ public class DefaultDOManager
     private ModelDeploymentMap m_cModelDeploymentMap;
 
     private final StringLock stringLock;
-
 
     /**
      * Class needed for synchronisation of access to modification of digital
@@ -337,6 +365,7 @@ public class DefaultDOManager
         }
 
     }
+    private int m_ingestValidationLevel;
 
     /**
      * Creates a new DefaultDOManager.
@@ -358,12 +387,12 @@ public class DefaultDOManager
         // pidNamespace (required, 1-17 chars, a-z, A-Z, 0-9 '-' '.')
         m_pidNamespace = getParameter("pidNamespace");
         if (m_pidNamespace == null) {
-            throw new ModuleInitializationException("pidNamespace parameter must be specified.",
-                                                    getRole());
+            throw new ModuleInitializationException(
+                    "pidNamespace parameter must be specified.", getRole());
         }
         if (m_pidNamespace.length() > 17 || m_pidNamespace.length() < 1) {
-            throw new ModuleInitializationException("pidNamespace parameter must be 1-17 chars long",
-                                                    getRole());
+            throw new ModuleInitializationException(
+                    "pidNamespace parameter must be 1-17 chars long", getRole());
         }
         StringBuffer badChars = new StringBuffer();
         for (int i = 0; i < m_pidNamespace.length(); i++) {
@@ -384,13 +413,10 @@ public class DefaultDOManager
                 badChars.append(c);
             }
         }
-        if (badChars.toString().length() > 0) {
-            throw new ModuleInitializationException("pidNamespace contains "
-                                                            + "invalid character(s) '"
-                                                            + badChars
-                                                                    .toString()
-                                                            + "'",
-                                                    getRole());
+        if (badChars.length() > 0) {
+            throw new ModuleInitializationException("pidNamespace contains " +
+                    "invalid character(s) '" + badChars.toString() + "'",
+                    getRole());
         }
         // storagePool (optional, default=ConnectionPoolManager's default pool)
         m_storagePool = getParameter("storagePool");
@@ -403,16 +429,16 @@ public class DefaultDOManager
         logger.debug("Server property format.storage= " + Server.STORAGE_FORMAT);
         m_defaultStorageFormat = Server.STORAGE_FORMAT;
         if (m_defaultStorageFormat == null) {
-            throw new ModuleInitializationException("System property format.storage "
-                                                            + "not given, but it's required.",
-                                                    getRole());
+            throw new ModuleInitializationException(
+                    "System property format.storage "
+                            + "not given, but it's required.", getRole());
         }
         // default export format (required)
         m_defaultExportFormat = getParameter("defaultExportFormat");
         if (m_defaultExportFormat == null) {
-            throw new ModuleInitializationException("Parameter defaultExportFormat "
-                                                            + "not given, but it's required.",
-                                                    getRole());
+            throw new ModuleInitializationException(
+                    "Parameter defaultExportFormat "
+                            + "not given, but it's required.", getRole());
         }
         // storageCharacterEncoding (optional, default=UTF-8)
         m_storageCharacterEncoding = getParameter("storageCharacterEncoding");
@@ -436,9 +462,9 @@ public class DefaultDOManager
                 throw new Exception("Cannot be less than zero");
             }
         } catch (Exception e) {
-            throw new ModuleInitializationException("Bad value for readerCacheSize parameter: "
-                                                            + e.getMessage(),
-                                                    getRole());
+            throw new ModuleInitializationException(
+                    "Bad value for readerCacheSize parameter: " +
+                            e.getMessage(), getRole());
         }
 
         String rcSeconds = getParameter("readerCacheSeconds");
@@ -453,14 +479,24 @@ public class DefaultDOManager
                 throw new Exception("Cannot be less than one");
             }
         } catch (Exception e) {
-            throw new ModuleInitializationException("Bad value for readerCacheSeconds parameter: "
-                                                            + e.getMessage(),
-                                                    getRole());
+            throw new ModuleInitializationException(
+                    "Bad value for readerCacheSeconds parameter: " +
+                            e.getMessage(), getRole());
         }
 
-        if (readerCacheSize > 0) {
-            m_readerCache =
-                    new DOReaderCache(readerCacheSize, readerCacheSeconds);
+        // configuration of ingest validation
+        String ingestValidationLevel = getParameter("ingestValidationLevel");
+        if (ingestValidationLevel == null) {
+            logger.debug("Ingest validation level not specified, using default of all");
+            m_ingestValidationLevel = DOValidator.VALIDATE_ALL;
+        } else {
+            m_ingestValidationLevel = Integer.parseInt(ingestValidationLevel);
+            // check the values.  better to declare the levels as enums, but this
+            // would require DOValidator interface change
+            if (m_ingestValidationLevel < -1 || m_ingestValidationLevel > 2) {
+                throw new ModuleInitializationException(
+                        "Bad value for ingestValidationLevel", getRole());
+            }
         }
     }
 
@@ -473,8 +509,8 @@ public class DefaultDOManager
         } else {
             // add to list (accept space and/or comma-separated)
             String[] ns =
-                    retainPIDs.trim().replaceAll(" +", ",")
-                            .replaceAll(",+", ",").split(",");
+                    retainPIDs.trim().replaceAll(" +", ",").replaceAll(",+",
+                            ",").split(",");
             for (String element : ns) {
                 if (element.length() > 0) {
                     m_retainPIDs.add(element);
@@ -497,60 +533,70 @@ public class DefaultDOManager
     @Override
     public void postInitModule() throws ModuleInitializationException {
         // get ref to management module
-        m_management = (Management) getServer()
-                .getModule("org.fcrepo.server.management.Management");
+        m_management =
+                (Management) getServer().getModule(
+                        "org.fcrepo.server.management.Management");
         if (m_management == null) {
-            throw new ModuleInitializationException("Management module not loaded.",
-                                                    getRole());
+            throw new ModuleInitializationException(
+                    "Management module not loaded.", getRole());
         }
 
         // get ref to contentmanager module
         m_contentManager =
-                (ExternalContentManager) getServer()
-                        .getModule("org.fcrepo.server.storage.ExternalContentManager");
+                (ExternalContentManager) getServer().getModule(
+                        "org.fcrepo.server.storage.ExternalContentManager");
         if (m_contentManager == null) {
-            throw new ModuleInitializationException("ExternalContentManager not loaded.",
-                                                    getRole());
+            throw new ModuleInitializationException(
+                    "ExternalContentManager not loaded.", getRole());
         }
         // get ref to fieldsearch module
         m_fieldSearch =
-                (FieldSearch) getServer()
-                        .getModule("org.fcrepo.server.search.FieldSearch");
+                getServer().getBean(
+                        "org.fcrepo.server.search.FieldSearch", FieldSearch.class);
         // get ref to pidgenerator
         m_pidGenerator =
-                (PIDGenerator) getServer()
-                        .getModule("org.fcrepo.server.management.PIDGenerator");
+                (PIDGenerator) getServer().getModule(
+                        "org.fcrepo.server.management.PIDGenerator");
         // note: permanent and temporary storage handles are lazily instantiated
 
         // get ref to translator and derive storageFormat default if not given
         m_translator =
-                (DOTranslator) getServer()
-                        .getModule("org.fcrepo.server.storage.translation.DOTranslator");
-        // get ref to digital object validator
+                (DOTranslator) getServer().getModule(
+                        "org.fcrepo.server.storage.translation.DOTranslator");
+        // get ref to digital object xml validator
         m_validator =
-                (DOValidator) getServer()
-                        .getModule("org.fcrepo.server.validation.DOValidator");
+                (DOValidator) getServer().getModule(
+                        "org.fcrepo.server.validation.DOValidator");
         if (m_validator == null) {
             throw new ModuleInitializationException("DOValidator not loaded.",
-                                                    getRole());
+                    getRole());
         }
+        // get ref to digital object validator
+        m_objectValidator =
+                (DOObjectValidator) getServer().getModule(
+                        "org.fcrepo.server.validation.DOObjectValidator");
+        if (m_objectValidator == null) {
+            throw new ModuleInitializationException(
+                    "DOObjectValidator not loaded.", getRole());
+        }
+
         // get ref to ResourceIndex
         m_resourceIndex =
-                (ResourceIndex) getServer()
-                        .getModule("org.fcrepo.server.resourceIndex.ResourceIndex");
+                (ResourceIndex) getServer().getModule(
+                        "org.fcrepo.server.resourceIndex.ResourceIndex");
         if (m_resourceIndex == null) {
             logger.error("ResourceIndex not loaded");
             throw new ModuleInitializationException("ResourceIndex not loaded",
-                                                    getRole());
+                    getRole());
         }
 
         // now get the connectionpool
         ConnectionPoolManager cpm =
-                (ConnectionPoolManager) getServer()
-                        .getModule("org.fcrepo.server.storage.ConnectionPoolManager");
+                (ConnectionPoolManager) getServer().getModule(
+                        "org.fcrepo.server.storage.ConnectionPoolManager");
         if (cpm == null) {
-            throw new ModuleInitializationException("ConnectionPoolManager not loaded.",
-                                                    getRole());
+            throw new ModuleInitializationException(
+                    "ConnectionPoolManager not loaded.", getRole());
         }
         try {
             if (m_storagePool == null) {
@@ -569,42 +615,55 @@ public class DefaultDOManager
                     this.getClass().getClassLoader()
                             .getResourceAsStream(dbSpec);
             if (specIn == null) {
-                throw new IOException("Cannot find required " + "resource: "
-                        + dbSpec);
+                throw new IOException("Cannot find required " + "resource: " +
+                        dbSpec);
             }
             SQLUtility.createNonExistingTables(m_connectionPool, specIn);
         } catch (Exception e) {
-            throw new ModuleInitializationException("Error while attempting to "
-                                                            + "check for and create non-existing table(s): "
-                                                            + e.getClass()
-                                                                    .getName()
-                                                            + ": "
-                                                            + e.getMessage(),
-                                                    getRole(), e);
+            throw new ModuleInitializationException(
+                    "Error while attempting to " +
+                            "check for and create non-existing table(s): " +
+                            e.getClass().getName() + ": " + e.getMessage(),
+                    getRole(), e);
         }
 
         // get ref to lowlevelstorage module
         m_permanentStore =
-                (ILowlevelStorage) getServer()
-                        .getModule("org.fcrepo.server.storage.lowlevel.ILowlevelStorage");
+                (ILowlevelStorage) getServer().getModule(
+                        "org.fcrepo.server.storage.lowlevel.ILowlevelStorage");
         if (m_permanentStore == null) {
             logger.error("LowlevelStorage not loaded");
-            throw new ModuleInitializationException("LowlevelStorage not loaded",
-                                                    getRole());
+            throw new ModuleInitializationException(
+                    "LowlevelStorage not loaded", getRole());
+        }
+        m_checkableStore = (m_permanentStore instanceof ICheckable);
+        // get ref to DOReaderCache module
+        m_readerCache = (DOReaderCache) getServer().getBean("org.fcrepo.server.readerCache");
+        
+        // get ref to FedoraStorageHintProvider
+        try {
+            m_hintProvider =
+                    (FedoraStorageHintProvider) getServer().getBean(
+                            "fedoraStorageHintProvider");
+        } catch (Throwable t) {
+            logger.warn("Could not load the specified hint provider class (as specified in spring bean definition), using default nullprovider");
+            m_hintProvider = new NullStorageHintsProvider();
         }
 
         /* Load the service deployment cache from the registry */
         initializeCModelDeploymentCache();
     }
-
+    
+    @Override
     public String lookupDeploymentForCModel(String cModelPid, String sDefPid) {
 
-        return m_cModelDeploymentMap.getDeployment(ServiceContext
-                .getInstance(cModelPid, sDefPid));
+        return m_cModelDeploymentMap.getDeployment(ServiceContext.getInstance(
+                cModelPid, sDefPid));
     }
 
     private void initializeCModelDeploymentCache() {
-        // Initialize Map containing links from Content Models to the Service Deployments.
+        // Initialize Map containing links from Content Models to the Service
+        // Deployments.
         m_cModelDeploymentMap = new ModelDeploymentMap();
 
         logger.debug("Initializing content model deployment map");
@@ -614,14 +673,9 @@ public class DefaultDOManager
         ResultSet r = null;
         try {
             c = m_connectionPool.getReadOnlyConnection();
-            String query = "SELECT cModel, sDef, sDep, mDate "
-                + " FROM modelDeploymentMap, doFields "
-                + " WHERE doFields.pid = modelDeploymentMap.sDep";
-            s =
-                    c.prepareStatement(query, ResultSet.TYPE_FORWARD_ONLY,
-                                      ResultSet.CONCUR_READ_ONLY);
-            ResultSet results =
-                    s.executeQuery();
+            s = c.prepareStatement(CMODEL_QUERY, ResultSet.TYPE_FORWARD_ONLY,
+                            ResultSet.CONCUR_READ_ONLY);
+            ResultSet results = s.executeQuery();
 
             while (results.next()) {
                 String cModel = results.getString(1);
@@ -629,13 +683,13 @@ public class DefaultDOManager
                 String sDep = results.getString(3);
                 long lastMod = results.getLong(4);
 
-                m_cModelDeploymentMap.putDeployment(ServiceContext
-                        .getInstance(cModel, sDef), sDep, lastMod);
+                m_cModelDeploymentMap.putDeployment(ServiceContext.getInstance(
+                        cModel, sDef), sDep, lastMod);
             }
 
         } catch (SQLException e) {
             throw new RuntimeException("Error loading cModel deployment cach",
-                                       e);
+                    e);
         } finally {
             try {
                 if (r != null) {
@@ -648,8 +702,8 @@ public class DefaultDOManager
                     m_connectionPool.free(c);
                 }
             } catch (SQLException e) {
-                throw new RuntimeException("Error loading cModel deployment cach",
-                                           e);
+                throw new RuntimeException(
+                        "Error loading cModel deployment cach", e);
             }
         }
 
@@ -663,9 +717,7 @@ public class DefaultDOManager
      *        DOReader of a service deployment object
      */
     private synchronized void updateDeploymentMap(DigitalObject obj,
-                                                  Connection c,
-                                                  boolean isPurge)
-            throws SQLException {
+            Connection c, boolean isPurge) throws SQLException {
 
         String sDep = obj.getPid();
         Set<RelationshipTuple> sDefs =
@@ -707,17 +759,15 @@ public class DefaultDOManager
         }
     }
 
-    private void addDeployment(ServiceContext context,
-                               DigitalObject sDep,
-                               Connection c) throws SQLException {
+    private void addDeployment(ServiceContext context, DigitalObject sDep,
+            Connection c) throws SQLException {
 
-        String query = "INSERT INTO modelDeploymentMap (cModel, sDef, sDep) VALUES (?, ?, ?)";
-    	PreparedStatement s = c.prepareStatement(query);
+        PreparedStatement s = c.prepareStatement(INSERT_MODEL_DEPLOYMENT);
 
         try {
-        	s.setString(1, context.cModel);
-        	s.setString(2, context.sDef);
-        	s.setString(3, sDep.getPid());
+            s.setString(1, context.cModel);
+            s.setString(2, context.sDef);
+            s.setString(3, sDep.getPid());
             s.executeUpdate();
         } finally {
             if (s != null) {
@@ -730,24 +780,20 @@ public class DefaultDOManager
 
     }
 
-    private void updateDeployment(ServiceContext context,
-                               DigitalObject sDep,
-                               Connection c) throws SQLException {
+    private void updateDeployment(ServiceContext context, DigitalObject sDep,
+            Connection c) throws SQLException {
 
         m_cModelDeploymentMap.putDeployment(context, sDep.getPid(), sDep
                 .getLastModDate().getTime());
 
     }
 
-    private void removeDeployment(ServiceContext context,
-                                  DigitalObject sDep,
-                                  Connection c) throws SQLException {
-        String query = "DELETE FROM modelDeploymentMap "
-            + "WHERE cModel = ? AND sDef =? AND sDep = ?";
-    	PreparedStatement s = c.prepareStatement(query);
-    	s.setString(1, context.cModel);
-    	s.setString(2,context.sDef);
-    	s.setString(3,sDep.getPid());
+    private void removeDeployment(ServiceContext context, DigitalObject sDep,
+            Connection c) throws SQLException {
+        PreparedStatement s = c.prepareStatement(DELETE_MODEL_DEPLOYMENT);
+        s.setString(1, context.cModel);
+        s.setString(2, context.sDef);
+        s.setString(3, sDep.getPid());
 
         try {
             s.executeUpdate();
@@ -762,11 +808,9 @@ public class DefaultDOManager
 
     @Override
     public void shutdownModule() {
-        if (m_readerCache != null) {
-            m_readerCache.close();
-        }
     }
 
+    @Override
     public void releaseWriter(DOWriter writer) {
 
         // If this is a new object, but object was not successfully committed
@@ -776,14 +820,25 @@ public class DefaultDOManager
                 unregisterObject(writer.getObject());
             } catch (Exception e) {
                 try {
-                    logger.warn("Error unregistering object: " + writer.GetObjectPID(), e);
+                    logger.warn("Error unregistering object: " +
+                            writer.GetObjectPID(), e);
                 } catch (Exception e2) {
-                    logger.warn("Error unregistering object; Unable to obtain PID from writer.", e2);
+                    logger.warn(
+                            "Error unregistering object; Unable to obtain PID from writer.",
+                            e2);
                 }
             }
         }
 
         writer.invalidate();
+        
+        if (writer.isCommitted()) {
+            try{
+                m_readerCache.remove(writer.GetObjectPID());
+            } catch (ServerException e) {
+                logger.warn("Error invalidating reader cache; Unable to obtain pid from writer.");
+            }
+        }
 
         try {
             releaseWriteLock(writer.GetObjectPID());
@@ -793,7 +848,6 @@ public class DefaultDOManager
     }
 
     private void releaseWriteLock(String pid) {
-
         stringLock.unlock( pid );
         // synchronized (m_lockedPIDs) {
         //     m_lockedPIDs.remove(pid);
@@ -847,14 +901,15 @@ public class DefaultDOManager
     public DOTranslator getTranslator() {
         return m_translator;
     }
-
+    
     /**
      * Gets a reader on an an existing digital object.
      */
-    public DOReader getReader(boolean cachedObjectRequired,
-                              Context context,
-                              String pid) throws ServerException {
-        long getReaderStartTime = System.currentTimeMillis();
+    @Override
+    public DOReader getReader(boolean cachedObjectRequired, Context context,
+            String pid) throws ServerException {
+        long getReaderStartTime = logger.isDebugEnabled() ?
+                System.currentTimeMillis() : -1;
         String source = null;
         try {
             {
@@ -864,17 +919,14 @@ public class DefaultDOManager
                 }
                 if (reader == null) {
                     reader =
-                            new SimpleDOReader(context,
-                                               this,
-                                               m_translator,
-                                               m_defaultExportFormat,
-                                               m_defaultStorageFormat,
-                                               m_storageCharacterEncoding,
-                                               m_permanentStore
-                                                       .retrieveObject(pid));
+                            new SimpleDOReader(context, this, m_translator,
+                                    m_defaultExportFormat,
+                                    m_defaultStorageFormat,
+                                    m_storageCharacterEncoding,
+                                    m_permanentStore.retrieveObject(pid));
                     source = "filesystem";
                     if (m_readerCache != null) {
-                        m_readerCache.put(reader);
+                        m_readerCache.put(reader, getReaderStartTime);
                     }
                 } else {
                     source = "memory";
@@ -884,8 +936,8 @@ public class DefaultDOManager
         } finally {
             if (logger.isDebugEnabled()) {
                 long dur = System.currentTimeMillis() - getReaderStartTime;
-                logger.debug("Got DOReader (source=" + source + ") for " + pid
-                        + " in " + dur + "ms.");
+                logger.debug("Got DOReader (source={}) for {} in {}ms.",
+                        source, pid, dur);
             }
         }
     }
@@ -893,64 +945,51 @@ public class DefaultDOManager
     /**
      * Gets a reader on an an existing service deployment object.
      */
-    public ServiceDeploymentReader getServiceDeploymentReader(boolean cachedObjectRequired,
-                                                              Context context,
-                                                              String pid)
+    @Override
+    public ServiceDeploymentReader getServiceDeploymentReader(
+            boolean cachedObjectRequired, Context context, String pid)
             throws ServerException {
         {
-            return new SimpleServiceDeploymentReader(context,
-                                                     this,
-                                                     m_translator,
-                                                     m_defaultExportFormat,
-                                                     m_defaultStorageFormat,
-                                                     m_storageCharacterEncoding,
-                                                     m_permanentStore
-                                                             .retrieveObject(pid));
+            return new SimpleServiceDeploymentReader(context, this,
+                    m_translator, m_defaultExportFormat,
+                    m_defaultStorageFormat, m_storageCharacterEncoding,
+                    m_permanentStore.retrieveObject(pid));
         }
     }
 
     /**
      * Gets a reader on an an existing service definition object.
      */
-    public ServiceDefinitionReader getServiceDefinitionReader(boolean cachedObjectRequired,
-                                                              Context context,
-                                                              String pid)
+    @Override
+    public ServiceDefinitionReader getServiceDefinitionReader(
+            boolean cachedObjectRequired, Context context, String pid)
             throws ServerException {
         {
-            return new SimpleServiceDefinitionReader(context,
-                                                     this,
-                                                     m_translator,
-                                                     m_defaultExportFormat,
-                                                     m_defaultStorageFormat,
-                                                     m_storageCharacterEncoding,
-                                                     m_permanentStore
-                                                             .retrieveObject(pid));
+            return new SimpleServiceDefinitionReader(context, this,
+                    m_translator, m_defaultExportFormat,
+                    m_defaultStorageFormat, m_storageCharacterEncoding,
+                    m_permanentStore.retrieveObject(pid));
         }
     }
 
     /**
      * Gets a writer on an an existing object.
      */
-    public DOWriter getWriter(boolean cachedObjectRequired,
-                              Context context,
-                              String pid) throws ServerException,
-            ObjectLockedException {
+    @Override
+    public DOWriter getWriter(boolean cachedObjectRequired, Context context,
+            String pid) throws ServerException, ObjectLockedException {
         if (cachedObjectRequired) {
-            throw new InvalidContextException("A DOWriter is unavailable in a cached context.");
+            throw new InvalidContextException(
+                    "A DOWriter is unavailable in a cached context.");
         } else {
             BasicDigitalObject obj = new BasicDigitalObject();
-            m_translator.deserialize(m_permanentStore.retrieveObject(pid),
-                                     obj,
-                                     m_defaultStorageFormat,
-                                     m_storageCharacterEncoding,
-                                     DOTranslationUtility.DESERIALIZE_INSTANCE);
+            m_translator.deserialize(m_permanentStore.retrieveObject(pid), obj,
+                    m_defaultStorageFormat, m_storageCharacterEncoding,
+                    DOTranslationUtility.DESERIALIZE_INSTANCE);
             DOWriter w =
-                    new SimpleDOWriter(context,
-                                       this,
-                                       m_translator,
-                                       m_defaultStorageFormat,
-                                       m_storageCharacterEncoding,
-                                       obj);
+                    new SimpleDOWriter(context, this, m_translator,
+                            m_defaultStorageFormat, m_storageCharacterEncoding,
+                            obj);
             getWriteLock(obj.getPid());
             return w;
         }
@@ -966,22 +1005,21 @@ public class DefaultDOManager
      *
      * @param context
      * @param in
-     *        the input stream that is the XML ingest file for a digital object
+     *            the input stream that is the XML ingest file for a digital
+     *            object
      * @param format
      *        the format of the XML ingest file (e.g., FOXML, Fedora METS)
      * @param encoding
      *        the character encoding of the XML ingest file (e.g., UTF-8)
      * @param pid
-     *        "new" if the system should generate a new PID for the object, otherwise
-     *        the value of the additional pid parameter for ingests (may be null or any valid pid)
+     *            "new" if the system should generate a new PID for the object,
+     *            otherwise the value of the additional pid parameter for
+     *            ingests (may be null or any valid pid)
      */
+    @Override
     public DOWriter getIngestWriter(boolean cachedObjectRequired,
-                                                 Context context,
-                                                 InputStream in,
-                                                 String format,
-                                                 String encoding,
-                                                 String pid)
-            throws ServerException {
+            Context context, InputStream in, String format, String encoding,
+            String pid) throws ServerException {
         logger.debug("Entered getIngestWriter");
 
         DOWriter w = null;
@@ -989,7 +1027,8 @@ public class DefaultDOManager
 
         File tempFile = null;
         if (cachedObjectRequired) {
-            throw new InvalidContextException("A DOWriter is unavailable in a cached context.");
+            throw new InvalidContextException(
+                    "A DOWriter is unavailable in a cached context.");
         } else {
             try {
                 // CURRENT TIME:
@@ -997,51 +1036,38 @@ public class DefaultDOManager
                 // and object components (if they are not already there).
                 Date nowUTC = Server.getCurrentDate(context);
 
-//                ByteArrayOutputStream tempBuffer = new ByteArrayOutputStream();
-//
                 // TEMP STORAGE:
                 // write ingest input stream to a temporary file
                 tempFile = File.createTempFile("fedora-ingest-temp", ".xml");
-                logger.debug("Creating temporary file for ingest: "
-                        + tempFile.toString());
-                StreamUtility.pipeStream(in,
-                                         new FileOutputStream(tempFile),
-                                         4096);
-//                StreamUtility.pipeStream(in,
-//                                         tempBuffer,
-//                                         4096);
+                logger.debug("Creating temporary file for ingest: {}",
+                        tempFile.toString());
+                StreamUtility.pipeStream(in, new FileOutputStream(tempFile),
+                        4096);
 
                 // VALIDATION:
                 // perform initial validation of the ingest submission file
                 logger.debug("Validation (ingest phase)");
-                m_validator.validate(tempFile,
-//                m_validator.validate(new ByteArrayInputStream(tempBuffer.toByteArray()),
-                                     format,
-                                     DOValidatorImpl.VALIDATE_ALL,
-                                     "ingest");
+                m_validator.validate(tempFile, format, m_ingestValidationLevel,
+                        DOValidator.PHASE_INGEST);
 
                 // DESERIALIZE:
-                // deserialize the ingest input stream into a digital object instance
+                // deserialize the ingest input stream into a digital object
+                // instance
                 obj = new BasicDigitalObject();
                 obj.setNew(true);
-                logger.debug("Deserializing from format: " + format);
-                m_translator
-                        .deserialize(new FileInputStream(tempFile),
-//                        .deserialize(new ByteArrayInputStream(tempBuffer.toByteArray()),
-                                     obj,
-                                     format,
-                                     encoding,
-                                     DOTranslationUtility.DESERIALIZE_INSTANCE);
+                logger.debug("Deserializing from format: {}", format);
+                m_translator.deserialize(new FileInputStream(tempFile), obj,
+                        format, encoding,
+                        DOTranslationUtility.DESERIALIZE_INSTANCE);
 
                 // SET OBJECT PROPERTIES:
                 logger.debug("Setting object/component states and create dates if unset");
                 // set object state to "A" (Active) if not already set
-                if (obj.getState() == null || obj.getState().equals("")) {
+                if (obj.getState() == null || obj.getState().isEmpty()) {
                     obj.setState("A");
                 }
                 // set object create date to UTC if not already set
-                if (obj.getCreateDate() == null
-                        || obj.getCreateDate().equals("")) {
+                if (obj.getCreateDate() == null) {
                     obj.setCreateDate(nowUTC);
                 }
                 // set object last modified date to UTC
@@ -1052,11 +1078,11 @@ public class DefaultDOManager
                 while (dsIter.hasNext()) {
                     for (Datastream ds : obj.datastreams(dsIter.next())) {
                         // Set create date to UTC if not already set
-                        if (ds.DSCreateDT == null || ds.DSCreateDT.equals("")) {
+                        if (ds.DSCreateDT == null) {
                             ds.DSCreateDT = nowUTC;
                         }
                         // Set state to "A" (Active) if not already set
-                        if (ds.DSState == null || ds.DSState.equals("")) {
+                        if (ds.DSState == null || ds.DSState.isEmpty()) {
                             ds.DSState = "A";
                         }
                         ds.DSChecksumType =
@@ -1066,10 +1092,10 @@ public class DefaultDOManager
                 }
 
                 // SET MIMETYPE AND FORMAT_URIS FOR LEGACY OBJECTS' DATASTREAMS
-                if (FOXML1_0.uri.equals(format)
-                        || FOXML1_0_LEGACY.equals(format)
-                        || METS_EXT1_0.uri.equals(format)
-                        || METS_EXT1_0_LEGACY.equals(format)) {
+                if (FOXML1_0.uri.equals(format) ||
+                        FOXML1_0_LEGACY.equals(format) ||
+                        METS_EXT1_0.uri.equals(format) ||
+                        METS_EXT1_0_LEGACY.equals(format)) {
                     DigitalObjectUtil.updateLegacyDatastreams(obj);
                 }
 
@@ -1080,10 +1106,8 @@ public class DefaultDOManager
                     if (obj.getPid() != null && obj.getPid().length() > 0) {
                         if (!pid.equals(obj.getPid())) {
                             throw new GeneralException(
-                                    "The PID of the digital object and the PID provided as parameter are different. Digital object: "
-                                            + obj.getPid()
-                                            + " parameter: "
-                                            + pid);
+                                    "The PID of the digital object and the PID provided as parameter are different. Digital object: " +
+                                            obj.getPid() + " parameter: " + pid);
                         }
                     } else {
                         obj.setPid(pid);
@@ -1098,16 +1122,17 @@ public class DefaultDOManager
 
                 // PID GENERATION:
                 // have the system generate a PID if one was not provided
-                if (obj.getPid() != null
-                        && obj.getPid().indexOf(":") != -1
-                        && (m_retainPIDs == null || m_retainPIDs.contains(obj
+                if (obj.getPid() != null &&
+                        obj.getPid().indexOf(":") != -1 &&
+                        (m_retainPIDs == null || m_retainPIDs.contains(obj
                                 .getPid().split(":")[0]))) {
                     logger.debug("Stream contained PID with retainable namespace-id; will use PID from stream");
                     try {
                         m_pidGenerator.neverGeneratePID(obj.getPid());
                     } catch (IOException e) {
-                        throw new GeneralException("Error calling pidGenerator.neverGeneratePID(): "
-                                + e.getMessage());
+                        throw new GeneralException(
+                                "Error calling pidGenerator.neverGeneratePID(): " +
+                                        e.getMessage());
                     }
                 } else {
                     if (pid.equals("new")) {
@@ -1120,26 +1145,29 @@ public class DefaultDOManager
                             if (context instanceof RecoveryContext) {
                                 RecoveryContext rContext =
                                         (RecoveryContext) context;
-                                p = rContext.getRecoveryValue(Constants.RECOVERY.PID.uri);
+                                p =
+                                        rContext.getRecoveryValue(Constants.RECOVERY.PID.attributeId);
                             }
                             if (p == null) {
-                                p = m_pidGenerator.generatePID(m_pidNamespace)
-                                        .toString();
+                                p =
+                                        m_pidGenerator.generatePID(
+                                                m_pidNamespace).toString();
                             } else {
                                 logger.debug("Using new PID from recovery context");
                                 m_pidGenerator.neverGeneratePID(p);
                             }
                         } catch (Exception e) {
-                            throw new GeneralException("Error generating PID", e);
+                            throw new GeneralException("Error generating PID",
+                                    e);
                         }
-                        logger.info("Generated new PID: " + p);
+                        logger.info("Generated new PID: {}", p);
                         obj.setPid(p);
                     } else {
                         logger.debug("Client wants to use existing PID.");
                     }
                 }
 
-                logger.info("New object PID is {}", obj.getPid());
+                logger.debug("New object PID is {}", obj.getPid());
 
                 // WRITE LOCK:
                 // ensure no one else can modify the object now
@@ -1150,22 +1178,20 @@ public class DefaultDOManager
                 // ensure the object doesn't already exist
                 if (objectExists(obj.getPid())) {
                     releaseWriteLock(obj.getPid());
-                    throw new ObjectExistsException("The PID '"
-                            + obj.getPid()
-                            + "' already exists in the registry; the object can't be re-created.");
+                    throw new ObjectExistsException("The PID '" + obj.getPid() +
+                            "' already exists in the registry; the object can't be re-created.");
                 }
 
                 // GET DIGITAL OBJECT WRITER:
-                // get an object writer configured with the DEFAULT export format
-                logger.debug("Getting new writer with default export format: "
-                        + m_defaultExportFormat);
+                // get an object writer configured with the DEFAULT export
+                // format
+                logger.debug("Getting new writer with default export format: {}",
+                        m_defaultExportFormat);
                 logger.debug("Instantiating a SimpleDOWriter");
-                w = new SimpleDOWriter(context,
-                                       this,
-                                       m_translator,
-                                       m_defaultExportFormat,
-                                       m_storageCharacterEncoding,
-                                       obj);
+                w =
+                        new SimpleDOWriter(context, this, m_translator,
+                                m_defaultExportFormat,
+                                m_storageCharacterEncoding, obj);
 
                 // DEFAULT DATASTREAMS:
                 populateDC(context, obj, w, nowUTC);
@@ -1196,8 +1222,8 @@ public class DefaultDOManager
                     ServerException se = (ServerException) e;
                     throw se;
                 }
-                throw new GeneralException("Ingest failed: "
-                        + e.getClass().getName(), e);
+                throw new GeneralException("Ingest failed: " +
+                        e.getClass().getName(), e);
             } finally {
                 if (tempFile != null) {
                     logger.debug("Finally, removing temp file");
@@ -1214,17 +1240,13 @@ public class DefaultDOManager
     /**
      * Adds a minimal DC datastream if one isn't already present.
      *
-     * If there is already a DC datastream, ensure one of the
-     * dc:identifier values is the PID of the object.
+     * If there is already a DC datastream, ensure one of the dc:identifier
+     * values is the PID of the object.
      */
-    private static void populateDC(Context ctx,
-                                   DigitalObject obj,
-                                   DOWriter w,
-                                   Date nowUTC)
-            throws IOException, ServerException {
+    private static void populateDC(Context ctx, DigitalObject obj, DOWriter w,
+            Date nowUTC) throws IOException, ServerException {
         logger.debug("Adding/Checking default DC datastream");
-        Datastream dc =
-                w.GetDatastream("DC", null);
+        Datastream dc = w.GetDatastream("DC", null);
         DCFields dcf;
         XMLDatastreamProcessor dcxml = null;
 
@@ -1243,22 +1265,24 @@ public class DefaultDOManager
             dc.DSState = "A";
             dc.DSVersionable = true;
             dcf = new DCFields();
-            if (obj.getLabel() != null && !obj.getLabel().equals("")) {
+            if (obj.getLabel() != null && !obj.getLabel().isEmpty()) {
                 dcf.titles().add(new DCField(obj.getLabel()));
             }
             w.addDatastream(dc, dc.DSVersionable);
         } else {
             dcxml = new XMLDatastreamProcessor(dc);
-            // note: context may be required to get through authz as content could be filesystem file (or URL)
-            dcf = new DCFields(new ByteArrayInputStream(dcxml.getXMLContent(ctx)));
+            // note: context may be required to get through authz as content
+            // could be filesystem file (or URL)
+            dcf = new DCFields(dc.getContentStream(ctx));
         }
-        // set the value of the dc datastream according to what's in the DCFields object
+        // set the value of the dc datastream according to what's in the
+        // DCFields object
         // ensure one of the dc:identifiers is the pid
-        try {
-            dcxml.setXMLContent(dcf.getAsXML(obj.getPid()).getBytes("UTF-8"));
-        } catch (UnsupportedEncodingException uee) {
-            // safely ignore... we know UTF-8 works
-        }
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(512);
+        PrintWriter out = new PrintWriter(new OutputStreamWriter(bytes, Charset.forName("UTF-8")));
+        dcf.getAsXML(obj.getPid(), out);
+        out.close();
+        dcxml.setXMLContent(bytes.toByteArray());
     }
 
     /**
@@ -1271,105 +1295,29 @@ public class DefaultDOManager
      * lock (TODO) is released, too. This happens as the result of a
      * writer.commit() call.
      */
-    public void doCommit(boolean cachedObjectRequired,
-                         Context context,
-                         DigitalObject obj,
-                         String logMessage,
-                         boolean remove) throws ServerException {
+    public void doCommit(boolean cachedObjectRequired, Context context,
+            DigitalObject obj, String logMessage, boolean remove)
+            throws ServerException {
+
+        String pid = obj.getPid();
+
         // OBJECT REMOVAL...
         if (remove) {
-
-            logger.info("Committing removal of " + obj.getPid());
-
-            // RESOURCE INDEX:
-            // remove digital object from the resourceIndex
-            // (nb: must happen before datastream storage removal - as relationships might be in managed datastreams)
-            if (m_resourceIndex.getIndexLevel() != ResourceIndex.INDEX_LEVEL_OFF) {
-                try {
-                    logger.info("Deleting from ResourceIndex");
-                    m_resourceIndex.deleteObject(new SimpleDOReader(null,
-                                                                    null,
-                                                                    null,
-                                                                    null,
-                                                                    null,
-                                                                    obj));
-                    logger.debug("Finished deleting from ResourceIndex");
-                } catch (ServerException se) {
-                    logger.warn("Object couldn't be removed from ResourceIndex ("
-                            + se.getMessage()
-                            + "), but that might be ok; continuing with purge");
-                }
-            }
-
-
-            // DATASTREAM STORAGE:
-            // remove any managed content datastreams associated with object
-            // from persistent storage.
-            Iterator<String> dsIDIter = obj.datastreamIdIterator();
-            while (dsIDIter.hasNext()) {
-                String dsID = dsIDIter.next();
-                String controlGroupType =
-                        obj.datastreams(dsID).iterator().next().DSControlGrp;
-                if (controlGroupType.equalsIgnoreCase("M")) {
-                    // iterate over all versions of this dsID
-                    for (Datastream dmc : obj.datastreams(dsID)) {
-                        String id =
-                                obj.getPid() + "+" + dmc.DatastreamID + "+"
-                                        + dmc.DSVersionID;
-                        logger.info("Deleting managed datastream: " + id);
-                        try {
-                            m_permanentStore.removeDatastream(id);
-                        } catch (LowlevelStorageException llse) {
-                            logger.warn("Error attempting removal of managed "
-                                    + "content datastream: ", llse);
-                        }
-                    }
-                }
-            }
-
-            // STORAGE:
-            // remove digital object from persistent storage
-            try {
-                m_permanentStore.removeObject(obj.getPid());
-            } catch (ObjectNotInLowlevelStorageException onilse) {
-                logger.warn("Object wasn't found in permanent low level "
-                        + "store, but that might be ok; continuing with purge");
-            }
-
-            // INVALIDATE DOREADER CACHE:
-            // now that the object xml is removed, make sure future requests
-            // for the object will not use a stale copy
-            if (m_readerCache != null) {
-                m_readerCache.remove(obj.getPid());
-            }
-
-            // REGISTRY:
-            // Remove digital object from the registry
-            try {
-                unregisterObject(obj);
-            } catch (ServerException se) {
-                logger.warn("Object couldn't be removed from registry, but that might be ok; continuing with purge");
-            }
-            // FIELD SEARCH INDEX:
-            // remove digital object from the default search index
-            try {
-                logger.trace("Deleting from FieldSearch index");
-                m_fieldSearch.delete(obj.getPid());
-            } catch (ServerException se) {
-                logger.warn("Object couldn't be removed from FieldSearch index ("
-                        + se.getMessage()
-                        + "), but that might be ok; continuing with purge");
-            }
-
+            removeObject(obj, false);
 
             // OBJECT INGEST (ADD) OR MODIFY...
         } else {
             if (obj.isNew()) {
-                logger.info("Committing addition of " + obj.getPid());
+                logger.info("Committing addition of {}", obj.getPid());
             } else {
-                logger.info("Committing modification of " + obj.getPid());
+                logger.info("Committing modification of {}", obj.getPid());
             }
-            try {
+
+            // Object validation
+            m_objectValidator.validate(context, new SimpleDOReader(null, null,
+                    null, null, null, obj));
+
+            try { // for cleanup catch
 
                 // DATASTREAM STORAGE:
                 // copy and store any datastreams of type Managed Content
@@ -1377,92 +1325,140 @@ public class DefaultDOManager
                 while (dsIDIter.hasNext()) {
                     String dsID = dsIDIter.next();
                     Datastream dStream =
-                            obj.datastreams(dsID).iterator()
-                            .next();
+                            obj.datastreams(dsID).iterator().next();
                     String controlGroupType = dStream.DSControlGrp;
                     // if it's managed, we might need to grab content
                     if (controlGroupType.equalsIgnoreCase("M")) {
                         // iterate over all versions of this dsID
                         for (Datastream dmc : obj.datastreams(dsID)) {
-                            String internalId = obj.getPid() + "+" + dmc.DatastreamID + "+" + dmc.DSVersionID;
-                            // if it's a url, we need to grab content for this version
+                            String internalId =
+                                    pid + "+" + dmc.DatastreamID + "+" +
+                                            dmc.DSVersionID;
+                            // if it's a url, we need to grab content for this
+                            // version
                             if (URL_PROTOCOL.matcher(dmc.DSLocation).matches()) {
                                 MIMETypedStream mimeTypedStream;
-                                if (dmc.DSLocation.startsWith(DatastreamManagedContent.UPLOADED_SCHEME)) {
+                                if (dmc.DSLocation
+                                        .startsWith(DatastreamManagedContent.UPLOADED_SCHEME)) {
                                     mimeTypedStream =
-                                            new MIMETypedStream(null,
-                                                                m_management.getTempStream(dmc.DSLocation),
-                                                                null,
-                                                                dmc.DSSize);
-                                    logger.info("Getting managed datastream from internal uploaded "
-                                            + "location: " + dmc.DSLocation);
-                                } else if (dmc.DSLocation.startsWith(DatastreamManagedContent.COPY_SCHEME)) {
+                                            new MIMETypedStream(
+                                                    null,
+                                                    m_management
+                                                            .getTempStream(dmc.DSLocation),
+                                                    null, dmc.DSSize);
+                                    logger.info("Getting managed datastream from internal uploaded " +
+                                            "location: {} for ",
+                                            dmc.DSLocation, pid);
+                                } else if (dmc.DSLocation
+                                        .startsWith(DatastreamManagedContent.COPY_SCHEME)) {
                                     // make a copy of the pre-existing content
                                     mimeTypedStream =
-                                            new MIMETypedStream(null,
-                                                                m_permanentStore
-                                                                        .retrieveDatastream(dmc.DSLocation
-                                                                                .substring(7)),
-                                                                null,
-                                                                dmc.DSSize);
-                                } else if (dmc.DSLocation.startsWith(DatastreamManagedContent.TEMP_SCHEME)) {
+                                            new MIMETypedStream(
+                                                    null,
+                                                    m_permanentStore.retrieveDatastream(dmc.DSLocation
+                                                                    .substring(7)),
+                                                    null, dmc.DSSize);
+                                } else if (dmc.DSLocation
+                                        .startsWith(DatastreamManagedContent.TEMP_SCHEME)) {
                                     File file =
                                             new File(dmc.DSLocation
                                                     .substring(7));
-                                    logger.info("Getting base64 decoded datastream spooled from archive");
+                                    logger.info("Getting base64 decoded datastream spooled from archive for datastream {} ({})",
+                                            dsID, pid);
                                     try {
                                         InputStream str =
                                                 new FileInputStream(file);
                                         mimeTypedStream =
                                                 new MIMETypedStream(dmc.DSMIME,
-                                                                    str,
-                                                                    null,
-                                                                    file.length());
+                                                        str, null, file
+                                                                .length());
                                     } catch (FileNotFoundException fnfe) {
-                                        logger.warn("Unable to read temp file created for datastream from archive",
-                                                      fnfe);
-                                        throw new StreamIOException("Error reading from temporary file created for binary content");
+                                        logger.error(
+                                                "Unable to read temp file created for datastream from archive for " +
+                                                        pid + " / " + dsID,
+                                                fnfe);
+                                        throw new StreamIOException(
+                                                "Error reading from temporary file created for binary content for " +
+                                                        pid + " / " + dsID);
                                     }
                                 } else {
-                                    ContentManagerParams params = new ContentManagerParams(DOTranslationUtility
-                                            .makeAbsoluteURLs(dmc.DSLocation.toString()), dmc.DSMIME, null, null);
+                                    ContentManagerParams params =
+                                            new ContentManagerParams(
+                                                    DOTranslationUtility
+                                                            .makeAbsoluteURLs(dmc.DSLocation
+                                                                    .toString()),
+                                                    dmc.DSMIME, null, null);
                                     params.setContext(context);
-                                    mimeTypedStream = m_contentManager.getExternalContent(params);
-                                    logger.info("Getting managed datastream from remote location: " + dmc.DSLocation);
+                                    mimeTypedStream =
+                                            m_contentManager
+                                                    .getExternalContent(params);
+                                    logger.info("Getting managed datastream from remote location: {} ({} / {})",
+                                            dmc.DSLocation, pid, dsID);
                                 }
+                                Map<String, String> dsHints =
+                                        m_hintProvider
+                                                .getHintsForAboutToBeStoredDatastream(
+                                                        obj, dmc.DatastreamID);
                                 if (obj.isNew()) {
-                                    dmc.DSSize = m_permanentStore.addDatastream(internalId, mimeTypedStream.getStream());
+                                    dmc.DSSize =
+                                            m_permanentStore.addDatastream(
+                                                    internalId, mimeTypedStream
+                                                            .getStream(),
+                                                    dsHints);
                                 } else {
-                                    // object already existed...so we may need to call
-                                    // replace if "add" indicates that it was already there
+                                    // object already existed...so we may need
+                                    // to call
+                                    // replace if "add" indicates that it was
+                                    // already there
                                     try {
-                                        dmc.DSSize = m_permanentStore
-                                                .addDatastream(internalId, mimeTypedStream.getStream());
+                                        dmc.DSSize =
+                                                m_permanentStore.addDatastream(
+                                                        internalId,
+                                                        mimeTypedStream
+                                                                .getStream(),
+                                                        dsHints);
                                     } catch (ObjectAlreadyInLowlevelStorageException oailse) {
-                                        dmc.DSSize = m_permanentStore
-                                                .replaceDatastream(internalId, mimeTypedStream.getStream());
+                                        dmc.DSSize =
+                                                m_permanentStore.replaceDatastream(
+                                                                internalId,
+                                                                mimeTypedStream
+                                                                        .getStream(),
+                                                                dsHints);
                                     }
                                 }
-                                if(mimeTypedStream != null) {
+                                if (mimeTypedStream != null) {
                                     mimeTypedStream.close();
-                                if (dmc.DSLocation.startsWith(DatastreamManagedContent.TEMP_SCHEME)) {
-                                    // delete the temp file created to store the binary content from archive
-                                    File file = new File(dmc.DSLocation.substring(7));
-                                    if (file.exists()) {
-                                        if (!file.delete()) {
-                                            logger.warn("Failed to remove temp file, marked for deletion when VM closes: " + file.toString());
-                                            file.deleteOnExit();
-                                }
-                                    } else
-                                        logger.warn("Cannot delete temp file as it no longer exists: " + file.getAbsolutePath());
-                                }
-                                // Reset dsLocation in object to new internal location.
-                                dmc.DSLocation = internalId;
-                                logger.info("Replaced managed datastream location with internal id: " + internalId);
+                                    if (dmc.DSLocation
+                                            .startsWith(DatastreamManagedContent.TEMP_SCHEME)) {
+                                        // delete the temp file created to store
+                                        // the binary content from archive
+                                        File file =
+                                                new File(dmc.DSLocation
+                                                        .substring(7));
+                                        if (file.exists()) {
+                                            if (!file.delete()) {
+                                                logger.warn("Failed to remove temp file, marked for deletion when VM closes: " +
+                                                        file.toString());
+                                                file.deleteOnExit();
+                                            }
+                                        } else {
+                                            logger.warn("Cannot delete temp file as it no longer exists: " +
+                                                    file.getAbsolutePath());
+                                        }
+                                    }
+                                    // Reset dsLocation in object to new
+                                    // internal location.
+                                    dmc.DSLocation = internalId;
+                                    dmc.DSLocationType =
+                                            Datastream.DS_LOCATION_TYPE_INTERNAL;
+                                    logger.info("Replaced managed datastream location with internal id: {}",
+                                            internalId);
                                 }
                             } else if (!internalId.equals(dmc.DSLocation)) {
-                                logger.warn("Unrecognized DSLocation \"" + dmc.DSLocation + "\" given for datastream "
-                                        + dmc.DatastreamID + " of object " + obj.getPid());
+                                logger.error("Unrecognized DSLocation \"" +
+                                        dmc.DSLocation +
+                                        "\" given for datastream " +
+                                        dmc.DatastreamID + " of object " + pid);
                             }
                         }
                     }
@@ -1472,11 +1468,15 @@ public class DefaultDOManager
                 // find out which, if any, managed datastreams were purged,
                 // then remove them from low level datastream storage
                 // this was moved because in the case of modifying a datastream
-                // with versioning turned off, if a modification didn't involve new
+                // with versioning turned off, if a modification didn't involve
+                // new
                 // content a special url of the form copy:... would be used to
-                // indicate the content for the new datastream version, which would
-                // point to the content of the most recent version.  Which (if this code
-                // had been executed earlier) would no longer exist in the low-level store.
+                // indicate the content for the new datastream version, which
+                // would
+                // point to the content of the most recent version. Which (if
+                // this code
+                // had been executed earlier) would no longer exist in the
+                // low-level store.
 
                 if (!obj.isNew()) {
                     deletePurgedDatastreams(obj, context);
@@ -1485,91 +1485,96 @@ public class DefaultDOManager
                 // MODIFIED DATE:
                 // set digital object last modified date, in UTC
                 obj.setLastModDate(Server.getCurrentDate(context));
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                ByteArrayInputStream serialized;
 
-                // FINAL XML SERIALIZATION:
-                // serialize the object in its final form for persistent storage
-                logger.debug("Serializing digital object for persistent storage");
-                m_translator
-                        .serialize(obj,
-                                   out,
-                                   m_defaultStorageFormat,
-                                   m_storageCharacterEncoding,
-                                   DOTranslationUtility.SERIALIZE_STORAGE_INTERNAL);
+                // block-scoping the ByteArrayOutputStream to ensure toArray
+                // is only called once
+                // initial capacity is just a guess to prevent copying up from 32 bytes
+                {
+                    ReadableByteArrayOutputStream out = new ReadableByteArrayOutputStream(4096);
+
+                    // FINAL XML SERIALIZATION:
+                    // serialize the object in its final form for persistent storage
+                    logger.debug("Serializing digital object for persistent storage {}",
+                            pid);
+                    m_translator.serialize(obj, out, m_defaultStorageFormat,
+                            m_storageCharacterEncoding,
+                            DOTranslationUtility.SERIALIZE_STORAGE_INTERNAL);
+
+                    
+                    serialized = out.toInputStream();
+                }
 
                 // FINAL VALIDATION:
-                // As of version 2.0, final validation is only performed in DEBUG mode.
-                // This is to help performance during the ingest process since validation
-                // is a large amount of the overhead of ingest.  Instead of a second run
-                // of the validation module, we depend on the integrity of our code to
-                // create valid XML files for persistent storage of digital objects.  As
-                // a sanity check, we check that we can deserialize the object we just serialized
+                // As of version 2.0, final validation is only performed in
+                // DEBUG mode.
+                // This is to help performance during the ingest process since
+                // validation
+                // is a large amount of the overhead of ingest. Instead of a
+                // second run
+                // of the validation module, we depend on the integrity of our
+                // code to
+                // create valid XML files for persistent storage of digital
+                // objects. As
+                // a sanity check, we check that we can deserialize the object
+                // we just serialized
                 if (logger.isDebugEnabled()) {
-                    ByteArrayInputStream inV =
-                            new ByteArrayInputStream(out.toByteArray());
                     logger.debug("Final Validation (storage phase)");
-                    m_validator.validate(inV,
-                                         m_defaultStorageFormat,
-                                         DOValidatorImpl.VALIDATE_ALL,
-                                         "store");
+                    m_validator.validate(serialized, m_defaultStorageFormat,
+                            DOValidator.VALIDATE_XML_SCHEMA, DOValidator.PHASE_STORE);
+                    serialized.reset();
+                    m_validator.validate(serialized, m_defaultStorageFormat,
+                            DOValidator.VALIDATE_SCHEMATRON, DOValidator.PHASE_STORE);
+                    serialized.reset();
                 }
-                /* Verify that we can deserialize our object.  */
-                m_translator
-                        .deserialize(new ByteArrayInputStream(out.toByteArray()),
-                             new BasicDigitalObject(),
-                             m_defaultStorageFormat,
-                             m_storageCharacterEncoding,
-                             DOTranslationUtility.SERIALIZE_STORAGE_INTERNAL);
-
+                /* Verify that we can deserialize our object. */
+                m_translator.deserialize(serialized, new BasicDigitalObject(),
+                        m_defaultStorageFormat, m_storageCharacterEncoding,
+                        DOTranslationUtility.SERIALIZE_STORAGE_INTERNAL);
+                serialized.reset();
 
                 // RESOURCE INDEX:
-                if (m_resourceIndex != null
-                        && m_resourceIndex.getIndexLevel() != ResourceIndex.INDEX_LEVEL_OFF) {
+                if (m_resourceIndex != null &&
+                        m_resourceIndex.getIndexLevel() != ResourceIndex.INDEX_LEVEL_OFF) {
                     logger.info("Adding to ResourceIndex");
                     if (obj.isNew()) {
                         m_resourceIndex.addObject(new SimpleDOReader(null,
-                                                                     null,
-                                                                     null,
-                                                                     null,
-                                                                     null,
-                                                                     obj));
+                                null, null, null, null, obj));
                     } else {
                         m_resourceIndex.modifyObject(getReader(false, null, obj
-                                .getPid()), new SimpleDOReader(null,
-                                                               null,
-                                                               null,
-                                                               null,
-                                                               null,
-                                                               obj));
+                                .getPid()), new SimpleDOReader(null, null,
+                                null, null, null, obj));
 
                     }
-                    logger.debug("Finished adding to ResourceIndex.");
+                    logger.debug("Finished adding {} to ResourceIndex.", pid);
                 }
 
                 // STORAGE:
                 // write XML serialization of object to persistent storage
                 logger.debug("Storing digital object");
+                Map<String, String> objectHints =
+                        m_hintProvider.getHintsForAboutToBeStoredObject(obj);
                 if (obj.isNew()) {
                     m_permanentStore.addObject(obj.getPid(),
-                                               new ByteArrayInputStream(out
-                                                       .toByteArray()));
+                            serialized,
+                            objectHints);
                 } else {
                     m_permanentStore.replaceObject(obj.getPid(),
-                                                   new ByteArrayInputStream(out
-                                                           .toByteArray()));
+                            serialized,
+                            objectHints);
                 }
 
                 // INVALIDATE DOREADER CACHE:
                 // now that the object xml is stored, make sure future DOReaders
                 // will get the latest copy
                 if (m_readerCache != null) {
-                    m_readerCache.remove(obj.getPid());
+                    m_readerCache.remove(pid);
                 }
 
                 // REGISTRY:
                 /*
                  * update systemVersion in doRegistry (add one), and update
-                 * deploymene maps if necesssary.
+                 * deployment maps if necessary.
                  */
                 if (obj.hasContentModel(Models.SERVICE_DEPLOYMENT_3_0)) {
                     logger.debug("Updating registry");
@@ -1578,8 +1583,9 @@ public class DefaultDOManager
                         conn = m_connectionPool.getReadWriteConnection();
                         updateDeploymentMap(obj, conn, false);
                     } catch (SQLException sqle) {
-                        throw new StorageDeviceException("Error creating replication job: "
-                                + sqle.getMessage(), sqle);
+                            throw new StorageDeviceException(
+                                    "Unexpected error from SQL database for " +
+                                            pid + ": " + sqle.getMessage(), sqle);
                     } finally {
                         if (conn != null) {
                             m_connectionPool.free(conn);
@@ -1593,20 +1599,20 @@ public class DefaultDOManager
 
                 try {
                     logger.trace("Updating FieldSearch index");
-                    m_fieldSearch.update(new SimpleDOReader(null,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            null,
-                                                            obj));
+                    m_fieldSearch.update(new SimpleDOReader(null, null, null,
+                            null, null, obj));
 
-                    // FIXME: also remove from temp storage if this is successful
+                    // FIXME: also remove from temp storage if this is
+                    // successful
                     //                    removeReplicationJob(obj.getPid());
                 } catch (ServerException se) {
-                    logger.error("Error updating " + whichIndex + " index", se);
+                    logger.error("Error updating " + whichIndex +
+                            " index for " + pid, se);
                     throw se;
                 } catch (Throwable th) {
-                    String msg = "Error updating " + whichIndex + " index";
+                    String msg =
+                            "Error updating " + whichIndex + " index for " +
+                                    pid;
                     logger.error(msg, th);
                     throw new GeneralException(msg, th);
                 }
@@ -1614,23 +1620,157 @@ public class DefaultDOManager
                 if (obj.isNew()) {
                     // Clean up after a failed attempt to add
                     try {
-                        doCommit(cachedObjectRequired,
-                                 context,
-                                 obj,
-                                 logMessage,
-                                 true);
+                        removeObject(obj, true);
                     } catch (Exception e) {
-                        logger.warn("Error while cleaning up after failed add", e);
+                        logger.warn(
+                                "Error while cleaning up after failed add for " +
+                                        pid, e);
                     }
                 }
                 if (th instanceof ServerException) {
                     throw (ServerException) th;
                 } else {
-                    throw new GeneralException("Unable to add or modify object"
-                                               + " (commit canceled)", th);
+                    throw new GeneralException(
+                            "Unable to add or modify object " + pid +
+                                    " (commit canceled)", th);
                 }
             }
         }
+    }
+
+    /*
+     * Remove the object from permanent storage. Currently this is used both for
+     * ingest failures
+     * and for purging an object. failSafe indicates failure in removal of an
+     * underlying artefact
+     * is considered safe; ie part of a tidy-up operation where the artefact may
+     * not in fact exist.
+     * On a purge failSafe should be false so errors are logged, as all
+     * artefacts should be present for deletion
+     */
+    private void removeObject(DigitalObject obj, boolean failSafe)
+            throws ServerException {
+
+        final String pid = obj.getPid();
+        logger.info("Committing removal of {}", pid);
+
+        // RESOURCE INDEX:
+        // remove digital object from the resourceIndex
+        // (nb: must happen before datastream storage removal - as
+        // relationships might be in managed datastreams)
+        if (m_resourceIndex.getIndexLevel() != ResourceIndex.INDEX_LEVEL_OFF) {
+            try {
+                logger.info("Deleting {} from ResourceIndex", pid);
+                m_resourceIndex.deleteObject(new SimpleDOReader(null, null,
+                        null, null, null, obj));
+                logger.debug("Finished deleting {} from ResourceIndex", pid);
+            } catch (ServerException se) {
+                if (failSafe) {
+                    logger.warn("Object " + pid +
+                            " couldn't be removed from ResourceIndex (" +
+                            se.getMessage() +
+                            "), but that might be ok; continuing with purge");
+                } else {
+                    logger.error("Object " + pid +
+                            " couldn't be removed from ResourceIndex (" +
+                            se.getMessage() + ")");
+
+                }
+
+            }
+        }
+
+        // DATASTREAM STORAGE:
+        // remove any managed content datastreams associated with object
+        // from persistent storage.
+        Iterator<String> dsIDIter = obj.datastreamIdIterator();
+        while (dsIDIter.hasNext()) {
+            String dsID = dsIDIter.next();
+            String controlGroupType =
+                    obj.datastreams(dsID).iterator().next().DSControlGrp;
+            if (controlGroupType.equalsIgnoreCase("M")) {
+                // iterate over all versions of this dsID
+                for (Datastream dmc : obj.datastreams(dsID)) {
+                    String id =
+                            pid + "+" + dmc.DatastreamID + "+" +
+                                    dmc.DSVersionID;
+                    logger.info("Deleting managed datastream: {} for {}",
+                            id, pid);
+                    try {
+                        m_permanentStore.removeDatastream(id);
+                    } catch (LowlevelStorageException llse) {
+                        if (failSafe) {
+                            logger.warn(
+                                    "Error attempting removal of managed " +
+                                            "content datastream " + id +
+                                            " for " + pid +
+                                            " (but that might be ok during a clean-up): ",
+                                    llse);
+                        } else {
+                            logger.error(
+                                    "Error attempting removal of managed " +
+                                            "content datastream " + id +
+                                            " for " + pid + ": ", llse);
+                        }
+                    }
+                }
+            }
+        }
+
+        // STORAGE:
+        // remove digital object from persistent storage
+        try {
+            m_permanentStore.removeObject(pid);
+        } catch (ObjectNotInLowlevelStorageException onilse) {
+            if (failSafe) {
+                logger.warn("Object " + pid +
+                        " wasn't found in permanent low level " +
+                        "store, but that might be ok; continuing with purge");
+            } else {
+                logger.error("Object " + pid +
+                        " wasn't found in permanent low level " + "store");
+            }
+        }
+
+        // INVALIDATE DOREADER CACHE:
+        // now that the object xml is removed, make sure future requests
+        // for the object will not use a stale copy
+        if (m_readerCache != null) {
+            m_readerCache.remove(pid);
+        }
+
+        // REGISTRY:
+        // Remove digital object from the registry
+        try {
+            unregisterObject(obj);
+        } catch (ServerException se) {
+            if (failSafe) {
+                logger.warn("Object " +
+                        pid +
+                        " couldn't be removed from registry, but that might be ok; continuing with purge");
+            } else {
+                logger.error("Object " + pid +
+                        " couldn't be removed from registry");
+            }
+        }
+        // FIELD SEARCH INDEX:
+        // remove digital object from the default search index
+        try {
+            logger.info("Deleting {} from FieldSearch index", pid);
+            m_fieldSearch.delete(obj.getPid());
+        } catch (ServerException se) {
+            if (failSafe) {
+                logger.warn("Object " + pid +
+                        " couldn't be removed from FieldSearch index (" +
+                        se.getMessage() +
+                        "), but that might be ok; continuing with purge");
+            } else {
+                logger.error("Object " + pid +
+                        " couldn't be removed from FieldSearch index (" +
+                        se.getMessage() + ")");
+            }
+        }
+
     }
 
     private Set<Long> getDatastreamDates(Iterable<Datastream> ds) {
@@ -1665,20 +1805,21 @@ public class DefaultDOManager
                         if (!newVersionDates.contains(dt.getTime())) {
                             // ... and delete them from low level storage
                             String token =
-                                    obj.getPid()
-                                            + "+"
-                                            + dsID
-                                            + "+"
-                                            + reader.GetDatastream(dsID, dt).DSVersionID;
+                                    obj.getPid() +
+                                            "+" +
+                                            dsID +
+                                            "+" +
+                                            reader.GetDatastream(dsID, dt).DSVersionID;
                             try {
                                 m_permanentStore.removeDatastream(token);
-                                logger.info("Removed purged datastream version "
-                                        + "from low level storage (token = "
-                                        + token + ")");
+                                logger.info("Removed purged datastream version " +
+                                        "from low level storage (token = {})",
+                                        token);
                             } catch (Exception e) {
-                                logger.warn("Error removing purged datastream "
-                                        + "version from low level storage "
-                                        + "(token = " + token + ")", e);
+                                logger.error(
+                                        "Error removing purged datastream " +
+                                                "version from low level storage " +
+                                                "(token = " + token + ")", e);
                             }
                         }
                     }
@@ -1686,16 +1827,17 @@ public class DefaultDOManager
                 }
             }
         } catch (ServerException e) {
-            logger.warn("Error reading " + obj.getPid() + "; if any"
-                    + " managed datastreams were purged, they were not removed "
-                    + " from low level storage.", e);
+            logger.error("Error reading " + obj.getPid() + "; if any" +
+                    " managed datastreams were purged, they were not removed " +
+                    " from low level storage.", e);
         }
     }
 
     /**
      * Checks the object registry for the given object.
      */
-    public boolean objectExists( String pid) throws StorageDeviceException {
+    @Override
+    public boolean objectExists(String pid) throws StorageDeviceException {
         logger.debug("Checking if " + pid + " already exists");
         try {
             Context context = ReadOnlyContext.getContext(null,
@@ -1706,9 +1848,23 @@ public class DefaultDOManager
             conditions.add(new Condition("pid", Operator.EQUALS, pid));
             FieldSearchQuery query = new FieldSearchQuery(conditions);
             FieldSearchResult findObjects = findObjects(context, new String[] { "PID" }, 1, query);
-            return findObjects.getCompleteListSize() > 0;
+            boolean registered = findObjects.getCompleteListSize() > 0;
+            boolean exists = false;
+            if (!registered && m_checkableStore) {
+                try {
+                    exists = ((ICheckable)m_permanentStore).objectExists(pid);
+                } catch (LowlevelStorageException e) {
+                    throw new StorageDeviceException(e.getMessage(), e);
+                }
+            }
+            if (exists && !registered) {
+                logger.warn("{} was not in the index, but appears to be in store." +
+                            " Index may be in inconsistent state.", pid);
+            }
+            return registered || exists;
         }
         catch (Exception ex) {
+            ex.printStackTrace();
             throw new StorageDeviceException("Failed to determine if object exists", ex);
         }
     }
@@ -1736,8 +1892,9 @@ public class DefaultDOManager
                 updateDeploymentMap(obj, conn, true);
             }
         } catch (SQLException sqle) {
-            throw new StorageDeviceException("Unexpected error from SQL database while unregistering object: "
-                    + sqle.getMessage(), sqle);
+            throw new StorageDeviceException(
+                    "Unexpected error from SQL database while unregistering object: " +
+                            sqle.getMessage(), sqle);
         } finally {
             try {
                 if (st != null) {
@@ -1747,14 +1904,16 @@ public class DefaultDOManager
                     m_connectionPool.free(conn);
                 }
             } catch (Exception sqle) {
-                throw new StorageDeviceException("Unexpected error from SQL database while unregistering object: "
-                        + sqle.getMessage(), sqle);
+                throw new StorageDeviceException(
+                        "Unexpected error from SQL database while unregistering object: " +
+                                sqle.getMessage(), sqle);
             } finally {
                 st = null;
             }
         }
     }
 
+    @Override
     public String[] listObjectPIDs(Context context)
             throws StorageDeviceException {
 
@@ -1790,10 +1949,10 @@ public class DefaultDOManager
     // translates simple wildcard string to sql-appropriate.
     // the first character is a " " if it needs an escape
     public static String toSql(String name, String in) {
-        if (in.indexOf("\\") != -1) {
+        if (in.indexOf('\\') != -1) {
             // has one or more escapes, un-escape and translate
             StringBuffer out = new StringBuffer();
-            out.append("\'");
+            out.append('\'');
             boolean needLike = false;
             boolean needEscape = false;
             boolean lastWasEscape = false;
@@ -1839,7 +1998,7 @@ public class DefaultDOManager
                     lastWasEscape = false;
                 }
             }
-            out.append("\'");
+            out.append('\'');
             if (needLike) {
                 out.insert(0, " LIKE ");
             } else {
@@ -1853,7 +2012,7 @@ public class DefaultDOManager
         } else {
             // no escapes, just translate if needed
             StringBuffer out = new StringBuffer();
-            out.append("\'");
+            out.append('\'');
             boolean needLike = false;
             boolean needEscape = false;
             for (int i = 0; i < in.length(); i++) {
@@ -1880,7 +2039,7 @@ public class DefaultDOManager
                     out.append(c);
                 }
             }
-            out.append("\'");
+            out.append('\'');
             if (needLike) {
                 out.insert(0, " LIKE ");
             } else {
@@ -1894,17 +2053,16 @@ public class DefaultDOManager
         }
     }
 
+    @Override
     public FieldSearchResult findObjects(Context context,
-                                         String[] resultFields,
-                                         int maxResults,
-                                         FieldSearchQuery query)
+            String[] resultFields, int maxResults, FieldSearchQuery query)
             throws ServerException {
         return m_fieldSearch.findObjects(resultFields, maxResults, query);
     }
 
+    @Override
     public FieldSearchResult resumeFindObjects(Context context,
-                                               String sessionToken)
-            throws ServerException {
+            String sessionToken) throws ServerException {
         return m_fieldSearch.resumeFindObjects(sessionToken);
     }
 
@@ -1914,16 +2072,17 @@ public class DefaultDOManager
      * </p>
      *
      * @param numPIDs
-     *        The number of PIDs to generate. Defaults to 1 if the number is not
-     *        a positive integer.
+     *            The number of PIDs to generate. Defaults to 1 if the number is
+     *            not a positive integer.
      * @param namespace
-     *        The namespace to be used when generating the PIDs. If null, the
-     *        namespace defined by the <i>pidNamespace</i> parameter in the
-     *        fedora.fcfg configuration file is used.
+     *            The namespace to be used when generating the PIDs. If null,
+     *            the namespace defined by the <i>pidNamespace</i> parameter in
+     *            the fedora.fcfg configuration file is used.
      * @return An array of PIDs.
      * @throws ServerException
      *         If an error occurs in generating the PIDs.
      */
+    @Override
     public String[] getNextPID(int numPIDs, String namespace)
             throws ServerException {
 
@@ -1931,7 +2090,7 @@ public class DefaultDOManager
             numPIDs = 1;
         }
         String[] pidList = new String[numPIDs];
-        if (namespace == null || namespace.equals("")) {
+        if (namespace == null || namespace.isEmpty()) {
             namespace = m_pidNamespace;
         }
         try {
@@ -1940,12 +2099,15 @@ public class DefaultDOManager
             }
             return pidList;
         } catch (IOException ioe) {
-            throw new GeneralException("DefaultDOManager.getNextPID: Error "
-                    + "generating PID, PIDGenerator returned unexpected error: ("
-                    + ioe.getClass().getName() + ") - " + ioe.getMessage());
+            throw new GeneralException(
+                    "DefaultDOManager.getNextPID: Error " +
+                            "generating PID, PIDGenerator returned unexpected error: (" +
+                            ioe.getClass().getName() + ") - " +
+                            ioe.getMessage());
         }
     }
 
+    @Override
     public void reservePIDs(String[] pidList) throws ServerException {
 
         try {
@@ -1957,6 +2119,7 @@ public class DefaultDOManager
         }
     }
 
+    @Override
     public String getRepositoryHash() throws ServerException {
 
         // This implementation returns a string containing the
@@ -1997,9 +2160,8 @@ public class DefaultDOManager
         private final Map<ServiceContext, Map<String, Long>> map =
                 new ConcurrentHashMap<ServiceContext, Map<String, Long>>();
 
-        public String putDeployment(ServiceContext cxt,
-                                    String sDep,
-                                    long lastModDate) {
+        public String putDeployment(ServiceContext cxt, String sDep,
+                long lastModDate) {
 
             if (!map.containsKey(cxt)) {
                 map.put(cxt, new HashMap<String, Long>());
@@ -2039,9 +2201,9 @@ public class DefaultDOManager
                 }
 
                 if (count > 1) {
-                    logger.info("More than one service deployment specified for sDef "
-                            + cxt.sDef + " in model " + cxt.cModel
-                            + ".  Using the one with the EARLIEST modification date.");
+                    logger.info("More than one service deployment specified for sDef {}" +
+                            " in model {}.  Using the one with the EARLIEST modification date.",
+                            cxt.sDef, cxt.cModel);
                 }
                 return sDep;
             } else {
@@ -2071,14 +2233,15 @@ public class DefaultDOManager
 
         public final String sDef;
 
+        private static final String VAL_TEMPLATE = "(%1$s,%2$s)";
         /* Internal string value for calculating hash code, equality */
         private final String _val;
 
         private ServiceContext(String cModelPid, String sDefPid) {
-            this.cModel = cModelPid;
-            this.sDef = sDefPid;
+            cModel = cModelPid;
+            sDef = sDefPid;
 
-            _val = "(" + cModelPid + "," + sDefPid + ")";
+            _val = String.format(VAL_TEMPLATE, cModelPid, sDefPid);
         }
 
         public static ServiceContext getInstance(String cModel, String sDef) {
@@ -2092,9 +2255,13 @@ public class DefaultDOManager
 
         @Override
         public boolean equals(Object o) {
-            if (o == null) return false;
+            if (o == null) {
+                return false;
+            }
 
-            if (!(o instanceof ServiceContext)) return false;
+            if (!(o instanceof ServiceContext)) {
+                return false;
+            }
             return _val.equals(((ServiceContext) o)._val);
         }
 

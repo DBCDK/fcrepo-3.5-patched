@@ -22,16 +22,16 @@ import javax.xml.soap.SOAPElement;
 import javax.xml.soap.SOAPEnvelope;
 import javax.xml.soap.SOAPHeader;
 import javax.xml.soap.SOAPHeaderElement;
+import javax.xml.soap.SOAPMessage;
+import javax.xml.soap.SOAPPart;
+import javax.xml.ws.handler.soap.SOAPMessageContext;
 
-
-import org.apache.axis.Message;
-import org.apache.axis.MessageContext;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.pep.ContextHandler;
+import org.fcrepo.server.security.xacml.pep.PEPException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.fcrepo.server.security.xacml.pep.PEPException;
-
-import com.sun.xacml.ctx.RequestCtx;
 
 /**
  * @author nishen@melcoe.mq.edu.au
@@ -42,12 +42,13 @@ public class DescribeUserHandler
     private static final Logger logger =
             LoggerFactory.getLogger(DescribeUserHandler.class);
 
-    public DescribeUserHandler()
+    public DescribeUserHandler(ContextHandler contextHandler)
             throws PEPException {
-        super();
+        super(contextHandler);
     }
 
-    public RequestCtx handleResponse(MessageContext context)
+    @Override
+    public RequestCtx handleResponse(SOAPMessageContext context)
             throws OperationHandlerException {
         try {
             String[] fedoraRoles = getUserRoles(context);
@@ -55,8 +56,9 @@ public class DescribeUserHandler
                 return null;
             }
 
-            Message message = context.getCurrentMessage();
-            SOAPEnvelope envelope = message.getSOAPEnvelope();
+            SOAPMessage message = context.getMessage();
+            SOAPPart sp = message.getSOAPPart();
+            SOAPEnvelope envelope = sp.getEnvelope();
             SOAPHeader header = envelope.getHeader();
 
             SOAPHeaderElement roles =
@@ -79,7 +81,8 @@ public class DescribeUserHandler
         return null;
     }
 
-    public RequestCtx handleRequest(MessageContext context)
+    @Override
+    public RequestCtx handleRequest(SOAPMessageContext context)
             throws OperationHandlerException {
         return null;
     }

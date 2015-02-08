@@ -8,11 +8,8 @@ import java.awt.BorderLayout;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
-
 import java.lang.reflect.InvocationTargetException;
-
 import java.net.MalformedURLException;
-import java.net.URL;
 
 import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
@@ -25,7 +22,6 @@ import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.ScrollPaneConstants;
-
 import javax.xml.rpc.ServiceException;
 
 import org.fcrepo.client.Administrator;
@@ -33,7 +29,7 @@ import org.fcrepo.client.console.Console;
 import org.fcrepo.client.console.ConsoleCommand;
 import org.fcrepo.client.console.ConsoleSendButtonListener;
 import org.fcrepo.client.console.ServiceConsoleCommandFactory;
-import org.fcrepo.server.access.FedoraAPIAServiceLocator;
+import org.fcrepo.client.mtom.APIAStubFactory;
 
 
 
@@ -48,8 +44,6 @@ public class AccessConsole
     private static final long serialVersionUID = 1L;
 
     private final Administrator m_mainFrame;
-
-    private final FedoraAPIAServiceLocator m_locator;
 
     private final JTextArea m_outputArea;
 
@@ -67,9 +61,6 @@ public class AccessConsole
               true, //maximizable
               true);//iconifiable
         m_mainFrame = mainFrame;
-        m_locator =
-                new FedoraAPIAServiceLocator(Administrator.getUser(),
-                                             Administrator.getPass());
 
         m_outputArea = new JTextArea();
         m_outputArea.setFont(new Font("Serif", Font.PLAIN, 16));
@@ -127,7 +118,7 @@ public class AccessConsole
             System.exit(0);
         }
 
-        JComboBox commandComboBox = new JComboBox(commands);
+        JComboBox<ConsoleCommand> commandComboBox = new JComboBox<ConsoleCommand>(commands);
         commandComboBox.setSelectedIndex(0);
         commandPanel.add(commandComboBox);
         JButton sendButton = new JButton(" Send.. ");
@@ -165,6 +156,7 @@ public class AccessConsole
         m_isBusy = false;
     }
 
+    @Override
     public void setBusy(boolean b) {
         m_isBusy = b;
         if (b) {
@@ -174,35 +166,23 @@ public class AccessConsole
         }
     }
 
+    @Override
     public boolean isBusy() {
         return m_isBusy;
     }
 
+    @Override
     public Object getInvocationTarget(ConsoleCommand cmd)
             throws InvocationTargetException {
-        String hostString = m_hostTextField.getText();
-        String portString = m_portTextField.getText();
-        String contextString = m_contextTextField.getText();
-
         try {
-            URL ourl = new URL(m_locator.getFedoraAPIAPortSOAPHTTPAddress());
-            StringBuffer nurl = new StringBuffer();
-            nurl.append(Administrator.getProtocol() + "://");
-            nurl.append(hostString);
-            nurl.append(':');
-            nurl.append(portString);
-            nurl.append(ourl.getPath().replaceFirst("^/fedora",  "/" + contextString));
-            if (ourl.getQuery() != null && !ourl.getQuery().equals("")) {
-                nurl.append('?');
-                nurl.append(ourl.getQuery());
-            }
-            if (ourl.getRef() != null && !ourl.getRef().equals("")) {
-                nurl.append('#');
-                nurl.append(ourl.getRef());
-            }
-            System.out.println("NURL: " + nurl.toString());
-            return m_locator
-                    .getFedoraAPIAPortSOAPHTTP(new URL(nurl.toString()));
+            return APIAStubFactory.getStub(Administrator.getProtocol(),
+                                           m_hostTextField.getText(),
+                                           Integer.parseInt(m_portTextField
+                                                   .getText()),
+                                           Administrator.getUser(),
+                                           Administrator.getPass());
+        } catch (NumberFormatException nfe) {
+            throw new InvocationTargetException(nfe, "Badly formed port");
         } catch (MalformedURLException murle) {
             throw new InvocationTargetException(murle, "Badly formed URL");
         } catch (ServiceException se) {
@@ -210,10 +190,12 @@ public class AccessConsole
         }
     }
 
+    @Override
     public void print(String output) {
         m_outputArea.append(output);
     }
 
+    @Override
     public void clear() {
         m_outputArea.setText("");
     }

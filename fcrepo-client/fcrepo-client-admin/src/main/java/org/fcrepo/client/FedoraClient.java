@@ -2,6 +2,7 @@
  * detailed in the license directory at the root of the source tree (also
  * available online at http://fedora-commons.org/license/).
  */
+
 package org.fcrepo.client;
 
 import java.io.BufferedReader;
@@ -27,23 +28,35 @@ import java.util.TimeZone;
 
 import javax.xml.rpc.ServiceException;
 
-import org.apache.commons.httpclient.Header;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.HttpStatus;
-import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
-import org.apache.commons.httpclient.UsernamePasswordCredentials;
-import org.apache.commons.httpclient.auth.AuthScope;
-import org.apache.commons.httpclient.methods.GetMethod;
-import org.apache.commons.httpclient.methods.HeadMethod;
-import org.apache.commons.httpclient.methods.PostMethod;
-import org.apache.commons.httpclient.methods.multipart.FilePart;
-import org.apache.commons.httpclient.methods.multipart.MultipartRequestEntity;
-import org.apache.commons.httpclient.methods.multipart.Part;
+import org.apache.http.Header;
+import org.apache.http.HttpHeaders;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpHead;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.params.ClientPNames;
+import org.apache.http.conn.ClientConnectionManager;
+import org.apache.http.conn.scheme.PlainSocketFactory;
+import org.apache.http.conn.scheme.Scheme;
+import org.apache.http.conn.ssl.SSLSocketFactory;
+import org.apache.http.entity.mime.MultipartEntity;
+import org.apache.http.entity.mime.content.FileBody;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.conn.PoolingClientConnectionManager;
+import org.apache.http.params.CoreConnectionPNames;
+import org.apache.http.util.EntityUtils;
 import org.fcrepo.common.Constants;
+import org.fcrepo.common.http.HttpInputStream;
+import org.fcrepo.common.http.PreemptiveAuth;
 import org.fcrepo.server.access.FedoraAPIA;
+import org.fcrepo.server.access.FedoraAPIAMTOM;
 import org.fcrepo.server.management.FedoraAPIM;
+import org.fcrepo.server.management.FedoraAPIMMTOM;
 import org.fcrepo.utilities.DateUtility;
-
 import org.jrdf.graph.Literal;
 import org.jrdf.graph.Node;
 import org.slf4j.Logger;
@@ -67,27 +80,34 @@ public class FedoraClient
     public static final String FEDORA_URI_PREFIX = "info:fedora/";
 
     /** Seconds to wait before a connection is established. */
-    public int TIMEOUT_SECONDS = 20;
+    private static final int TIMEOUT_SECONDS = 20;
 
     /** Seconds to wait while waiting for data over the socket (SO_TIMEOUT). */
-    public int SOCKET_TIMEOUT_SECONDS = 1800; // 30 minutes
+    private static final int SOCKET_TIMEOUT_SECONDS = 1800; // 30 minutes
 
     /** Maxiumum http connections per host (for REST calls only). */
-    public int MAX_CONNECTIONS_PER_HOST = 15;
+    private static final int MAX_CONNECTIONS_PER_HOST = 15;
 
     /** Maxiumum total http connections (for REST calls only). */
-    public int MAX_TOTAL_CONNECTIONS = 30;
+    private static final int MAX_TOTAL_CONNECTIONS = 30;
 
     /** Whether to automatically follow HTTP redirects. */
-    public boolean FOLLOW_REDIRECTS = true;
+    private static final boolean FOLLOW_REDIRECTS = true;
 
-    private static final Logger logger =
-            LoggerFactory.getLogger(FedoraClient.class);
+    private static final Logger logger = LoggerFactory
+            .getLogger(FedoraClient.class);
 
-    private final SOAPEndpoint m_accessEndpoint = new SOAPEndpoint("access");
+    private final SOAPEndpoint m_accessMTOMEndpoint =
+            new SOAPEndpoint("accessMTOM", false);
+
+    private final SOAPEndpoint m_managementMTOMEndpoint =
+            new SOAPEndpoint("managementMTOM", true);
+
+    private final SOAPEndpoint m_accessEndpoint =
+            new SOAPEndpoint("access", false);
 
     private final SOAPEndpoint m_managementEndpoint =
-            new SOAPEndpoint("management");
+            new SOAPEndpoint("management", true);
 
     private String m_baseURL;
 
@@ -99,15 +119,34 @@ public class FedoraClient
 
     private final UsernamePasswordCredentials m_creds;
 
-    private final MultiThreadedHttpConnectionManager m_cManager;
+    private PoolingClientConnectionManager m_cManager =
+            null;
 
     private String m_serverVersion;
+    
+    private FedoraAPIA m_apia;
+    
+    private FedoraAPIM m_apim;
+
+    private FedoraAPIAMTOM m_apiaMTOM;
+    
+    private FedoraAPIMMTOM m_apimMTOM;
+    
 
     /**
      * Location of Fedora's upload interface, set on first call to
      * getUploadURL().
      */
     private String m_uploadURL;
+    
+    private static PoolingClientConnectionManager buildConnectionManager() {
+        PoolingClientConnectionManager cManager =
+                new PoolingClientConnectionManager();
+        // set the maximum connections total and per host
+        cManager.setDefaultMaxPerRoute(MAX_CONNECTIONS_PER_HOST);
+        cManager.setMaxTotal(MAX_TOTAL_CONNECTIONS);
+        return cManager;
+    }
 
     public FedoraClient(String baseURL, String user, String pass)
             throws MalformedURLException {
@@ -123,18 +162,64 @@ public class FedoraClient
                               AuthScope.ANY_PORT,
                               AuthScope.ANY_REALM);
         m_creds = new UsernamePasswordCredentials(user, pass);
-        m_cManager = new MultiThreadedHttpConnectionManager();
+        getConnectionManager();
+        if (url.getProtocol().equalsIgnoreCase("https")) {
+            Scheme scheme = m_cManager.getSchemeRegistry().getScheme("https");
+            if (scheme == null) {
+                m_cManager.getSchemeRegistry().register(
+                    new Scheme("https", url.getPort(), SSLSocketFactory.getSocketFactory()));
+            }
+        } else {
+            Scheme scheme = m_cManager.getSchemeRegistry().getScheme("http");
+            if (scheme == null) {
+                m_cManager.getSchemeRegistry().register(
+                    new Scheme("http", url.getPort(), PlainSocketFactory.getSocketFactory()));
+            }
+        }
+        try {
+            URL rUrl = new URL(getUploadURL());
+            if (rUrl.getPort() != url.getPort()) {
+                Scheme scheme = m_cManager.getSchemeRegistry().getScheme("https");
+                if (scheme == null) {
+                    m_cManager.getSchemeRegistry().register(
+                        new Scheme("https", rUrl.getPort(), SSLSocketFactory.getSocketFactory()));
+                }
+            }
+        } catch (IOException ioe) {
+            logger.warn("Could not get redirect URL (testing for SSL port)");
+        }
     }
-
+    
+    public void shutdown() {
+        if (m_cManager != null) {
+            m_cManager.shutdown();
+            m_cManager = null;
+        }
+    }
+    
+    public ClientConnectionManager getConnectionManager() {
+        if (m_cManager == null) {
+            m_cManager = buildConnectionManager();
+        }
+        return m_cManager;
+    }
+    
     public HttpClient getHttpClient() {
-        m_cManager.getParams()
-                .setDefaultMaxConnectionsPerHost(MAX_CONNECTIONS_PER_HOST);
-        m_cManager.getParams().setMaxTotalConnections(MAX_TOTAL_CONNECTIONS);
-        m_cManager.getParams().setConnectionTimeout(TIMEOUT_SECONDS * 1000);
-        m_cManager.getParams().setSoTimeout(SOCKET_TIMEOUT_SECONDS * 1000);
-        HttpClient client = new HttpClient(m_cManager);
-        client.getState().setCredentials(m_authScope, m_creds);
-        client.getParams().setAuthenticationPreemptive(true);
+        return getHttpClient(FOLLOW_REDIRECTS,true);
+    }
+    
+    public DefaultHttpClient getHttpClient(boolean followRedirects, boolean preemptiveAuth) {
+        // handle pre-emptive AuthN
+        getConnectionManager();
+        DefaultHttpClient client = preemptiveAuth ? new PreemptiveAuth(m_cManager) :
+            new DefaultHttpClient(m_cManager);
+        // set the connection timeout properties
+        client.getParams().setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, TIMEOUT_SECONDS * 1000);
+        client.getParams().setIntParameter(CoreConnectionPNames.SO_TIMEOUT, SOCKET_TIMEOUT_SECONDS * 1000);
+        // follow redirects
+        client.getParams().setBooleanParameter(ClientPNames.HANDLE_REDIRECTS, followRedirects);
+        // set the authentication credentials
+        client.getCredentialsProvider().setCredentials(m_authScope, m_creds);
         return client;
     }
 
@@ -145,27 +230,25 @@ public class FedoraClient
      *         URL. It will look like uploaded://123
      */
     public String uploadFile(File file) throws IOException {
-        PostMethod post = null;
+        HttpPost post = null;
         try {
             // prepare the post method
-            post = new PostMethod(getUploadURL());
-            post.setDoAuthentication(true);
+            post = new HttpPost(getUploadURL());
             post.getParams().setParameter("Connection", "Keep-Alive");
 
-            // chunked encoding is not required by the Fedora server,
-            // but makes uploading very large files possible
-            post.setContentChunked(true);
-
             // add the file part
-            Part[] parts = {new FilePart("file", file)};
-            post.setRequestEntity(new MultipartRequestEntity(parts, post
-                    .getParams()));
+            MultipartEntity entity = new MultipartEntity();
+            entity.addPart("file", new FileBody(file));
+            post.setEntity(entity);
 
             // execute and get the response
-            int responseCode = getHttpClient().executeMethod(post);
+            HttpResponse response = getHttpClient().execute(post);
+            int responseCode = response.getStatusLine().getStatusCode();
             String body = null;
             try {
-                body = post.getResponseBodyAsString();
+                if (response.getEntity() != null) {
+                    body = EntityUtils.toString(response.getEntity());
+                }
             } catch (Exception e) {
                 logger.warn("Error reading response body", e);
             }
@@ -175,8 +258,8 @@ public class FedoraClient
             body = body.trim();
             if (responseCode != HttpStatus.SC_CREATED) {
                 throw new IOException("Upload failed: "
-                        + HttpStatus.getStatusText(responseCode) + ": "
-                        + replaceNewlines(body, " "));
+                        + response.getStatusLine().getReasonPhrase()
+                        + ": " + replaceNewlines(body, " "));
             } else {
                 return replaceNewlines(body, "");
             }
@@ -309,26 +392,29 @@ public class FedoraClient
                                boolean followRedirects) throws IOException {
 
         String urlString = url.toString();
-        logger.debug("FedoraClient is getting " + urlString);
-        HttpClient client = getHttpClient();
-        GetMethod getMethod = new GetMethod(urlString);
-        getMethod.setDoAuthentication(true);
-        getMethod.setFollowRedirects(followRedirects);
-        HttpInputStream in = new HttpInputStream(client, getMethod, urlString);
+        // presuming that not following redirects means no
+        // preemptive authN
+        HttpClient client = getHttpClient(followRedirects, followRedirects);
+        HttpGet getMethod = new HttpGet(urlString);
+        HttpInputStream in = new HttpInputStream(client, getMethod);
         int status = in.getStatusCode();
+        logger.debug("GET {} : {}", urlString, status);
         if (failIfNotOK) {
             if (status != 200) {
                 if (followRedirects && 300 <= status && status <= 399) {
                     // Handle the redirect here !
-                    logger
-                            .debug("FedoraClient is handling redirect for HTTP STATUS="
-                                    + status);
-                    Header hLoc = in.getResponseHeader("location");
+                    logger.debug(
+                            "FedoraClient is handling redirect for HTTP STATUS={}",
+                            status);
+                    
+                    Header hLoc = in.getResponseHeader(HttpHeaders.LOCATION);
                     if (hLoc != null) {
-                        logger.debug("FedoraClient is trying redirect location: "
-                                + hLoc.getValue());
+                        String location = hLoc.getValue();
+                        logger.debug("FedoraClient is trying redirect location: {}",
+                                location);
                         // Try the redirect location, but don't try to handle another level of redirection.
-                        return get(hLoc.getValue(), true, false);
+                        in.close();
+                        return get(location, true, false);
                     } else {
                         try {
                             throw new IOException("Request failed [" + status
@@ -437,11 +523,21 @@ public class FedoraClient
      * automatically.
      */
     public FedoraAPIA getAPIA() throws ServiceException, IOException {
-        return (FedoraAPIA) getSOAPStub(m_accessEndpoint);
+        if (m_apia == null) m_apia = getSOAPStub(FedoraAPIA.class);
+        return m_apia;
     }
 
     public URL getAPIAEndpointURL() throws IOException {
         return m_accessEndpoint.getURL();
+    }
+
+    public FedoraAPIAMTOM getAPIAMTOM() throws ServiceException, IOException {
+        if (m_apiaMTOM == null) m_apiaMTOM = getSOAPStub(FedoraAPIAMTOM.class);
+        return m_apiaMTOM;
+    }
+
+    public URL getAPIAMTOMEndpointURL() throws IOException {
+        return m_accessMTOMEndpoint.getURL();
     }
 
     /**
@@ -452,40 +548,94 @@ public class FedoraClient
      * automatically.
      */
     public FedoraAPIM getAPIM() throws ServiceException, IOException {
-        return (FedoraAPIM) getSOAPStub(m_managementEndpoint);
+        if (m_apim == null) m_apim = getSOAPStub(FedoraAPIM.class);
+        return m_apim;
     }
 
     public URL getAPIMEndpointURL() throws IOException {
         return m_managementEndpoint.getURL();
     }
 
+    public FedoraAPIMMTOM getAPIMMTOM() throws ServiceException, IOException {
+        if (m_apimMTOM == null) m_apimMTOM = getSOAPStub(FedoraAPIMMTOM.class);
+        return m_apimMTOM;
+    }
+
+    public URL getAPIMMTOMEndpointURL() throws IOException {
+        return m_managementMTOMEndpoint.getURL();
+    }
+
     /**
      * Get the appropriate API-A/M stub, given a SOAPEndpoint.
+     * @param <T>
      */
-    private Object getSOAPStub(SOAPEndpoint endpoint) throws ServiceException,
+    @SuppressWarnings("unchecked")
+    private <T> T getSOAPStub(Class<T> type) throws ServiceException,
             IOException {
 
-        URL url = endpoint.getURL();
+        if (type == org.fcrepo.server.access.FedoraAPIAMTOM.class) {
+            org.fcrepo.client.mtom.APIAStubFactory.SOCKET_TIMEOUT_SECONDS = SOCKET_TIMEOUT_SECONDS;
 
-        String protocol = url.getProtocol();
-        String host = url.getHost();
-        int port = url.getPort();
-        //String path = url.getPath();
-        if (port == -1) {
-            port = url.getDefaultPort();
-        }
+            URL url = m_accessMTOMEndpoint.getURL();
 
-        if (endpoint == m_accessEndpoint) {
-            APIAStubFactory.SOCKET_TIMEOUT_SECONDS = SOCKET_TIMEOUT_SECONDS;
-            return APIAStubFactory.getStubAltPath(protocol, host, port, url
-                    .getPath(), m_user, m_pass);
-        } else if (endpoint == m_managementEndpoint) {
-            APIMStubFactory.SOCKET_TIMEOUT_SECONDS = SOCKET_TIMEOUT_SECONDS;
-            return APIMStubFactory.getStubAltPath(protocol, host, port, url
-                    .getPath(), m_user, m_pass);
+            String protocol = url.getProtocol();
+            String host = url.getHost();
+            int port = url.getPort();
+            if (port == -1) {
+                port = url.getDefaultPort();
+            }
+
+            return (T) org.fcrepo.client.mtom.APIAStubFactory
+                    .getStub(protocol, host, port, m_user, m_pass);
+
+        } else if (type == FedoraAPIMMTOM.class) {
+            org.fcrepo.client.mtom.APIMStubFactory.SOCKET_TIMEOUT_SECONDS = SOCKET_TIMEOUT_SECONDS;
+
+            URL url = m_managementMTOMEndpoint.getURL();
+
+            String protocol = url.getProtocol();
+            String host = url.getHost();
+            int port = url.getPort();
+            if (port == -1) {
+                port = url.getDefaultPort();
+            }
+
+            return (T) org.fcrepo.client.mtom.APIMStubFactory
+                    .getStub(protocol, host, port, m_user, m_pass);
+
+        } else if (type == FedoraAPIM.class) {
+            org.fcrepo.client.APIMStubFactory.SOCKET_TIMEOUT_SECONDS = SOCKET_TIMEOUT_SECONDS;
+
+            URL url = m_managementEndpoint.getURL();
+
+            String protocol = url.getProtocol();
+            String host = url.getHost();
+            int port = url.getPort();
+            if (port == -1) {
+                port = url.getDefaultPort();
+            }
+
+            return (T) org.fcrepo.client.APIMStubFactory
+                    .getStub(protocol, host, port, m_user, m_pass);
+
+        } else if (type == FedoraAPIA.class) {
+            org.fcrepo.client.APIAStubFactory.SOCKET_TIMEOUT_SECONDS = SOCKET_TIMEOUT_SECONDS;
+
+            URL url = m_accessEndpoint.getURL();
+
+            String protocol = url.getProtocol();
+            String host = url.getHost();
+            int port = url.getPort();
+            if (port == -1) {
+                port = url.getDefaultPort();
+            }
+
+            return (T) org.fcrepo.client.APIAStubFactory
+                    .getStub(protocol, host, port, m_user, m_pass);
+
         } else {
-            throw new IllegalArgumentException("Unrecognized endpoint: "
-                    + endpoint.getName());
+            throw new IllegalArgumentException("Unrecognized api class: "
+                    + type.getName());
         }
     }
 
@@ -606,20 +756,19 @@ public class FedoraClient
         } else {
             HttpClient client = getHttpClient();
 
-            HeadMethod head = new HeadMethod(locator);
-            head.setDoAuthentication(true);
-            head.setFollowRedirects(FOLLOW_REDIRECTS);
+            HttpHead head = new HttpHead(locator);
 
             try {
-                int statusCode = client.executeMethod(head);
+                HttpResponse response = client.execute(head);
+                int statusCode = response.getStatusLine().getStatusCode();
                 if (statusCode != HttpStatus.SC_OK) {
                     throw new IOException("Method failed: "
-                            + head.getStatusLine());
+                            + response.getStatusLine().getReasonPhrase());
                 }
                 //Header[] headers = head.getResponseHeaders();
 
                 // Retrieve just the last modified header value.
-                Header header = head.getResponseHeader("last-modified");
+                Header header = response.getFirstHeader(HttpHeaders.LAST_MODIFIED);
                 if (header != null) {
                     String lastModified = header.getValue();
                     return DateUtility.parseDateLoose(lastModified);
@@ -652,7 +801,9 @@ public class FedoraClient
      * <em>String</em> values for parameters that should be passed to the
      * service. Two parameters are required: 1) lang 2) query Two parameters to
      * the risearch service are implied: 1) type = tuples 2) format = sparql See
-     * http://www.fedora.info/download/2.0/userdocs/server/webservices/risearch/#app.tuples
+     * http
+     * ://www.fedora.info/download/2.0/userdocs/server/webservices/risearch/#
+     * app.tuples
      */
     public TupleIterator getTuples(Map<String, String> params)
             throws IOException {
@@ -732,9 +883,9 @@ public class FedoraClient
      * name and a URL. The endpoint name is provided to the constructor. The URL
      * is determined automatically, once, based on:
      * <ul>
-     * <li> The baseURL provided to the FedoraClient instance.</li>
-     * <li> The server version.</li>
-     * <li> Whether the server automatically redirects non-SSL SOAP requests to
+     * <li>The baseURL provided to the FedoraClient instance.</li>
+     * <li>The server version.</li>
+     * <li>Whether the server automatically redirects non-SSL SOAP requests to
      * an SSL endpoint.</li>
      * </ul>
      */
@@ -744,8 +895,11 @@ public class FedoraClient
 
         URL m_url;
 
-        public SOAPEndpoint(String name) {
+        boolean m_apim;
+
+        public SOAPEndpoint(String name, boolean apim) {
             m_name = name;
+            m_apim = apim;
         }
 
         public String getName() {
@@ -753,35 +907,23 @@ public class FedoraClient
         }
 
         public URL getURL() throws IOException {
-            // only do this once -- future invocations will use the saved value.
             if (m_url == null) {
-                // The endpoint URL has not been determined yet.
-                // It will be determined in the following manner:
-                //
-                // If the Fedora server version is 2.0:
-                //   url = (baseURL)/(endpointName)/soap
-                // Otherwise, the Fedora server version must be 2.1+:
-                //   If (baseURL) specifies "http":
-                //     Hit (baseURL)/services/(endpointName).
-                //     If it redirects:
-                //       url = (redirectURL)
-                //     Otherwise:
-                //       url = (baseURL)/services/(endpointName)
-                //   Otherwise:
-                //       url = (baseURL)/services/(endpointName)
-                //
-                if (getServerVersion().equals("2.0")) {
-                    m_url = new URL(m_baseURL + m_name + "/soap");
-                } else {
-                    if (m_baseURL.startsWith("http:")) {
-                        m_url = getRedirectURL("/services/" + m_name);
-                    }
-                    if (m_url == null) {
-                        m_url = new URL(m_baseURL + "services/" + m_name);
-                    }
-                }
+                String url = getChannelBaseUrl() + "services/" + m_name;
+                m_url = new URL(url);
             }
             return m_url;
+        }
+
+        public String getChannelBaseUrl() throws IOException {
+            if (m_apim) {
+                URL redirect = getRedirectURL(m_baseURL + "management/upload");
+                if (redirect == null) return m_baseURL;
+                else return redirect.toString().replace("management/upload", "");
+            } else {
+                URL redirect = getRedirectURL(m_baseURL + "wsdl");
+                if (redirect == null) return m_baseURL;
+                else return redirect.toString().replace("wsdl", "");
+            }
         }
 
     }

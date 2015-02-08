@@ -89,12 +89,12 @@ class BatchXforms
 
     private Vector<String> keys = null;
 
-    /* package */Vector getKeys() {
+    Vector<String> getKeys() {
         return keys;
     }
 
     final void process() throws TransformerConfigurationException, Exception {
-        TransformerFactory tfactory = XmlTransformUtility.getTransformerFactory();
+        TransformerFactory tfactory = XmlTransformUtility.borrowTransformerFactory();
         keys = new Vector<String>();
         if (good2go) {
             File file4catch = null;
@@ -140,6 +140,7 @@ class BatchXforms
                          */
 
                         transformer = tfactory.newTransformer(ss); //xformPath
+                        
 
                         //System.err.println("after tfactory.newTransformer(); is transformer null? " + (transformer == null));
 
@@ -216,6 +217,7 @@ class BatchXforms
                         + " , class is " + e.getClass());
                 failedBuildCount++;
             } finally {
+                XmlTransformUtility.returnTransformerFactory(tfactory);
             }
             System.err.println("\n" + "Batch Build Summary");
             System.err.println("\n"

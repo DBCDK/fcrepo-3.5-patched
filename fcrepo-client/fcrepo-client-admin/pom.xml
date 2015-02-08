@@ -5,7 +5,7 @@
   <parent>
     <groupId>org.fcrepo</groupId>
     <artifactId>fcrepo-client</artifactId>
-    <version>3.5</version>
+    <version>3.8.0</version>
   </parent>
 
   <artifactId>fcrepo-client-admin</artifactId>
@@ -27,17 +27,13 @@
 
     <plugins>
 
-      <!--
-      To be re-evaluated when ANT is no longer supported.
-      TestMessagingClient does not work in ANT or Maven2
-      -->
+      <!-- To be re-evaluated when ANT is no longer supported. TestMessagingClient 
+        does not work in ANT or Maven2 -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <!--
-        All unit tests in 'client' begin with 'Test*'
-        (that is reserved for integration-tests)
-        -->
+        <!-- All unit tests in 'client' begin with 'Test*' (that is reserved 
+          for integration-tests) -->
         <configuration>
           <includes>
             <include>**/*Test*</include>
@@ -47,26 +43,6 @@
             <!-- <exclude>**/TestMessagingClient*</exclude> -->
           </excludes>
         </configuration>
-      </plugin>
-
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>build-helper-maven-plugin</artifactId>
-        <version>1.5</version>
-        <executions>
-          <execution>
-            <id>add-wsdl-source</id>
-            <phase>generate-sources</phase>
-            <goals>
-              <goal>add-source</goal>
-            </goals>
-            <configuration>
-              <sources>
-                <source>${basedir}/stubwrappers</source>
-             </sources>
-            </configuration>
-          </execution>
-        </executions>
       </plugin>
 
       <plugin>
@@ -108,15 +84,10 @@
       <artifactId>fcrepo-server</artifactId>
       <version>${project.version}</version>
     </dependency>
-
-    <dependency>
-      <groupId>org.apache.activemq</groupId>
-      <artifactId>activemq-all</artifactId>
-    </dependency>
     <dependency>
       <groupId>batik</groupId>
       <artifactId>batik-swing</artifactId>
-      <version>1.6-1</version>
+      <version>1.7</version>
     </dependency>
     <dependency>
       <groupId>ch.qos.logback</groupId>
@@ -124,16 +95,11 @@
     </dependency>
     <dependency>
       <groupId>commons-codec</groupId>
-	  <artifactId>commons-codec</artifactId>
-	  <version>1.3</version>
-	</dependency>
+      <artifactId>commons-codec</artifactId>
+    </dependency>
     <dependency>
       <groupId>commons-discovery</groupId>
       <artifactId>commons-discovery</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>commons-httpclient</groupId>
-      <artifactId>commons-httpclient</artifactId>
     </dependency>
     <dependency>
       <groupId>com.sun.woodstock.dependlibs</groupId>
@@ -158,7 +124,7 @@
     <dependency>
       <groupId>javax.mail</groupId>
       <artifactId>mail</artifactId>
-      <version>1.4.1</version>
+      <version>1.4.5</version>
     </dependency>
     <dependency>
       <groupId>javax.xml</groupId>
@@ -168,12 +134,17 @@
     <dependency>
       <groupId>javax.xml.soap</groupId>
       <artifactId>saaj-api</artifactId>
-      <version>1.3</version>
+      <version>1.3.4</version>
     </dependency>
     <dependency>
-      <groupId>org.fcrepo</groupId>
-      <artifactId>axis</artifactId>
-      <version>1.3-PATCHED</version>
+      <groupId>org.apache.cxf</groupId>
+      <artifactId>cxf-bundle</artifactId>
+      <exclusions>
+        <exclusion>
+          <groupId>org.apache.httpcomponents</groupId>
+          <artifactId>httpcore-nio</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.fcrepo</groupId>
@@ -195,20 +166,20 @@
       <artifactId>mulgara-core</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.fcrepo</groupId>
-      <artifactId>openrdf-sesame-onejar</artifactId>
-      <version>2.2.1</version>
+      <groupId>org.openrdf.sesame</groupId>
+      <artifactId>sesame-model</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.fcrepo</groupId>
-      <artifactId>sunxacml</artifactId>
-      <classifier>melcoe</classifier>
+      <groupId>org.openrdf.sesame</groupId>
+      <artifactId>sesame-rio-api</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.fcrepo</groupId>
+      <groupId>org.jboss.security</groupId>
+      <artifactId>jboss-sunxacml</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.trippi</groupId>
       <artifactId>trippi-core</artifactId>
-      <version>1.5.4</version>
-      <type>pom</type>
     </dependency>
     <dependency>
       <groupId>org.slf4j</groupId>
@@ -225,7 +196,7 @@
     <dependency>
       <groupId>wsdl4j</groupId>
       <artifactId>wsdl4j</artifactId>
-      <version>1.5.1</version>
+      <version>1.6.2</version>
     </dependency>
     <dependency>
       <groupId>xmlpull</groupId>
@@ -239,6 +210,45 @@
       <version>1.1.3.4.O</version>
       <scope>runtime</scope>
     </dependency>
-
+    <dependency>
+    	<groupId>org.apache.httpcomponents</groupId>
+    	<artifactId>httpcore</artifactId>
+    	<exclusions>
+    	    <exclusion>
+    	        <groupId>commons-logging</groupId>
+    	        <artifactId>commons-logging</artifactId>
+    	    </exclusion>
+    	</exclusions>
+    </dependency>
+    <dependency>
+    	<groupId>org.apache.httpcomponents</groupId>
+    	<artifactId>httpcore-nio</artifactId>
+    	<exclusions>
+    	    <exclusion>
+    	        <groupId>commons-logging</groupId>
+    	        <artifactId>commons-logging</artifactId>
+    	    </exclusion>
+    	</exclusions>
+    </dependency>
+    <dependency>
+    	<groupId>org.apache.httpcomponents</groupId>
+    	<artifactId>httpclient</artifactId>
+    	<exclusions>
+    	    <exclusion>
+    	        <groupId>commons-logging</groupId>
+    	        <artifactId>commons-logging</artifactId>
+    	    </exclusion>
+    	</exclusions>
+    </dependency>
+    <dependency>
+    	<groupId>org.apache.httpcomponents</groupId>
+    	<artifactId>httpmime</artifactId>
+    	<exclusions>
+    	    <exclusion>
+    	        <groupId>commons-logging</groupId>
+    	        <artifactId>commons-logging</artifactId>
+    	    </exclusion>
+    	</exclusions>
+    </dependency>
   </dependencies>
 </project>

@@ -6,17 +6,7 @@ package org.fcrepo.server.storage.service;
 
 import java.io.File;
 import java.io.FileInputStream;
-
 import java.util.Vector;
-
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.parsers.SAXParser;
-import javax.xml.parsers.SAXParserFactory;
-
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
-import org.xml.sax.XMLReader;
-import org.xml.sax.helpers.DefaultHandler;
 
 import org.fcrepo.server.errors.GeneralException;
 import org.fcrepo.server.errors.ObjectIntegrityException;
@@ -25,6 +15,10 @@ import org.fcrepo.server.storage.types.DeploymentDSBindSpec;
 import org.fcrepo.server.storage.types.MethodDef;
 import org.fcrepo.server.storage.types.MethodDefOperationBind;
 import org.fcrepo.server.storage.types.MethodParmDef;
+import org.fcrepo.utilities.XmlTransformUtility;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
 
 
 /**
@@ -38,6 +32,8 @@ import org.fcrepo.server.storage.types.MethodParmDef;
  * @version $Id$
  */
 public class ServiceMapper {
+    
+    private static final String[] EMPTY_STRING_ARRAY = new String[0];
 
     private WSDLParser wsdlHandler;
 
@@ -160,22 +156,8 @@ public class ServiceMapper {
             GeneralException {
         try {
             // XMLSchema validation via SAX parser
-            SAXParserFactory spf = SAXParserFactory.newInstance();
-            spf.setNamespaceAware(true);
-            spf.setValidating(false);
-            SAXParser sp = spf.newSAXParser();
-            DefaultHandler handler = eventHandler;
-            XMLReader xmlreader = sp.getXMLReader();
-            xmlreader.setContentHandler(handler);
-            xmlreader.parse(xml);
-            return handler;
-        } catch (ParserConfigurationException e) {
-            String msg =
-                    "ServiceMapper returned parser error. "
-                            + "The underlying exception was a "
-                            + e.getClass().getName() + ".  "
-                            + "The message was " + "\"" + e.getMessage() + "\"";
-            throw new RepositoryConfigurationException(msg);
+            XmlTransformUtility.parseWithoutValidating(xml, eventHandler);
+            return eventHandler;
         } catch (SAXException e) {
             String msg =
                     "ServiceMapper returned SAXException. "
@@ -256,7 +238,7 @@ public class ServiceMapper {
                     }
                 }
                 fedoraMethodDefBindings[i].dsBindingKeys =
-                        (String[]) tmp_dsInputKeys.toArray(new String[0]);
+                        (String[]) tmp_dsInputKeys.toArray(EMPTY_STRING_ARRAY);
 
                 // Set the outputMIMETypes from the operation's output binding, if any
                 HTTPOperationInOut oBind =
@@ -268,7 +250,7 @@ public class ServiceMapper {
                     }
                     fedoraMethodDefBindings[i].outputMIMETypes =
                             (String[]) tmp_outputMIMETypes
-                                    .toArray(new String[0]);
+                                    .toArray(EMPTY_STRING_ARRAY);
                 }
 
             }

@@ -5,12 +5,10 @@
 
 package org.fcrepo.server.rest;
 
-import java.io.CharArrayWriter;
 import java.io.IOException;
 import java.io.InputStream;
-
+import java.io.Reader;
 import java.net.URLEncoder;
-
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -31,14 +29,18 @@ import javax.ws.rs.core.Response.Status;
 
 import org.fcrepo.common.http.WebClient;
 import org.fcrepo.common.http.WebClientConfiguration;
-
 import org.fcrepo.server.Context;
+import org.fcrepo.server.Server;
 import org.fcrepo.server.rest.RestUtil.RequestContent;
 import org.fcrepo.server.rest.param.DateTimeParam;
 import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.DatastreamDef;
 import org.fcrepo.server.storage.types.MIMETypedStream;
 import org.fcrepo.utilities.DateUtility;
+import org.fcrepo.utilities.ReadableCharArrayWriter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 /**
  * A rest controller to handle CRUD operations for the Fedora datastream API
@@ -63,10 +65,16 @@ import org.fcrepo.utilities.DateUtility;
  * @author cuong.tran@yourmediashelf.com
  * @version $Id$
  */
-@Path("/{pid}/datastreams")
+@Path(BaseRestResource.VALID_PID_PART + "/datastreams")
+@Component
 public class DatastreamResource
         extends BaseRestResource {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(DatastreamResource.class);
+
+    public DatastreamResource(Server server) {
+        super(server);
+    }
     /**
      * Inquires upon all object Datastreams to obtain datastreams contained by a
      * digital object. This returns a set of datastream locations that represent
@@ -81,29 +89,46 @@ public class DatastreamResource
     @GET
     public Response listDatastreams(@PathParam(RestParam.PID) String pid,
                                     @QueryParam(RestParam.AS_OF_DATE_TIME) String dateTime,
-                                    @QueryParam(RestParam.FORMAT) @DefaultValue(HTML) String format) {
+                                    @QueryParam(RestParam.FORMAT) @DefaultValue(HTML) String format,
+                                    @QueryParam(RestParam.FLASH) @DefaultValue("false") boolean flash,
+                                    @QueryParam(RestParam.PROFILES) @DefaultValue("false") boolean profiles,
+                                    @QueryParam(RestParam.DS_STATE) String dsState,
+                                    @QueryParam(RestParam.VALIDATE_CHECKSUM) @DefaultValue("false") boolean validateChecksum
+                                    ) {
 
         try {
             Date asOfDateTime = DateUtility.parseDateOrNull(dateTime);
             Context context = getContext();
             MediaType mime = RestHelper.getContentType(format);
-            DatastreamDef[] dsDefs =
-                    apiAService.listDatastreams(context, pid, asOfDateTime);
 
-            String output =
-                    getSerializer(context).dataStreamsToXML(pid,
-                                                            asOfDateTime,
-                                                            dsDefs);
+            Reader output;
 
-            if (TEXT_HTML.isCompatible(mime)) {
-                CharArrayWriter writer = new CharArrayWriter();
-                transform(output, "access/listDatastreams.xslt", writer);
-                output = writer.toString();
+            if (profiles){
+                mime=MediaType.TEXT_XML_TYPE;
+                final Datastream[] datastreams = m_management.getDatastreams(context, pid, asOfDateTime, dsState);
+                ReadableCharArrayWriter xml = new ReadableCharArrayWriter(2048);
+                getSerializer(context).datastreamProfilesToXML(pid, datastreams, asOfDateTime, validateChecksum, xml);
+                xml.close();
+                output = xml.toReader();
+            } else {
+                mime = RestHelper.getContentType(format);
+                DatastreamDef[] dsDefs =
+                        m_access.listDatastreams(context, pid, asOfDateTime);
+                ReadableCharArrayWriter xml = new ReadableCharArrayWriter(1024);
+                getSerializer(context).dataStreamsToXML(pid, asOfDateTime, dsDefs, xml);
+                xml.close();
+                if (TEXT_HTML.isCompatible(mime)) {
+                    Reader reader = xml.toReader();
+                    xml = new ReadableCharArrayWriter(1024);
+                    transform(reader, "access/listDatastreams.xslt", xml);
+                    xml.close();
+                }
+                output = xml.toReader();
             }
 
             return Response.ok(output, mime).build();
         } catch (Exception ex) {
-            return handleException(ex);
+            return handleException(ex, flash);
         }
     }
 
@@ -119,12 +144,13 @@ public class DatastreamResource
                                          @PathParam(RestParam.DSID) String dsID,
                                          @QueryParam(RestParam.AS_OF_DATE_TIME) String dateTime,
                                          @QueryParam(RestParam.FORMAT) @DefaultValue(HTML) String format,
-                                         @QueryParam(RestParam.VALIDATE_CHECKSUM) @DefaultValue("false") boolean validateChecksum) {
+                                         @QueryParam(RestParam.VALIDATE_CHECKSUM) @DefaultValue("false") boolean validateChecksum,
+                                         @QueryParam(RestParam.FLASH) @DefaultValue("false") boolean flash) {
         try {
             Date asOfDateTime = DateUtility.parseDateOrNull(dateTime);
             Context context = getContext();
             Datastream dsProfile =
-                    apiMService.getDatastream(context, pid, dsID, asOfDateTime);
+                    m_management.getDatastream(context, pid, dsID, asOfDateTime);
 
             if (dsProfile == null) {
                 return Response
@@ -140,25 +166,28 @@ public class DatastreamResource
                         .build();
             }
 
-            String xml =
-                    getSerializer(context)
-                            .datastreamProfileToXML(pid,
-                                                    dsID,
-                                                    dsProfile,
-                                                    asOfDateTime,
-                                                    validateChecksum);
+            ReadableCharArrayWriter out = new ReadableCharArrayWriter(512);
+            getSerializer(context)
+                .datastreamProfileToXML(
+                    pid,
+                    dsID,
+                    dsProfile,
+                    asOfDateTime,
+                    validateChecksum,
+                    out);
 
+            out.close();
             MediaType mime = RestHelper.getContentType(format);
 
             if (TEXT_HTML.isCompatible(mime)) {
-                CharArrayWriter writer = new CharArrayWriter();
-                transform(xml, "management/viewDatastreamProfile.xslt", writer);
-                xml = writer.toString();
+                Reader reader = out.toReader();
+                out = new ReadableCharArrayWriter(512);
+                transform(reader, "management/viewDatastreamProfile.xslt", out);
             }
 
-            return Response.ok(xml, mime).build();
+            return Response.ok(out.toReader(), mime).build();
         } catch (Exception ex) {
-            return handleException(ex);
+            return handleException(ex, flash);
         }
     }
 
@@ -178,11 +207,12 @@ public class DatastreamResource
     @GET
     public Response getDatastreamHistory(@PathParam(RestParam.PID) String pid,
                                          @PathParam(RestParam.DSID) String dsID,
-                                         @QueryParam(RestParam.FORMAT) @DefaultValue(HTML) String format) {
+                                         @QueryParam(RestParam.FORMAT) @DefaultValue(HTML) String format,
+                                         @QueryParam(RestParam.FLASH) @DefaultValue("false") boolean flash) {
         try {
             Context context = getContext();
             Datastream[] datastreamHistory =
-                    apiMService.getDatastreamHistory(context, pid, dsID);
+                    m_management.getDatastreamHistory(context, pid, dsID);
 
             if (datastreamHistory == null || datastreamHistory.length == 0) {
                 return Response
@@ -195,23 +225,26 @@ public class DatastreamResource
 
             }
 
-            String xml =
-                    getSerializer(context)
-                            .datastreamHistoryToXml(pid,
-                                                    dsID,
-                                                    datastreamHistory);
+            ReadableCharArrayWriter out = new ReadableCharArrayWriter(1024);
+            getSerializer(context).datastreamHistoryToXml(
+                    pid,
+                    dsID,
+                    datastreamHistory,
+                    out);
+            out.close();
 
             MediaType mime = RestHelper.getContentType(format);
 
             if (TEXT_HTML.isCompatible(mime)) {
-                CharArrayWriter writer = new CharArrayWriter();
-                transform(xml, "management/viewDatastreamHistory.xslt", writer);
-                xml = writer.toString();
+                Reader reader = out.toReader();
+                out = new ReadableCharArrayWriter(1024);
+                transform(reader, "management/viewDatastreamHistory.xslt", out);
+                out.close();
             }
-
-            return Response.ok(xml, mime).build();
+            
+            return Response.ok(out.toReader(), mime).build();
         } catch (Exception e) {
-            return handleException(e);
+            return handleException(e, flash);
         }
     }
 
@@ -225,17 +258,18 @@ public class DatastreamResource
     public Response getDatastream(@PathParam(RestParam.PID) String pid,
                                   @PathParam(RestParam.DSID) String dsID,
                                   @QueryParam(RestParam.AS_OF_DATE_TIME) String dateTime,
-                                  @QueryParam(RestParam.DOWNLOAD) String download) {
+                                  @QueryParam(RestParam.DOWNLOAD) String download,
+                                  @QueryParam(RestParam.FLASH) @DefaultValue("false") boolean flash) {
         Context context = getContext();
         try {
             Date asOfDateTime = DateUtility.parseDateOrNull(dateTime);
             MIMETypedStream stream =
-                    apiAService.getDatastreamDissemination(context,
+                    m_access.getDatastreamDissemination(context,
                                                            pid,
                                                            dsID,
                                                            asOfDateTime);
-            if (datastreamFilenameHelper != null) {
-                datastreamFilenameHelper
+            if (m_datastreamFilenameHelper != null) {
+                m_datastreamFilenameHelper
                         .addContentDispositionHeader(context,
                                                      pid,
                                                      dsID,
@@ -247,7 +281,7 @@ public class DatastreamResource
 
             return buildResponse(stream);
         } catch (Exception ex) {
-            return handleException(ex);
+            return handleException(ex, flash);
         }
     }
 
@@ -263,13 +297,14 @@ public class DatastreamResource
                                      @PathParam(RestParam.DSID) String dsID,
                                      @QueryParam(RestParam.START_DT) String startDT,
                                      @QueryParam(RestParam.END_DT) String endDT,
-                                     @QueryParam(RestParam.LOG_MESSAGE) String logMessage) {
+                                     @QueryParam(RestParam.LOG_MESSAGE) String logMessage,
+                                     @QueryParam(RestParam.FLASH) @DefaultValue("false") boolean flash) {
 
         try {
             Context context = getContext();
             Date startDate = DateUtility.parseDateOrNull(startDT);
             Date endDate = DateUtility.parseDateOrNull(endDT);
-            Date[] purged = apiMService.purgeDatastream(context,
+            Date[] purged = m_management.purgeDatastream(context,
                                         pid,
                                         dsID,
                                         startDate,
@@ -277,13 +312,13 @@ public class DatastreamResource
                                         logMessage);
 
             // convert purged into a String[] so we can return it as a JSON array
-            List<String> results = new ArrayList<String>();
+            List<String> results = new ArrayList<String>(purged.length);
             for (Date d : purged) {
                 results.add(DateUtility.convertDateToXSDString(d));
             }
-            return Response.ok(mapper.writeValueAsString(results)).build();
+            return Response.ok(m_mapper.writeValueAsString(results)).build();
         } catch (Exception ex) {
-            return handleException(ex);
+            return handleException(ex, flash);
         }
     }
 
@@ -311,11 +346,12 @@ public class DatastreamResource
                                      @QueryParam(RestParam.MIME_TYPE) String mimeType,
                                      @QueryParam(RestParam.LOG_MESSAGE) String logMessage,
                                      @QueryParam(RestParam.IGNORE_CONTENT) @DefaultValue("false") boolean ignoreContent,
-                                     @QueryParam(RestParam.LAST_MODIFIED_DATE) DateTimeParam lastModifiedDate) {
+                                     @QueryParam(RestParam.LAST_MODIFIED_DATE) DateTimeParam lastModifiedDate,
+                                     @QueryParam(RestParam.FLASH) @DefaultValue("false") boolean flash) {
         return addOrUpdateDatastream(false,
                                      pid,
                                      dsID,
-                                     headers.getMediaType(),
+                                     m_headers.getMediaType(),
                                      mimeType,
                                      null,
                                      dsLocation,
@@ -328,7 +364,8 @@ public class DatastreamResource
                                      checksum,
                                      logMessage,
                                      ignoreContent,
-                                     lastModifiedDate);
+                                     lastModifiedDate,
+                                     flash);
     }
 
     /**
@@ -354,11 +391,12 @@ public class DatastreamResource
                                   @QueryParam(RestParam.CHECKSUM_TYPE) String checksumType,
                                   @QueryParam(RestParam.CHECKSUM) String checksum,
                                   @QueryParam(RestParam.MIME_TYPE) String mimeType,
-                                  @QueryParam(RestParam.LOG_MESSAGE) String logMessage) {
+                                  @QueryParam(RestParam.LOG_MESSAGE) String logMessage,
+                                  @QueryParam(RestParam.FLASH) @DefaultValue("false") boolean flash) {
         return addOrUpdateDatastream(true,
                                      pid,
                                      dsID,
-                                     headers.getMediaType(),
+                                     m_headers.getMediaType(),
                                      mimeType,
                                      controlGroup,
                                      dsLocation,
@@ -371,7 +409,8 @@ public class DatastreamResource
                                      checksum,
                                      logMessage,
                                      false,
-                                     null);
+                                     null,
+                                     flash);
     }
 
     protected Response addOrUpdateDatastream(boolean posted,
@@ -390,9 +429,11 @@ public class DatastreamResource
                                              String checksum,
                                              String logMessage,
                                              boolean ignoreContent,
-                                             DateTimeParam lastModifiedDate) {
+                                             DateTimeParam lastModifiedDate,
+                                             boolean flash) {
 
         try {
+        	LOGGER.info("addOrUpdate");
             String[] altIDs = {};
 
             if (altIDList != null && altIDList.size() > 0) {
@@ -402,7 +443,7 @@ public class DatastreamResource
             Context context = getContext();
 
             Datastream existingDS =
-                    apiMService.getDatastream(context, pid, dsID, null);
+                    m_management.getDatastream(context, pid, dsID, null);
             if (!posted && versionable == null && existingDS != null){
                 versionable = existingDS.DSVersionable;
             }
@@ -416,7 +457,7 @@ public class DatastreamResource
             if (existingDS != null && existingDS.DSState.equals("D")
                     && dsState != null) {
                 if (dsState.equals("A") || dsState.equals("I")) {
-                    apiMService.setDatastreamState(context,
+                    m_management.setDatastreamState(context,
                                                    pid,
                                                    dsID,
                                                    dsState,
@@ -429,9 +470,8 @@ public class DatastreamResource
 
             // Determine if datastream content is included in the request
             if (!ignoreContent) {
-                RestUtil restUtil = new RestUtil();
                 RequestContent content =
-                        restUtil.getRequestContent(servletRequest, headers);
+                        RestUtil.getRequestContent(m_servletRequest, m_headers);
 
                 if (content != null && content.getContentStream() != null) {
                     is = content.getContentStream();
@@ -440,6 +480,8 @@ public class DatastreamResource
                         mimeType = content.getMimeType();
                     }
                 }
+            } else {
+            	LOGGER.warn("ignoring content on {}/{}", pid, dsID);
             }
 
             // Make sure that there is a mime type value
@@ -459,13 +501,20 @@ public class DatastreamResource
 
             if (existingDS == null) {
                 if (posted) {
-                    if ((dsLocation == null || dsLocation.equals(""))
+                	LOGGER.debug("new ds posted at {}/{}", pid, dsID);
+                    if ((dsLocation == null || dsLocation.isEmpty())
                             && ("X".equals(controlGroup) || "M"
                                     .equals(controlGroup))) {
-                        dsLocation = apiMService.putTempStream(context, is);
+                    	if (is == null) {
+                    		LOGGER.warn("No content stream to copy for {}/{}",
+                    				pid, dsID);
+                    		return Response.status(Response.Status.BAD_REQUEST)
+                    				.build();
+                    	}
+                        dsLocation = m_management.putTempStream(context, is);
                     }
                     dsID =
-                            apiMService.addDatastream(context,
+                            m_management.addDatastream(context,
                                                       pid,
                                                       dsID,
                                                       altIDs,
@@ -480,6 +529,7 @@ public class DatastreamResource
                                                       checksum,
                                                       logMessage);
                 } else {
+                	LOGGER.warn("new ds but no posted content at {}/{}", pid, dsID);
                     return Response.status(Response.Status.NOT_FOUND).build();
                 }
             } else {
@@ -487,9 +537,9 @@ public class DatastreamResource
                     // Inline XML can only be modified by value. If there is no stream,
                     // but there is a dsLocation attempt to retrieve the content.
                     if (is == null && dsLocation != null
-                            && !dsLocation.equals("")) {
+                            && !dsLocation.isEmpty()) {
                         try {
-                            WebClientConfiguration webconfig = fedoraServer.getWebClientConfig();
+                            WebClientConfiguration webconfig = m_server.getWebClientConfig();
                             WebClient webClient = new WebClient(webconfig);
                             is = webClient.get(dsLocation, true);
                         } catch (IOException ioe) {
@@ -499,7 +549,7 @@ public class DatastreamResource
                                     + ioe.getMessage());
                         }
                     }
-                    apiMService.modifyDatastreamByValue(context,
+                    m_management.modifyDatastreamByValue(context,
                                                         pid,
                                                         dsID,
                                                         altIDs,
@@ -518,13 +568,13 @@ public class DatastreamResource
                     if (dsLocation == null
                             && ("M".equals(existingDS.DSControlGrp))) {
                         if (is != null) {
-                            dsLocation = apiMService.putTempStream(context, is);
+                            dsLocation = m_management.putTempStream(context, is);
                         } else {
                             dsLocation = null;
                         }
                     }
 
-                    apiMService.modifyDatastreamByReference(context,
+                    m_management.modifyDatastreamByReference(context,
                                                             pid,
                                                             dsID,
                                                             altIDs,
@@ -542,7 +592,7 @@ public class DatastreamResource
                     if (dsState.equals("A") || dsState.equals("D")
                             || dsState.equals("I")) {
                         if (!dsState.equals(existingDS.DSState)) {
-                            apiMService.setDatastreamState(context,
+                            m_management.setDatastreamState(context,
                                                            pid,
                                                            dsID,
                                                            dsState,
@@ -552,7 +602,7 @@ public class DatastreamResource
                 }
 
                 if (versionable != existingDS.DSVersionable) {
-                    apiMService.setDatastreamVersionable(context,
+                    m_management.setDatastreamVersionable(context,
                                                          pid,
                                                          dsID,
                                                          versionable,
@@ -563,24 +613,28 @@ public class DatastreamResource
             ResponseBuilder builder;
             if (posted) {
                 builder =
-                        Response.created(uriInfo.getRequestUri()
+                        Response.created(m_uriInfo.getRequestUri()
                                 .resolve(URLEncoder.encode(dsID, DEFAULT_ENC)));
             } else { // put
                 builder = Response.ok();
             }
             builder.header("Content-Type", MediaType.TEXT_XML);
             Datastream dsProfile =
-                    apiMService.getDatastream(context, pid, dsID, null);
-            String xml =
-                    getSerializer(context).datastreamProfileToXML(pid,
-                                                                  dsID,
-                                                                  dsProfile,
-                                                                  null,
-                                                                  false);
-            builder.entity(xml);
+                    m_management.getDatastream(context, pid, dsID, null);
+            ReadableCharArrayWriter out = new ReadableCharArrayWriter(512);
+            getSerializer(context).datastreamProfileToXML(
+                    pid,
+                    dsID,
+                    dsProfile,
+                    null,
+                    false,
+                    out);
+            out.close();
+            builder.entity(out.toReader());
             return builder.build();
         } catch (Exception ex) {
-            return handleException(ex);
+        	LOGGER.warn(ex.getMessage(), ex);
+            return handleException(ex, flash);
         }
     }
 }

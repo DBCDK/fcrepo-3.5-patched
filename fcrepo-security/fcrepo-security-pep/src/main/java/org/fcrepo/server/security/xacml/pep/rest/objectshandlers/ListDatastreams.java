@@ -22,25 +22,19 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-
 import java.net.URI;
-
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.Source;
 import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerConfigurationException;
 import javax.xml.transform.TransformerException;
-import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.xpath.XPath;
@@ -48,32 +42,29 @@ import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
 
-import com.sun.xacml.attr.AnyURIAttribute;
-import com.sun.xacml.attr.AttributeValue;
-import com.sun.xacml.attr.DateTimeAttribute;
-import com.sun.xacml.attr.StringAttribute;
-import com.sun.xacml.ctx.RequestCtx;
-import com.sun.xacml.ctx.ResponseCtx;
-import com.sun.xacml.ctx.Result;
-import com.sun.xacml.ctx.Status;
-
+import org.fcrepo.common.Constants;
+import org.fcrepo.server.security.RequestCtx;
+import org.fcrepo.server.security.xacml.MelcoeXacmlException;
+import org.fcrepo.server.security.xacml.pep.PEPException;
+import org.fcrepo.server.security.xacml.pep.ResourceAttributes;
+import org.fcrepo.server.security.xacml.pep.rest.filters.AbstractFilter;
+import org.fcrepo.server.security.xacml.pep.rest.filters.DataResponseWrapper;
+import org.fcrepo.server.security.xacml.pep.rest.filters.ResponseHandlingRESTFilter;
+import org.fcrepo.server.security.xacml.util.LogUtil;
+import org.fcrepo.utilities.XmlTransformUtility;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
-
 import org.w3c.tidy.Tidy;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.fcrepo.common.Constants;
-
-import org.fcrepo.server.security.xacml.MelcoeXacmlException;
-import org.fcrepo.server.security.xacml.pep.PEPException;
-import org.fcrepo.server.security.xacml.pep.rest.filters.AbstractFilter;
-import org.fcrepo.server.security.xacml.pep.rest.filters.DataResponseWrapper;
-import org.fcrepo.server.security.xacml.util.ContextUtil;
-import org.fcrepo.server.security.xacml.util.LogUtil;
+import org.jboss.security.xacml.sunxacml.attr.AttributeValue;
+import org.jboss.security.xacml.sunxacml.attr.DateTimeAttribute;
+import org.jboss.security.xacml.sunxacml.attr.StringAttribute;
+import org.jboss.security.xacml.sunxacml.ctx.ResponseCtx;
+import org.jboss.security.xacml.sunxacml.ctx.Result;
+import org.jboss.security.xacml.sunxacml.ctx.Status;
 
 
 /**
@@ -82,12 +73,10 @@ import org.fcrepo.server.security.xacml.util.LogUtil;
  * @author nish.naidoo@gmail.com
  */
 public class ListDatastreams
-        extends AbstractFilter {
+        extends AbstractFilter implements ResponseHandlingRESTFilter{
 
     private static final Logger logger =
             LoggerFactory.getLogger(ListDatastreams.class);
-
-    private ContextUtil contextUtil = null;
 
     private Transformer xFormer = null;
 
@@ -102,13 +91,10 @@ public class ListDatastreams
             throws PEPException {
         super();
 
-        contextUtil = ContextUtil.getInstance();
-
         try {
-            TransformerFactory xFactory = TransformerFactory.newInstance();
-            xFormer = xFactory.newTransformer();
-        } catch (TransformerConfigurationException tce) {
-            throw new PEPException("Error initialising SearchFilter", tce);
+            xFormer = XmlTransformUtility.getTransformer();
+        } catch (Exception e) {
+            throw new PEPException("Error initialising SearchFilter", e);
         }
 
         tidy = new Tidy();
@@ -122,17 +108,14 @@ public class ListDatastreams
      * org.fcrepo.server.security.xacml.pep.rest.filters.RESTFilter#handleRequest(javax.servlet
      * .http.HttpServletRequest, javax.servlet.http.HttpServletResponse)
      */
+    @Override
     public RequestCtx handleRequest(HttpServletRequest request,
                                     HttpServletResponse response)
             throws IOException, ServletException {
         if (logger.isDebugEnabled()) {
-            logger.debug(this.getClass().getName() + "/handleRequest!");
+            logger.debug("{}/handleRequest!", this.getClass().getName());
         }
 
-        String path = request.getPathInfo();
-        String[] parts = path.split("/");
-
-        String pid = parts[1];
         String asOfDateTime = request.getParameter("asOfDateTime");
         if (!isDate(asOfDateTime)) {
             asOfDateTime = null;
@@ -140,27 +123,20 @@ public class ListDatastreams
 
         RequestCtx req = null;
         Map<URI, AttributeValue> actions = new HashMap<URI, AttributeValue>();
-        Map<URI, AttributeValue> resAttr = new HashMap<URI, AttributeValue>();
+        Map<URI, AttributeValue> resAttr;
         try {
-            if (pid != null && !"".equals(pid)) {
-                resAttr.put(Constants.OBJECT.PID.getURI(),
-                            new StringAttribute(pid));
-            }
-            if (pid != null && !"".equals(pid)) {
-                resAttr.put(new URI(XACML_RESOURCE_ID),
-                            new AnyURIAttribute(new URI(pid)));
-            }
-            if (asOfDateTime != null && !"".equals(asOfDateTime)) {
+            String[] parts = getPathParts(request);
+            resAttr = ResourceAttributes.getResources(parts);
+            if (asOfDateTime != null && !asOfDateTime.isEmpty()) {
                 resAttr.put(Constants.DATASTREAM.AS_OF_DATETIME.getURI(),
                             DateTimeAttribute.getInstance(asOfDateTime));
             }
 
             actions.put(Constants.ACTION.ID.getURI(),
-                        new StringAttribute(Constants.ACTION.LIST_DATASTREAMS
-                                .getURI().toASCIIString()));
+                        Constants.ACTION.LIST_DATASTREAMS
+                                .getStringAttribute());
             actions.put(Constants.ACTION.API.getURI(),
-                        new StringAttribute(Constants.ACTION.APIA.getURI()
-                                .toASCIIString()));
+                        Constants.ACTION.APIA.getStringAttribute());
 
             req =
                     getContextHandler().buildRequest(getSubjects(request),
@@ -168,9 +144,9 @@ public class ListDatastreams
                                                      resAttr,
                                                      getEnvironment(request));
 
+            String pid = resAttr.get(Constants.OBJECT.PID.getURI()).toString();
             LogUtil.statLog(request.getRemoteUser(),
-                            Constants.ACTION.LIST_DATASTREAMS.getURI()
-                                    .toASCIIString(),
+                            Constants.ACTION.LIST_DATASTREAMS.uri,
                             pid,
                             null);
         } catch (Exception e) {
@@ -187,6 +163,7 @@ public class ListDatastreams
      * org.fcrepo.server.security.xacml.pep.rest.filters.RESTFilter#handleResponse(javax.servlet
      * .http.HttpServletRequest, javax.servlet.http.HttpServletResponse)
      */
+    @Override
     public RequestCtx handleResponse(HttpServletRequest request,
                                      HttpServletResponse response)
             throws IOException, ServletException {
@@ -279,21 +256,22 @@ public class ListDatastreams
                 evaluatePids(dsids.keySet(), pid, request, response);
 
         for (Result r : results) {
-            if (r.getResource() == null || "".equals(r.getResource())) {
+            String resource = r.getResource();
+            if (resource == null || resource.isEmpty()) {
                 logger.warn("This resource has no resource identifier in the xacml response results!");
             } else if (logger.isDebugEnabled()) {
                 logger.debug("Checking: " + r.getResource());
             }
 
-            String[] ridComponents = r.getResource().split("\\/");
-            String rid = ridComponents[ridComponents.length - 1];
+            int lastSlash = resource.lastIndexOf('/');
+            String rid = resource.substring(lastSlash + 1);
 
             if (r.getStatus().getCode().contains(Status.STATUS_OK)
                     && r.getDecision() != Result.DECISION_PERMIT) {
                 Node node = dsids.get(rid);
                 node.getParentNode().removeChild(node);
                 if (logger.isDebugEnabled()) {
-                    logger.debug("Removing: " + r.getResource() + "[" + rid + "]");
+                    logger.debug("Removing: " + resource + "[" + rid + "]");
                 }
             }
         }
@@ -379,21 +357,22 @@ public class ListDatastreams
                 evaluatePids(dsids.keySet(), pid, request, response);
 
         for (Result r : results) {
-            if (r.getResource() == null || "".equals(r.getResource())) {
+            String resource = r.getResource();
+            if (resource == null || resource.isEmpty()) {
                 logger.warn("This resource has no resource identifier in the xacml response results!");
             } else if (logger.isDebugEnabled()) {
                 logger.debug("Checking: " + r.getResource());
             }
 
-            String[] ridComponents = r.getResource().split("\\/");
-            String rid = ridComponents[ridComponents.length - 1];
+            int lastSlash = resource.lastIndexOf('/');
+            String rid = resource.substring(lastSlash + 1);
 
             if (r.getStatus().getCode().contains(Status.STATUS_OK)
                     && r.getDecision() != Result.DECISION_PERMIT) {
                 Node node = dsids.get(rid);
                 node.getParentNode().removeChild(node);
                 if (logger.isDebugEnabled()) {
-                    logger.debug("Removing: " + r.getResource() + "[" + rid + "]");
+                    logger.debug("Removing: " + resource + "[" + rid + "]");
                 }
             }
         }
@@ -427,26 +406,21 @@ public class ListDatastreams
                                      HttpServletRequest request,
                                      DataResponseWrapper response)
             throws ServletException {
-        Set<String> requests = new HashSet<String>();
+        RequestCtx[] requests = new RequestCtx[dsids.size()];
+        int ix = 0;
         for (String dsid : dsids) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Checking: " + pid + "/" + dsid);
-            }
+            logger.debug("Checking: {}/{}", pid, dsid);
 
             Map<URI, AttributeValue> actions =
                     new HashMap<URI, AttributeValue>();
-            Map<URI, AttributeValue> resAttr =
-                    new HashMap<URI, AttributeValue>();
+            Map<URI, AttributeValue> resAttr;
 
             try {
                 actions.put(Constants.ACTION.ID.getURI(),
-                            new StringAttribute(Constants.ACTION.GET_DATASTREAM
-                                    .getURI().toASCIIString()));
+                            Constants.ACTION.GET_DATASTREAM
+                                    .getStringAttribute());
 
-                resAttr.put(Constants.OBJECT.PID.getURI(),
-                            new StringAttribute(pid));
-                resAttr.put(new URI(XACML_RESOURCE_ID),
-                            new AnyURIAttribute(new URI(pid)));
+                resAttr = ResourceAttributes.getResources(pid);
                 resAttr.put(Constants.DATASTREAM.ID.getURI(),
                             new StringAttribute(dsid));
 
@@ -457,34 +431,22 @@ public class ListDatastreams
                                               resAttr,
                                               getEnvironment(request));
 
-                String r = contextUtil.makeRequestCtx(req);
-                if (logger.isDebugEnabled()) {
-                    logger.debug(r);
-                }
-
-                requests.add(r);
+                requests[ix++] = req;
             } catch (Exception e) {
                 logger.error(e.getMessage(), e);
                 throw new ServletException(e.getMessage(), e);
             }
         }
 
-        String res = null;
         ResponseCtx resCtx = null;
         try {
             if (logger.isDebugEnabled()) {
-                logger.debug("Number of requests: " + requests.size());
+                logger.debug("Number of requests: " + requests.length);
             }
 
-            res =
-                    getContextHandler().evaluateBatch(requests
-                            .toArray(new String[requests.size()]));
+            resCtx =
+                    getContextHandler().evaluateBatch(requests);
 
-            if (logger.isDebugEnabled()) {
-                logger.debug("Response: " + res);
-            }
-
-            resCtx = contextUtil.makeResponseCtx(res);
         } catch (MelcoeXacmlException pe) {
             throw new ServletException("Error evaluating pids: "
                     + pe.getMessage(), pe);

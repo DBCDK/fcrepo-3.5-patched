@@ -23,17 +23,19 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.sun.xacml.AbstractPolicy;
-import com.sun.xacml.EvaluationCtx;
-import com.sun.xacml.ctx.Status;
-import com.sun.xacml.finder.PolicyFinder;
-import com.sun.xacml.finder.PolicyFinderModule;
-import com.sun.xacml.finder.PolicyFinderResult;
-
+import org.fcrepo.server.security.xacml.pdp.MelcoePDPException;
+import org.fcrepo.server.security.xacml.pdp.data.PolicyIndex;
+import org.fcrepo.server.security.xacml.pdp.data.PolicyIndexException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.fcrepo.server.security.xacml.pdp.data.PolicyIndexException;
+import org.jboss.security.xacml.sunxacml.AbstractPolicy;
+import org.jboss.security.xacml.sunxacml.EvaluationCtx;
+import org.jboss.security.xacml.sunxacml.combine.PolicyCombiningAlgorithm;
+import org.jboss.security.xacml.sunxacml.ctx.Status;
+import org.jboss.security.xacml.sunxacml.finder.PolicyFinder;
+import org.jboss.security.xacml.sunxacml.finder.PolicyFinderModule;
+import org.jboss.security.xacml.sunxacml.finder.PolicyFinderResult;
 
 /**
  * This is the PolicyFinderModule for the PDP. Its purpose is to basically find
@@ -48,10 +50,15 @@ public class GenericPolicyFinderModule
     private static final Logger logger =
             LoggerFactory.getLogger(GenericPolicyFinderModule.class);
 
-    private PolicyManager policyManager = null;
+    private PolicyIndex m_policyIndex;
+    private PolicyCombiningAlgorithm m_combiningAlg;
+    private PolicyManager m_policyManager = null;
 
-    public GenericPolicyFinderModule() {
+    public GenericPolicyFinderModule(PolicyIndex policyIndex, PolicyCombiningAlgorithm combiningAlg)
+        throws PolicyIndexException, URISyntaxException {
         super();
+        m_policyIndex = policyIndex;
+        m_combiningAlg = combiningAlg;
     }
 
     /**
@@ -69,19 +76,9 @@ public class GenericPolicyFinderModule
      * Initialize this module. Typically this is called by
      * <code>PolicyFinder</code> when a PDP is created.
      *
-     * @param finder
-     *        the <code>PolicyFinder</code> using this module
+
      */
-    @Override
-    public void init(PolicyFinder finder) {
-        try {
-            policyManager = new PolicyManager(finder);
-        } catch (URISyntaxException use) {
-            logger.error("Error initialising DBPolicyFinderModule due to improper URI:",
-                           use);
-        } catch (PolicyIndexException pdme) {
-            logger.error("Error initialising DBPolicyFinderModule:", pdme);
-        }
+    public void init() throws MelcoePDPException {
     }
 
     /**
@@ -97,7 +94,7 @@ public class GenericPolicyFinderModule
     @Override
     public PolicyFinderResult findPolicy(EvaluationCtx context) {
         try {
-            AbstractPolicy policy = policyManager.getPolicy(context);
+            AbstractPolicy policy = m_policyManager.getPolicy(context);
 
             if (policy == null) {
                 return new PolicyFinderResult();
@@ -115,5 +112,13 @@ public class GenericPolicyFinderModule
             codes.add(Status.STATUS_PROCESSING_ERROR);
             return new PolicyFinderResult(new Status(codes, pdme.getMessage()));
         }
+    }
+
+    @Override
+    /**
+     * This callback is invoked by the policyFinder after adding its modules
+     */
+    public void init(PolicyFinder policyFinder) {
+        m_policyManager = new PolicyManager(m_policyIndex, m_combiningAlg, policyFinder);
     }
 }

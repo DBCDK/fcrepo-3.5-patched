@@ -5,7 +5,6 @@
 package org.fcrepo.oai;
 
 import java.io.BufferedWriter;
-import java.io.File;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
@@ -14,7 +13,6 @@ import java.text.DateFormat;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
@@ -24,11 +22,11 @@ import java.util.TimeZone;
 
 import org.fcrepo.common.Constants;
 import org.fcrepo.server.Context;
-import org.fcrepo.server.Server;
 import org.fcrepo.server.errors.authorization.AuthzException;
-import org.fcrepo.server.errors.authorization.AuthzOperationalException;
 import org.fcrepo.server.security.Authorization;
 import org.fcrepo.utilities.DateUtility;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
@@ -40,28 +38,24 @@ import org.fcrepo.utilities.DateUtility;
 public class OAIResponder
         implements Constants {
 
+    private static final Logger logger = LoggerFactory.getLogger(OAIResponder.class);
+
     private final OAIProvider m_provider;
 
-    private Authorization m_authorization;
+    private final Authorization m_authorization;
 
-    public OAIResponder(OAIProvider provider) {
+    public OAIResponder(OAIProvider provider, Authorization authorization) {
         m_provider = provider;
+        m_authorization = authorization;
     }
 
-    public void respond(Context context, Map args, OutputStream outStream)
+    public void respond(Context context, Map<String, String> args, OutputStream outStream)
             throws RepositoryException, AuthzException {
-        if (m_authorization == null) {
-            Server server;
-            try {
-                server = Server.getInstance(new File(FEDORA_HOME));
-            } catch (Throwable e) {
-                throw new AuthzOperationalException("couldn't attempt authz", e);
-            }
-            m_authorization =
-                    (Authorization) server
-                            .getModule("org.fcrepo.server.security.Authorization");
+        if (m_authorization != null) {
+            m_authorization.enforceOAIRespond(context);
+        } else {
+            logger.warn("Serving OAIResponses without Authorization module");
         }
-        m_authorization.enforceOAIRespond(context);
         PrintWriter out = null;
         try {
             out =
@@ -75,11 +69,11 @@ public class OAIResponder
         String baseURL =
                 m_provider
                         .getBaseURL(context
-                                            .getEnvironmentValue(HTTP_REQUEST.SECURITY.uri)
+                                            .getEnvironmentValue(HTTP_REQUEST.SECURITY.attributeId)
                                             .equals(HTTP_REQUEST.SECURE.uri) ? "https"
                                             : "http",
                                     context
-                                            .getEnvironmentValue(HTTP_REQUEST.SERVER_PORT.uri));
+                                            .getEnvironmentValue(HTTP_REQUEST.SERVER_PORT.attributeId));
         try {
             if (verb == null) {
                 throw new BadVerbException("Request did not specify a verb.");
@@ -108,10 +102,10 @@ public class OAIResponder
                 Date earliestDatestamp = m_provider.getEarliestDatestamp();
                 DeletedRecordSupport deletedRecord =
                         m_provider.getDeletedRecordSupport();
-                Set adminEmails = m_provider.getAdminEmails();
-                Set compressions =
+                Set<String> adminEmails = m_provider.getAdminEmails();
+                Set<String> compressions =
                         m_provider.getSupportedCompressionEncodings();
-                Set descriptions = m_provider.getDescriptions();
+                Set<String> descriptions = m_provider.getDescriptions();
                 respondToIdentify(args,
                                   baseURL,
                                   repositoryName,
@@ -124,6 +118,53 @@ public class OAIResponder
                                   out);
             } else if (verb.equals("ListIdentifiers")) {
                 List headers = processListIdentifiers(args);
+//                String rToken = (String) args.get("resumptionToken");
+//                List<?> headers;
+//                if (rToken != null) {
+//                    if (args.size() > 2) {
+//                        throw new BadArgumentException("ListIdentifiers request specified resumptionToken with other arguments.");
+//                    }
+//                    headers = m_provider.getHeaders(rToken);
+//                } else {
+//                    Iterator<String> iter = args.keySet().iterator();
+//                    boolean badParam = false;
+//                    Date from = null;
+//                    Date until = null;
+//                    String metadataPrefix = null;
+//                    String set = null;
+//                    while (iter.hasNext()) {
+//                        String name = iter.next();
+//                        if (name.equals("metadataPrefix")) {
+//                            metadataPrefix = (String) args.get(name);
+//                        } else if (name.equals("set")) {
+//                            set = (String) args.get(name);
+//                        } else if (name.equals("from")) {
+//                            from = getUTCDate((String) args.get(name), false);
+//                        } else if (name.equals("until")) {
+//                            until = getUTCDate((String) args.get(name), true);
+//                        } else if (!name.equals("verb")) {
+//                            badParam = true;
+//                        }
+//                    }
+//                    if (from != null && until != null) {
+//                        assertSameGranularity((String) args.get("from"),
+//                                              (String) args.get("until"));
+//                    }
+//                    if (badParam) {
+//                        throw new BadArgumentException("ListIdentifiers request specified illegal argument(s).");
+//                    }
+//                    if (metadataPrefix == null) {
+//                        throw new BadArgumentException("ListIdentifiers request did not specify metadataPrefix argument.");
+//                    }
+//                    headers =
+//                            m_provider.getHeaders(from,
+//                                                  until,
+//                                                  metadataPrefix,
+//                                                  set);
+//                }
+//                if (headers.size() == 0) {
+//                    throw new NoRecordsMatchException("No records match the providied criteria.");
+//                }
                 ResumptionToken resumptionToken = null;
                 if (m_provider.getMaxHeaders() > 0) {
                     if (headers.size() > m_provider.getMaxHeaders()) {
@@ -153,7 +194,53 @@ public class OAIResponder
                         .getMetadataFormats(identifier), out);
             } else if (verb.equals("ListRecords")) {
                 List records = processListRecords( args );
-
+//                String rToken = (String) args.get("resumptionToken");
+//                List<?> records;
+//                if (rToken != null) {
+//                    if (args.size() > 2) {
+//                        throw new BadArgumentException("ListRecords request specified resumptionToken with other arguments.");
+//                    }
+//                    records = m_provider.getRecords(rToken);
+//                } else {
+//                    Iterator<String> iter = args.keySet().iterator();
+//                    boolean badParam = false;
+//                    Date from = null;
+//                    Date until = null;
+//                    String metadataPrefix = null;
+//                    String set = null;
+//                    while (iter.hasNext()) {
+//                        String name = (String) iter.next();
+//                        if (name.equals("metadataPrefix")) {
+//                            metadataPrefix = (String) args.get(name);
+//                        } else if (name.equals("set")) {
+//                            set = (String) args.get(name);
+//                        } else if (name.equals("from")) {
+//                            from = getUTCDate((String) args.get(name), false);
+//                        } else if (name.equals("until")) {
+//                            until = getUTCDate((String) args.get(name), true);
+//                        } else if (!name.equals("verb")) {
+//                            badParam = true;
+//                        }
+//                    }
+//                    if (from != null && until != null) {
+//                        assertSameGranularity((String) args.get("from"),
+//                                              (String) args.get("until"));
+//                    }
+//                    if (badParam) {
+//                        throw new BadArgumentException("ListRecords request specified illegal argument(s).");
+//                    }
+//                    if (metadataPrefix == null) {
+//                        throw new BadArgumentException("ListRecords request did not specify metadataPrefix argument.");
+//                    }
+//                    records =
+//                            m_provider.getRecords(from,
+//                                                  until,
+//                                                  metadataPrefix,
+//                                                  set);
+//                }
+//                if (records.size() == 0) {
+//                    throw new NoRecordsMatchException("No records match the providied criteria.");
+//                }
                 ResumptionToken resumptionToken = null;
                 if (m_provider.getMaxRecords() > 0) {
                     if (records.size() > m_provider.getMaxRecords()) {
@@ -170,7 +257,7 @@ public class OAIResponder
                                      out);
             } else if (verb.equals("ListSets")) {
                 String rToken = (String) args.get("resumptionToken");
-                List sets;
+                List<?> sets;
                 if (rToken == null) {
                     if (args.size() > 1) {
                         throw new BadArgumentException("ListSets request specified illegal argument(s).");
@@ -209,7 +296,7 @@ public class OAIResponder
         }
     }
 
-    private void respondToGetRecord(Map args,
+    private void respondToGetRecord(Map<String, String> args,
                                     String baseURL,
                                     Record record,
                                     PrintWriter out) throws RepositoryException {
@@ -221,16 +308,16 @@ public class OAIResponder
         appendBottom(out);
     }
 
-    void respondToIdentify(Map args,
+    void respondToIdentify(Map<String,String> args,
                                    String baseURL,
                                    String repositoryName,
                                    String protocolVersion,
                                    Date earliestDatestamp,
                                    DeletedRecordSupport deletedRecord,
-                                   Set adminEmails,
-                                   Set compressions,
-                                   Set descriptions,
-                                   PrintWriter out) throws RepositoryException {
+                                   Set<String> adminEmails,
+                                   Set<String> compressions,
+                                   Set<String> descriptions,
+                                   PrintWriter out)  throws RepositoryException {
         appendTop(out);
         appendRequest(args, baseURL, out);
         out.println("  <Identify>");
@@ -239,10 +326,10 @@ public class OAIResponder
         out.println("    <baseURL>" + OAIResponder.enc(baseURL) + "</baseURL>");
         out.println("    <protocolVersion>" + protocolVersion
                 + "</protocolVersion>");
-        Iterator iter = adminEmails.iterator();
+        Iterator<String> iter = adminEmails.iterator();
         while (iter.hasNext()) {
             out.println("    <adminEmail>"
-                    + OAIResponder.enc((String) iter.next()) + "</adminEmail>");
+                    + OAIResponder.enc(iter.next()) + "</adminEmail>");
         }
         out.println("    <earliestDatestamp>"
                 + getUTCString(earliestDatestamp,
@@ -321,9 +408,9 @@ public class OAIResponder
     }
 
     // resumptionToken may be null
-    void respondToListIdentifiers(Map args,
+    void respondToListIdentifiers(Map<String, String> args,
                                           String baseURL,
-                                          List headers,
+                                          List<?> headers,
                                           ResumptionToken resumptionToken,
                                           PrintWriter out) throws RepositoryException {
         appendTop(out);
@@ -338,16 +425,16 @@ public class OAIResponder
         appendBottom(out);
     }
 
-    private void respondToListMetadataFormats(Map args,
+    private void respondToListMetadataFormats(Map<String, String> args,
                                               String baseURL,
-                                              Set metadataFormats,
+                                              Set<MetadataFormat> metadataFormats,
                                               PrintWriter out) {
         appendTop(out);
         appendRequest(args, baseURL, out);
         out.println("  <ListMetadataFormats>");
-        Iterator iter = metadataFormats.iterator();
+        Iterator<MetadataFormat> iter = metadataFormats.iterator();
         while (iter.hasNext()) {
-            MetadataFormat f = (MetadataFormat) iter.next();
+            MetadataFormat f = iter.next();
             out.println("    <metadataFormat>");
             out.println("      <metadataPrefix>" + f.getPrefix()
                     + "</metadataPrefix>");
@@ -409,9 +496,9 @@ public class OAIResponder
     }
 
     // resumptionToken may be null
-    private void respondToListRecords(Map args,
+    private void respondToListRecords(Map<String, String> args,
                                       String baseURL,
-                                      List records,
+                                      List<?> records,
                                       ResumptionToken resumptionToken,
                                       PrintWriter out) throws RepositoryException {
         appendTop(out);
@@ -426,9 +513,9 @@ public class OAIResponder
     }
 
     // resumptionToken may be null
-    private void respondToListSets(Map args,
+    private void respondToListSets(Map<String, String> args,
                                    String baseURL,
-                                   List sets,
+                                   List<?> sets,
                                    ResumptionToken resumptionToken,
                                    PrintWriter out) {
         appendTop(out);
@@ -439,10 +526,10 @@ public class OAIResponder
             out.println("    <set>");
             out.println("      <setSpec>" + s.getSpec() + "</setSpec>");
             out.println("      <setName>" + s.getName() + "</setName>");
-            Iterator iter = s.getDescriptions().iterator();
+            Iterator<String> iter = s.getDescriptions().iterator();
             while (iter.hasNext()) {
                 out.println("      <setDescription>\n");
-                out.println((String) iter.next());
+                out.println(iter.next());
                 out.println("      </setDescription>\n");
             }
             out.println("    </set>");
@@ -455,17 +542,17 @@ public class OAIResponder
     private void appendRecord(String indent, Record record, PrintWriter out) throws RepositoryException {
         Header header = record.getHeader();
         String metadata = record.getMetadata();
-        Set abouts = record.getAbouts();
+        Set<String> abouts = record.getAbouts();
         out.println(indent + "<record>");
         appendHeader(indent + "  ", header, out);
         if (header.isAvailable()) {
             out.println(indent + "  <metadata>");
             out.println(metadata);
             out.println(indent + "  </metadata>");
-            Iterator iter = abouts.iterator();
+            Iterator<String> iter = abouts.iterator();
             while (iter.hasNext()) {
                 out.println(indent + "  <about>");
-                out.println((String) iter.next());
+                out.println(iter.next());
                 out.println(indent + "  </about>");
             }
         }
@@ -475,7 +562,7 @@ public class OAIResponder
     private void appendHeader(String indent, Header header, PrintWriter out) throws RepositoryException {
         String identifier = header.getIdentifier();
         Date datestamp = header.getDatestamp();
-        Set setSpecs = header.getSetSpecs();
+        Set<String> setSpecs = header.getSetSpecs();
         boolean isAvailable = header.isAvailable();
         out.print(indent + "<header");
         if (!isAvailable) {
@@ -489,10 +576,10 @@ public class OAIResponder
                 + getUTCString(datestamp,
                                m_provider.getDateGranularitySupport() == DateGranularitySupport.SECONDS)
                 + "</datestamp>");
-        Iterator iter = setSpecs.iterator();
+        Iterator<String> iter = setSpecs.iterator();
         while (iter.hasNext()) {
             out.println(indent + "  <setSpec>"
-                    + OAIResponder.enc((String) iter.next()) + "</setSpec>");
+                    + OAIResponder.enc(iter.next()) + "</setSpec>");
         }
         out.println(indent + "</header>");
     }
@@ -519,12 +606,12 @@ public class OAIResponder
         }
     }
 
-    private void appendRequest(Map args, String baseURL, PrintWriter out) {
+    private void appendRequest(Map<String, String> args, String baseURL, PrintWriter out) {
         out.print("  <request");
-        Iterator iter = args.keySet().iterator();
+        Iterator<String> iter = args.keySet().iterator();
         while (iter.hasNext()) {
-            String name = (String) iter.next();
-            String value = (String) args.get(name);
+            String name = iter.next();
+            String value = args.get(name);
             out.print(" " + name + "=\"" + OAIResponder.enc(value) + "\"");
         }
         out.println(">" + OAIResponder.enc(baseURL) + "</request>");
@@ -618,7 +705,7 @@ public class OAIResponder
      * @return A new, encoded String.
      */
     private static String enc(String in) {
-        StringBuffer out = new StringBuffer();
+        StringBuilder out = new StringBuilder(in.length() + 16);
         enc(in, out);
         return out.toString();
     }
@@ -632,28 +719,9 @@ public class OAIResponder
      * @param buf
      *        The StringBuffer to write to.
      */
-    private static void enc(String in, StringBuffer out) {
+    private static void enc(String in, StringBuilder out) {
         for (int i = 0; i < in.length(); i++) {
             enc(in.charAt(i), out);
-        }
-    }
-
-    /**
-     * Appends an XML-appropriate encoding of the given range of characters to
-     * the given StringBuffer.
-     *
-     * @param in
-     *        The char buffer to read from.
-     * @param start
-     *        The starting index.
-     * @param length
-     *        The number of characters in the range.
-     * @param out
-     *        The StringBuffer to write to.
-     */
-    private static void enc(char[] in, int start, int length, StringBuffer out) {
-        for (int i = start; i < length + start; i++) {
-            enc(in[i], out);
         }
     }
 
@@ -666,7 +734,7 @@ public class OAIResponder
      * @param out
      *        The StringBuffer to write to.
      */
-    private static void enc(char in, StringBuffer out) {
+    private static void enc(char in, StringBuilder out) {
         if (in == '&') {
             out.append("&amp;");
         } else if (in == '<') {
