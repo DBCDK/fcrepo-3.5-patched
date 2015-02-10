@@ -64,7 +64,7 @@ public class FedoraObjectsResource extends BaseRestResource {
     private final String ATOMZIP1_1 = "info:fedora/fedora-system:ATOMZip-1.1";
 
     static final String[] SEARCHABLE_FIELDS = { "pid", "label", "state", "ownerId",
-        "cDate", "mDate", "dcmDate", "title", "creator", "subject", "description",
+        "cDate", "mDate", "dcmDate", "relObj", "relPredObj", "relSysPredObj", "title", "creator", "subject", "description",
         "publisher", "contributor", "date", "type", "format", "identifier",
         "source", "language", "relation", "coverage", "rights" };
 
@@ -108,7 +108,7 @@ public class FedoraObjectsResource extends BaseRestResource {
                 } else {
                     if ((terms != null) && (terms.length() != 0)) {
                         result = m_access.findObjects(context, wantedFields, maxResults, new FieldSearchQuery(terms));
-                    } else {
+                    } else if ((query != null) && (query.length() != 0)) {
                         result = m_access.findObjects(context, wantedFields, maxResults, new FieldSearchQuery(Condition.getConditions(query)));
                     }
                 }

@@ -20,6 +20,7 @@ import static org.apache.http.HttpStatus.SC_OK;
 import static org.apache.http.HttpStatus.SC_UNAUTHORIZED;
 import static org.custommonkey.xmlunit.XMLAssert.assertXMLEqual;
 import static org.custommonkey.xmlunit.XMLAssert.assertXpathExists;
+import static org.custommonkey.xmlunit.XMLAssert.assertXpathEvaluatesTo;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataOutputStream;
@@ -205,6 +206,7 @@ public class TestRESTAPI
         nsMap.put("management",
                   "http://www.fedora.info/definitions/1/0/management/");
         nsMap.put("access", "http://www.fedora.info/definitions/1/0/access/");
+        nsMap.put("types", "http://www.fedora.info/definitions/1/0/types/");
         NamespaceContext ctx = new SimpleNamespaceContext(nsMap);
         XMLUnit.setXpathNamespaceContext(ctx);
 
@@ -928,13 +930,36 @@ public class TestRESTAPI
 
    @Test
     public void testFindObjects() throws Exception {
+        LOGGER.info("testFindObjects");
         URI url =
                 getURI(String
                         .format("/objects?pid=true&terms=%s&query=&resultFormat=xml",
                                 DEMO_REST_PID.toString()));
         verifyNoAuthFailOnAPIAAuth(url);
         // FIXME: findObjects should have a schema?  remove "false" to enable validation
-        verifyGETStatusOnly(url, SC_OK, false);
+        String responseXML = verifyGETStatusString(url, SC_OK, getAuthAccess(), false);
+        assertXpathEvaluatesTo("1", "count(/types:result/types:resultList/types:objectFields)", responseXML);
+    }
+
+   @Test
+    public void testDBCFindObjectsReturnsNothingOnEmptyTermsAndQuery() throws Exception {
+        // DBX modification: search when neither terms nor query are specified returns no results
+        LOGGER.info("testFindObjectsReturnsNothingOnEmptyTermsAndQuery");
+        URI url =
+                getURI("/objects?pid=true&terms=&query=&resultFormat=xml");
+        verifyNoAuthFailOnAPIAAuth(url);
+        String responseXML = verifyGETStatusString(url, SC_OK, getAuthAccess(), false);
+        assertXpathEvaluatesTo("0", "count(/types:result/types:resultList/types:objectFields)", responseXML);
+    }
+
+   @Test
+    public void testFindObjectsReturnsAllObjectsOnWildcardTerms() throws Exception {
+        LOGGER.info("testFindObjectsReturnsNothingOnEmptyTermsAndQuery");
+        URI url =
+                getURI("/objects?pid=true&terms=*&query=&resultFormat=xml");
+        verifyNoAuthFailOnAPIAAuth(url);
+        String responseXML = verifyGETStatusString(url, SC_OK, getAuthAccess(), false);
+        assertXpathEvaluatesTo("1", "count(/types:result/types:resultList)", responseXML);
     }
 
     /**
@@ -1000,7 +1025,7 @@ public class TestRESTAPI
    @Test
     public void testResumeFindObjects() throws Exception {
        // there are only the system objects and 8 demo objects, so maxResults must be constrained
-        URI url = getURI("/objects?pid=true&query=&resultFormat=xml&maxResults=4");
+        URI url = getURI("/objects?pid=true&terms=*&resultFormat=xml&maxResults=4");
         verifyNoAuthFailOnAPIAAuth(url);
         // FIXME: resumeFindObjects should have a schema?  remove "false" to enable validation
         String responseXML = verifyGETStatusString(url, SC_OK, getAuthAccess(), false);

@@ -20,7 +20,9 @@ public class NamespaceHandler {
     
     public void removeNamespace(String prefix){
         Deque<String> namespaceStack = prefixes.get(prefix);
-        namespaceStack.removeLast();
+        if (namespaceStack != null) {
+            namespaceStack.removeLast();
+        }
     }
     
     public void addNamespace(String prefix, String uri){

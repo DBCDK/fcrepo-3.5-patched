@@ -252,7 +252,7 @@ public class FieldSearchServlet
                 out.println("</center></td></tr></table>");
                 printSearchFormToHtml(fieldHash, terms, query, out);
                 printFieldsArrayTableHeader(fieldsArray, out);
-                List<ObjectFields> searchResults = fsr.objectFieldsList();
+                List<ObjectFields> searchResults = (fsr == null) ? Collections.EMPTY_LIST : fsr.objectFieldsList();
                 for (int i = 0; i < searchResults.size(); i++) {
                     ObjectFields f = searchResults.get(i);
                     printObjectFieldsToHtml(f, fieldsArray, out);
@@ -358,7 +358,7 @@ public class FieldSearchServlet
     }
     
     private void printFieldsArrayTableHeader(String[] fieldsArray, PrintWriter html) {
-        html.append("<center><table width=\"90%\" border=\"1\" cellpadding=\"5\" cellspacing=\"5\" bgcolor=\"silver\">\n"
+        html.append("<center><table width=\"98%\" border=\"1\" cellpadding=\"4\" cellspacing=\"4\" bgcolor=\"silver\">\n"
                 + "<tr>");
         for (String element : fieldsArray) {
             html
@@ -371,7 +371,7 @@ public class FieldSearchServlet
     
     private void printSearchFormToHtml(Set<String> fieldHash, String terms, String query, PrintWriter html) {
         html.append("<form method=\"post\" action=\"search\">"
-                + "<center><table border=0 cellpadding=6 cellspacing=0>\n"
+                + "<center><table border=0 cellpadding=5 cellspacing=0>\n"
                 + "<tr><td colspan=3 valign=top><i>Fields to display:</i></td><td></td></tr>"
                 + "<tr><td valign=top><font size=-1>"
                 + "<input type=\"checkbox\" name=\"pid\" value=\"true\" checked> <a href=\"#\" onClick=\"javascript:alert('Persistent Identfier\\n\\nThe globally unique identifier of the resource.')\">pid</a><br>"
@@ -395,8 +395,7 @@ public class FieldSearchServlet
                 + "<input type=\"checkbox\" name=\"dcmDate\" value=\"true\"");
         html.append(fieldHash.contains("dcmDate") ? CHECKED : "");
         html.append("> <a href=\"#\" onClick=\"javascript:alert('Dublin Core Modified Date\\n\\nThe UTC date the DC datastream was last modified,\\nin YYYY-MM-DDTHH:MM:SS.SSSZ format')\">dcmDate</a><br>"
-                + "</font></td><td valign=top><font size=-1>");
-
+                + "</font>");
         html.append("<input type=\"checkbox\" name=\"relObj\" value=\"true\""
                         + (fieldHash.contains("relObj") ? " checked"
                                 : "")
@@ -495,6 +494,12 @@ public class FieldSearchServlet
                 if (f.getDCMDate() != null) {
                     html.append(DateUtility.formatMillisTZ(f.getDCMDate()));
                 }
+            } else if (l.equalsIgnoreCase("relObj")) {
+                getList(f.relObjs(), html);
+            } else if (l.equalsIgnoreCase("relPredObj")) {
+                getList(f.relPredObjs(), html);
+            } else if (l.equalsIgnoreCase("relSysPred")) {
+                getList(f.relSysPredObjs(), html);
             } else if (l.equalsIgnoreCase("title")) {
                 getList(f.titles(), html);
             } else if (l.equalsIgnoreCase("creator")) {
