@@ -40,6 +40,7 @@ import org.fcrepo.server.search.FieldSearchResult;
 import org.fcrepo.server.search.ObjectFields;
 import org.fcrepo.server.utilities.DCField;
 import org.fcrepo.server.utilities.StreamUtility;
+import org.fcrepo.utilities.DateUtility;
 
 
 
@@ -403,8 +404,6 @@ public class FieldSearchServlet
                     }
                     html.append("</tr>");
                 }
-                SimpleDateFormat formatter =
-                        new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
                 for (int i = 0; i < searchResults.size(); i++) {
                     ObjectFields f = searchResults.get(i);
                     if (xml) {
@@ -413,9 +412,9 @@ public class FieldSearchServlet
                         appendXML("label", f.getLabel(), xmlBuf);
                         appendXML("state", f.getState(), xmlBuf);
                         appendXML("ownerId", f.getOwnerId(), xmlBuf);
-                        appendXML("cDate", f.getCDate(), formatter, xmlBuf);
-                        appendXML("mDate", f.getMDate(), formatter, xmlBuf);
-                        appendXML("dcmDate", f.getDCMDate(), formatter, xmlBuf);
+                        appendXML("cDate", f.getCDate(), xmlBuf);
+                        appendXML("mDate", f.getMDate(), xmlBuf);
+                        appendXML("dcmDate", f.getDCMDate(), xmlBuf);
                         appendXML("relObj", f.relObjs(), xmlBuf);
                         appendXML("relPredObj", f.relPredObjs(), xmlBuf);
                         appendXML("relSysPredObj", f.relSysPredObjs(), xmlBuf);
@@ -458,13 +457,12 @@ public class FieldSearchServlet
                                     html.append(f.getOwnerId());
                                 }
                             } else if (l.equalsIgnoreCase("cDate")) {
-                                html.append(formatter.format(f.getCDate()));
+                                html.append(DateUtility.convertDateToString(f.getCDate()));
                             } else if (l.equalsIgnoreCase("mDate")) {
-                                html.append(formatter.format(f.getMDate()));
+                                html.append(DateUtility.convertDateToString(f.getMDate()));
                             } else if (l.equalsIgnoreCase("dcmDate")) {
                                 if (f.getDCMDate() != null) {
-                                    html.append(formatter
-                                            .format(f.getDCMDate()));
+                                    html.append(DateUtility.convertDateToString(f.getDCMDate()));
                                 }
                             } else if (l.equalsIgnoreCase("relObj")) {
                                 html.append(getList(f.relObjs()));
@@ -726,10 +724,9 @@ public class FieldSearchServlet
 
     private void appendXML(String name,
                            Date dt,
-                           SimpleDateFormat formatter,
                            StringBuffer out) {
         if (dt != null) {
-            appendXML(name, formatter.format(dt), out);
+            appendXML(name, DateUtility.convertDateToString(dt), out);
         }
     }
 
