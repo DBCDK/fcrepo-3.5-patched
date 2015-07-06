@@ -15,6 +15,11 @@ import java.io.RandomAccessFile;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.management.JMException;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -43,15 +48,17 @@ public class WriteAheadLog extends WriteAheadLogStats
 
     private final File storageDirectory;
 
+    private boolean isOpen = false;
+    
     private final boolean keepFileOpen;
 
-    private boolean isOpen = false;
-
-    private File currentFile;
-
-    RandomAccessFile fileAccess = null;
+    private final int numConcurrentTLogs;
+    private final BlockingDeque<TLogFile> tLogPool;
+    private final AtomicInteger tLogEntryId = new AtomicInteger();
+            
     private ObjectName jmxObjectName;
     private final static Kryo serializer = new Kryo();
+    
 
     static
     {
@@ -111,8 +118,9 @@ public class WriteAheadLog extends WriteAheadLogStats
             }
         });
     }
+    
 
-    public WriteAheadLog( IndexWriter writer, File storageDirectory, int commitSize, boolean keepFileOpen ) throws IOException
+    public WriteAheadLog( IndexWriter writer, File storageDirectory, int commitSize, boolean keepFileOpen, int numConcurrentTLogs ) throws IOException
     {
         super( commitSize );
         log.info( "Creating Write Ahead Log in directory {}, with commit size: {} and keepFileOpen: {}",
@@ -125,6 +133,7 @@ public class WriteAheadLog extends WriteAheadLogStats
         this.writer = writer;
         this.storageDirectory = storageDirectory;
         this.keepFileOpen = keepFileOpen;
+        this.numConcurrentTLogs = numConcurrentTLogs;
 
         // Register the JMX monitoring bean
         try
@@ -137,6 +146,8 @@ public class WriteAheadLog extends WriteAheadLogStats
         {
             log.error( "Unable to register monitor. JMX Monitoring will be unavailable", ex);
         }
+        
+        this.tLogPool = new LinkedBlockingDeque<TLogFile>(numConcurrentTLogs);
 
     }
 
@@ -158,105 +169,90 @@ public class WriteAheadLog extends WriteAheadLogStats
         {
             count = recoverUncomittedFiles();
         }
-        currentFile = createNewFile();
+        for (int i = 0; i < numConcurrentTLogs; i++) {
+            this.tLogPool.add(new TLogFile(storageDirectory, i, keepFileOpen));
+        }
         isOpen = true;
         return count;
     }
-
-
+    
     int recoverUncomittedFiles( ) throws IOException
     {
-        File comittingFile = new File( storageDirectory, LOG_NAME + LOG_COMITTING_POSTFIX );
-        File logFile = new File( storageDirectory, LOG_NAME + LOG_OPEN_POSTFIX );
-
-        int count = 0;
-        if ( comittingFile.exists() )
-        {
-            count += recoverUncomittedFile( comittingFile, writer );
-            comittingFile.delete();
-        }
-        if ( logFile.exists() )
-        {
-            count += recoverUncomittedFile( logFile, writer );
-            logFile.delete();
-        }
-        return count;
+        return recoverUncomittedFiles( LOG_COMITTING_POSTFIX ) + recoverUncomittedFiles( LOG_OPEN_POSTFIX );
     }
-
-
-    static int recoverUncomittedFile( File walFile, IndexWriter writer ) throws IOException
+    
+    int recoverUncomittedFiles( String postFix ) throws IOException
     {
-        log.warn( "Recovering file {}", walFile );
-
-        RandomAccessFile fileToRecover = new RandomAccessFile( walFile, "r" );
-
+        // Prepare all files in storageDirectory for processing
+        List<DocumentDataWrapper> files = new ArrayList<DocumentDataWrapper>();
+        for (File f : storageDirectory.listFiles()) {
+            if(f.getName().endsWith(postFix)){
+                DocumentDataWrapper w = new DocumentDataWrapper(new RandomAccessFile( f, "r" ));
+                try {
+                    w.doc = WriteAheadLog.readDocumentData(w.raf);
+                    files.add(w);
+                } catch (KryoException ex) {
+                    log.debug("No entries in log file {}", w.raf);
+                }
+            }
+        }
+        
+        // In each loop step, the "top" unprocessed document from each file is considered.
+        // The document with the smallest logEntryId will be processed.
         int count = 0;
-
-        try
+        while( true )
         {
-            while ( true )
-            {
-                DocumentData docData = WriteAheadLog.readDocumentData( fileToRecover );
-                count++;
-                Term pidTerm = getPidTerm( docData.pid );
+            DocumentDataWrapper toBeWritten = null;
+            for (DocumentDataWrapper file : files) {
+                if(toBeWritten == null || file.doc.logEntryId < toBeWritten.doc.logEntryId){
+                    toBeWritten = file;
+                }
+            }
 
-                if ( docData.docOrNull == null )
+            if(toBeWritten != null){
+                count++;
+                Term pidTerm = getPidTerm( toBeWritten.doc.pid );
+                if ( toBeWritten.doc.docOrNull == null )
                 {
-                    log.info( "Recovering deleted document for {}", docData.pid );
+                    log.info( "Recovering deleted document for {}", toBeWritten.doc );
                     writer.deleteDocuments( pidTerm );
                 }
                 else
                 {
-                    log.info( "Recovering updated document for {}", docData.pid );
-                    writer.updateDocument( pidTerm, docData.docOrNull );
+                    log.info( "Recovering updated document for {}", toBeWritten.doc.pid );
+                    writer.updateDocument( pidTerm, toBeWritten.doc.docOrNull );
                 }
+                try{ 
+                    toBeWritten.doc = WriteAheadLog.readDocumentData(toBeWritten.raf);
+                }catch( KryoException ex ){
+                    log.info( "No more updates found in log file {}", toBeWritten.raf);
+                    files.remove(toBeWritten);
+                }
+            }else{
+                log.info("All files read");
+                break;
             }
         }
-        catch( KryoException ex )
-        {
-            log.debug( "No more updates found in log file {}", walFile);
-        }
-        finally
-        {
-            fileToRecover.close();
-            writer.commit();
-        }
-        log.info( "Recovered {} changes from log file {}", count, walFile);
+        writer.commit();
         return count;
     }
-
-
+    
     public void deleteDocument( String pid) throws IOException
     {
-        tryUpdateOrDeleteDocument( pid, null );
+        updateOrDeleteDocument( pid, null );
     }
 
     public void updateDocument( String pid, Document doc ) throws IOException
     {
-        tryUpdateOrDeleteDocument( pid, doc );
-    }
-
-    private void tryUpdateOrDeleteDocument( String pid, Document docOrNull ) throws IOException
-    {
-        try
-        {
-            updateOrDeleteDocument( pid, docOrNull );
-        }
-        catch ( IOException ex )
-        {
-            fileAccess = null;
-            throw ex;
-        }
+        updateOrDeleteDocument( pid, doc );
     }
 
     private void updateOrDeleteDocument( String pid, Document docOrNull ) throws IOException
     {
         long updateStart = System.nanoTime();
 
-        File commitFile = null;
         numberOfUncomittedDocuments.incrementAndGet();
-        int updates = numberOfUpdatedDocuments.incrementAndGet();
-        byte[] recordBytes = createDocumentData( pid, docOrNull );
+        int updates = numberOfUpdatedDocuments.incrementAndGet(); 
 
         synchronized ( this )
         {
@@ -264,42 +260,98 @@ public class WriteAheadLog extends WriteAheadLogStats
             {
                 throw new IOException( "Write Ahead Log is not open");
             }
-
-            writeDocumentToFile( recordBytes );
-
-            if ( updates % commitSize == 0)
+        }
+        
+        TLogFile tlog = null;
+        try
+        {
+            tlog = tLogPool.takeLast();
+            byte[] recordBytes = createDocumentData( tLogEntryId.getAndIncrement(), pid, docOrNull );
+            writeDocumentToFile( recordBytes, tlog.getFileAccess() );
+            updateInWriter( pid, docOrNull );
+        }
+        catch (InterruptedException ex) 
+        {
+            log.error("Couldn't take tLogFile", ex);
+            throw new RuntimeException(ex);
+        }        
+        finally
+        {
+            if( tlog != null)
             {
-                // Time to commit. Close existing log file, rename and create a new log file
-                if ( fileAccess != null )
-                {
-                    try
-                    {
-                        fileAccess.close();
-                    }
-                    finally
-                    {
-                        fileAccess = null;
-                    }
-                }
-                commitFile = new File( storageDirectory, LOG_NAME + LOG_COMITTING_POSTFIX );
-                currentFile.renameTo( commitFile );
-                currentFile = createNewFile();
+                tlog.releaseFileAccess();
+                tLogPool.addLast(tlog);
             }
         }
 
-        updateInWriter( pid, docOrNull );
-
-        if ( commitFile != null )
+        
+        if (updates % commitSize == 0) 
         {
-            commitWriter();
-            // Erase old file
-            commitFile.delete();
+            // Time to commit.
+            synchronized(this)
+            {
+                // Reserve all log files. This will wait for other threads to finish writing.
+                List<TLogFile> logFiles = obtainLogFiles();
+                
+                // Make commit files
+                List<File> commitFiles = new ArrayList<File>();
+                for (TLogFile l : logFiles) 
+                {
+                    commitFiles.add(l.makeCommitFile());
+                }
+                
+                // Reset tLogEntryId, and release log files
+                tLogEntryId.set(0);
+                for (TLogFile l : logFiles) 
+                {
+                    tLogPool.addLast(l);
+                }
+
+                // Commit and delete commit files
+                commitWriter();
+                for (File commitFile : commitFiles) 
+                {
+                    commitFile.delete();
+                    log.debug("Deleted commit file {}", commitFile.getAbsolutePath());
+                }              
+            }
         }
+        
         long updateEnd = System.nanoTime();
 
         totalUpdateTimeMicroS.addAndGet( (updateEnd - updateStart)/1000 );
     }
-
+    
+    private List<TLogFile> obtainLogFiles(){
+        long start = System.nanoTime();
+        List<TLogFile> result = new ArrayList<TLogFile>();
+        while ( result.size() < numConcurrentTLogs ) 
+        {
+            try {
+                result.add(tLogPool.take());
+            } catch (InterruptedException ex) {
+                
+                for (TLogFile l : result) 
+                {
+                    tLogPool.add(l);
+                }
+                
+                log.error("Couldn't obtain all tLogFiles", ex);
+                throw new RuntimeException(ex);
+            }
+        }
+        long end = System.nanoTime();
+        numberOfObtainTLogFiles.incrementAndGet();
+        totalObtainTLogFilesTimeMicroS.addAndGet((end - start)/1000 );
+        return result;
+    }
+    
+    private void deleteLogFiles() throws IOException {
+        List<TLogFile> obtainLogFiles = obtainLogFiles();
+        for (TLogFile l : obtainLogFiles) {
+            l.delete();
+        }
+    }
 
     private void commitWriter() throws IOException
     {
@@ -333,15 +385,10 @@ public class WriteAheadLog extends WriteAheadLogStats
     }
 
     public synchronized void flush() throws IOException{
+        isOpen = false;
         commitWriter();
-        if ( fileAccess != null )
-        {
-            fileAccess.close();
-            fileAccess = null;
-        }
-        currentFile.delete();
-        currentFile = createNewFile();  
-        
+        deleteLogFiles();     
+        isOpen = true;
     }
     public synchronized void shutdown() throws IOException
     {
@@ -349,18 +396,10 @@ public class WriteAheadLog extends WriteAheadLogStats
         isOpen = false;
 
         commitWriter();
-
+        deleteLogFiles();
+        
         log.info( "Added {} documents. Comitted {} times", numberOfUpdatedDocuments, numberOfCommits );
-        if ( currentFile != null )
-        {
-            if ( fileAccess != null )
-            {
-                fileAccess.close();
-                fileAccess = null;
-            }
-            currentFile.delete();
-            currentFile = null;
-        }
+        
         if ( jmxObjectName != null )
         {
             MBeanServer server = ManagementFactory.getPlatformMBeanServer();
@@ -375,43 +414,17 @@ public class WriteAheadLog extends WriteAheadLogStats
         }
     }
 
-    private File createNewFile()
-    {
-        return new File( storageDirectory, LOG_NAME + LOG_OPEN_POSTFIX );
-    }
-
-    private RandomAccessFile getFileAccess() throws IOException
-    {
-        if ( fileAccess == null )
-        {
-            fileAccess = new RandomAccessFile( currentFile, "rwd" );
-            fileAccess.seek( currentFile.length() );
-        }
-        return fileAccess;
-    }
-
-    private void releaseFileAccess() throws IOException
-    {
-        if ( ! keepFileOpen )
-        {
-            fileAccess.close();
-            fileAccess = null;
-        }
-    }
-
-    private void writeDocumentToFile( byte[] recordBytes ) throws IOException
+    private void writeDocumentToFile( byte[] recordBytes, RandomAccessFile raf ) throws IOException
     {
         long writeStart = System.nanoTime();
-        try
-        {
-            writeDocumentData( getFileAccess(), recordBytes );
-        }
-        finally
-        {
-            releaseFileAccess();
-        }
+        writeDocumentData( raf, recordBytes );
         long writeEnd = System.nanoTime();
         totalWriteToFileTimeMicroS.addAndGet( (writeEnd - writeStart)/1000 );
+    }
+    
+    @Override
+    public int getTLogSize() {
+        return tLogPool.size();
     }
 
 //    private static byte[] createDocumentData( String pid, Document docOrNull ) throws IOException
@@ -424,12 +437,13 @@ public class WriteAheadLog extends WriteAheadLogStats
 //        out.reset();
 //        return recordBytes;
 //    }
-    private static byte[] createDocumentData( String pid, Document docOrNull ) throws IOException
+    private static byte[] createDocumentData( Integer logEntryId, String pid, Document docOrNull ) throws IOException
     {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         OutputChunked output = new OutputChunked( bos );
         synchronized ( serializer )
         {
+            serializer.writeObject( output, logEntryId );
             serializer.writeObject( output, pid );
             serializer.writeObjectOrNull( output, docOrNull, Document.class );
         }
@@ -439,10 +453,9 @@ public class WriteAheadLog extends WriteAheadLogStats
         return recordBytes;
     }
 
-
-    static void writeDocumentData( RandomAccessFile raf, String pid, Document docOrNull ) throws IOException
+    static void writeDocumentData( RandomAccessFile raf, Integer logEntryId, String pid, Document docOrNull ) throws IOException
     {
-        byte[] recordBytes = createDocumentData( pid, docOrNull );
+        byte[] recordBytes = createDocumentData( logEntryId, pid, docOrNull );
 
         writeDocumentData( raf, recordBytes );
     }
@@ -458,17 +471,20 @@ public class WriteAheadLog extends WriteAheadLogStats
     {
         InputChunked input = new InputChunked( Channels.newInputStream( raf.getChannel() ) );
 
+        Integer logEntryId;
         String pid;
         Document doc;
+        
         synchronized ( serializer )
         {
+            logEntryId = serializer.readObject( input, Integer.class );
             pid = serializer.readObject( input, String.class );
             doc = serializer.readObjectOrNull( input, Document.class );
+            
         }
         input.nextChunks();
-        return new DocumentData( pid, doc );
+        return new DocumentData( logEntryId, pid, doc );
     }
-
 
     static Term getPidTerm( String pid )
     {
@@ -476,21 +492,96 @@ public class WriteAheadLog extends WriteAheadLogStats
         return pidTerm;
     }
 
-
+    static class DocumentDataWrapper
+    {
+        final RandomAccessFile raf;
+        DocumentData doc;
+        public DocumentDataWrapper( RandomAccessFile raf ){
+            this.raf=raf;
+        }
+    }
     static class DocumentData
     {
+        final Integer logEntryId;
         final String pid;
         final Document docOrNull;
 
-        public DocumentData( String pid, Document docOrNull )
+        public DocumentData( Integer logEntryId, String pid, Document docOrNull )
         {
+            this.logEntryId = logEntryId;
             this.pid = pid;
-            this.docOrNull = docOrNull;
+            this.docOrNull = docOrNull;   
         }
 
         public String toString()
         {
-            return "PID '" + pid + "' Document: " + docOrNull;
+            return "PID '" + pid + "' Document: " + docOrNull + " LogEntryID: " + logEntryId;
+        }
+    }
+ 
+    static class TLogFile
+    {
+        private final boolean keepFileOpen;
+        private final File storageDirectory;
+        private final int fileId;
+        private File file;
+        private RandomAccessFile fileAccess;
+        
+        public TLogFile( File storageDirectory, int fileId, boolean keepFileOpen )
+        {
+            this.storageDirectory = storageDirectory;
+            this.keepFileOpen = keepFileOpen;
+            this.fileId = fileId;
+            this.file = initFile();
+            log.debug("Created transaction log file {}", file.getAbsolutePath());
+        }
+        private File initFile(){
+            return new File( storageDirectory, fileId+"_"+LOG_NAME + LOG_OPEN_POSTFIX);
+        }
+        public File getFile(){
+            return file;
+        }
+        public RandomAccessFile getFileAccess() throws IOException 
+        {
+            if (fileAccess == null) {
+                fileAccess = new RandomAccessFile(file, "rwd");
+                fileAccess.seek(file.length());
+            }
+            log.trace("Got file access {}", file.getAbsolutePath());
+            return fileAccess;
+        }
+
+        public void releaseFileAccess() throws IOException 
+        {
+            if(fileAccess != null){
+                if (!keepFileOpen) {
+                    fileAccess.close();
+                    fileAccess = null;
+                }
+            }
+            log.trace("Released file access {}", file.getAbsolutePath());
+        }
+        public void delete() throws IOException{
+            if(fileAccess != null)
+            {
+                fileAccess.close();
+                fileAccess = null;
+            }
+            file.delete();
+            log.debug("Deleted tlog-file {}", file.getAbsolutePath());
+        }
+
+        private File makeCommitFile() throws IOException {
+            if(fileAccess != null)
+            {
+                fileAccess.close();
+                fileAccess = null;
+            }
+            File commitFile = new File( storageDirectory, fileId+"_"+LOG_NAME + LOG_COMITTING_POSTFIX );
+            file.renameTo(commitFile);
+            file = initFile();
+            log.debug("Created commit file {}", commitFile.getAbsolutePath());
+            return commitFile;
         }
     }
 

@@ -410,6 +410,9 @@
         <param name="writeAheadLogKeepFileOpen" value="true">
             <comment>Keep write ahead log file open or close and reopen for every write.</comment>
         </param>
+        <param name="writeAheadLogNumConcurrentTLogs" value="10">
+            <comment>How many transaction log files which may be written to concurrently.</comment>
+        </param>
 
     </module>
 	<module role="org.fcrepo.server.resourceIndex.ResourceIndex" class="org.fcrepo.server.resourceIndex.ResourceIndexModule">

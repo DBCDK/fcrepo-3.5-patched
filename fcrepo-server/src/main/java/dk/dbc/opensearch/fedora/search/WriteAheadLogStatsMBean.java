@@ -20,6 +20,8 @@ along with opensearch.  If not, see <http://www.gnu.org/licenses/>.
 package dk.dbc.opensearch.fedora.search;
 
 public interface WriteAheadLogStatsMBean {
+    
+    int getTLogSize();
 
     int getCommitSize();
 
@@ -28,6 +30,8 @@ public interface WriteAheadLogStatsMBean {
     int getNumberOfUncomittedDocuments();
 
     int getNumberOfUpdatedDocuments();
+    
+    int getNumberOfObtainTLogFiles();
 
     long getTotalCommitToLuceneTimeMicroS();
 
@@ -36,6 +40,8 @@ public interface WriteAheadLogStatsMBean {
     long getTotalUpdateTimeMicroS();
 
     long getTotalWriteToFileTimeMicroS();
+    
+    long getTotalObtainTLogFilesTimeMicroS();
 
     long getAverageCommitToLuceneTimeMicroS();
 
@@ -44,4 +50,8 @@ public interface WriteAheadLogStatsMBean {
     long getAverageUpdateTimeMicroS();
 
     long getAverageWriteToFileTimeMicroS();
+    
+    long getAverageObtainTLogFilesTimeMicroS();
+    
+    
 }

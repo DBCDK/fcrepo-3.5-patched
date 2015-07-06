@@ -104,6 +104,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
     private File writeAheadLogDir = null;
     private int writeAheadLogCommitSize;
     private boolean writeAheadLogKeepFileOpen = true;
+    private int writeAheadLogNumConcurrentTLogs;
 
     /**
      * Constructor for initializing the FieldSearch module. The server will
@@ -212,7 +213,7 @@ public final class FieldSearchLucene extends Module implements FieldSearch
         {
             IndexWriter writer = createIndexWriter( luceneWriteLockTimeout, luceneMaxThreadStates, analyzer, directory, new TieredMergePolicy() );
 
-            WriteAheadLog wal = ( writeAheadLogDir == null) ? null : new WriteAheadLog( writer, writeAheadLogDir, writeAheadLogCommitSize, writeAheadLogKeepFileOpen);
+            WriteAheadLog wal = ( writeAheadLogDir == null) ? null : new WriteAheadLog( writer, writeAheadLogDir, writeAheadLogCommitSize, writeAheadLogKeepFileOpen, writeAheadLogNumConcurrentTLogs);
 
             this.luceneindexer = new LuceneFieldIndex( writer, mergePolicy,
                     pidCollectorMaxInMemory, pidCollectorTmpDir, wal);
@@ -626,6 +627,28 @@ public final class FieldSearchLucene extends Module implements FieldSearch
             }
 
             log.info( "Using writeAheadLogKeepFileOpen: {}", writeAheadLogKeepFileOpen );
+            
+            String writeAheadLogNumConcurrentTLogsParam = getParameter( "writeAheadLogNumConcurrentTLogs" );
+            if( writeAheadLogNumConcurrentTLogsParam == null || writeAheadLogNumConcurrentTLogsParam.equals( "" ) )
+            {
+                String errMsg = "FATAL: writeAheadLogNumConcurrentTLogs parameter must be set";
+                log.error( errMsg );
+                throw new ModuleInitializationException( errMsg, getRole() );
+            }
+            else
+            {
+                try
+                {
+                    writeAheadLogNumConcurrentTLogs = Integer.parseInt( writeAheadLogNumConcurrentTLogsParam );
+                }
+                catch( NumberFormatException e )
+                {
+                    String errMsg = String.format( "FATAL: writeAheadLogNumConcurrentTLogs parameter '%s' is not a valid integer",
+                            writeAheadLogCommitSizeParam );
+                    log.error( errMsg );
+                    throw new ModuleInitializationException( errMsg, getRole(), e );
+                }
+            }
         }
 
     }

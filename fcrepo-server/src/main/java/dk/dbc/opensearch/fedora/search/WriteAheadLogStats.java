@@ -38,6 +38,8 @@ public class WriteAheadLogStats implements WriteAheadLogStatsMBean
     protected final AtomicInteger numberOfUncomittedDocuments = new AtomicInteger();
 
     protected final AtomicInteger numberOfCommits = new AtomicInteger();
+    
+    protected final AtomicInteger numberOfObtainTLogFiles = new AtomicInteger();
 
     protected final AtomicLong totalUpdateTimeMicroS = new AtomicLong();
 
@@ -46,6 +48,8 @@ public class WriteAheadLogStats implements WriteAheadLogStatsMBean
     protected final AtomicLong totalUpdateInLuceneTimeMicroS = new AtomicLong();
 
     protected final AtomicLong totalCommitToLuceneTimeMicroS = new AtomicLong();
+    
+    protected final AtomicLong totalObtainTLogFilesTimeMicroS = new AtomicLong();
 
     protected final int commitSize;
 
@@ -92,7 +96,12 @@ public class WriteAheadLogStats implements WriteAheadLogStatsMBean
         int updatedDocs = getNumberOfUpdatedDocuments();
         return updatedDocs == 0 ? 0 : totalWriteToFileTimeMicroS.get() / updatedDocs;
     }
-
+    
+    @Override
+    public long getAverageObtainTLogFilesTimeMicroS() {
+        int obtainLogFiles = getNumberOfObtainTLogFiles();
+        return obtainLogFiles == 0 ? 0 : totalObtainTLogFilesTimeMicroS.get() / obtainLogFiles;
+    }
 
     @Override
     public int getCommitSize()
@@ -119,6 +128,11 @@ public class WriteAheadLogStats implements WriteAheadLogStatsMBean
     public int getNumberOfUpdatedDocuments()
     {
         return numberOfUpdatedDocuments.get();
+    }
+    
+    @Override
+    public int getNumberOfObtainTLogFiles() {
+        return numberOfObtainTLogFiles.get();
     }
 
 
@@ -147,6 +161,16 @@ public class WriteAheadLogStats implements WriteAheadLogStatsMBean
     public long getTotalWriteToFileTimeMicroS()
     {
         return totalWriteToFileTimeMicroS.get();
+    }
+
+    @Override
+    public long getTotalObtainTLogFilesTimeMicroS() {
+        return totalObtainTLogFilesTimeMicroS.get();
+    }
+
+    @Override
+    public int getTLogSize() {
+        return 0;
     }
 
 }

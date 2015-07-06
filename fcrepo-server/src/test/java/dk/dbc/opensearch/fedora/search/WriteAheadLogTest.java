@@ -29,6 +29,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.Iterator;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -161,8 +164,9 @@ public class WriteAheadLogTest
         String pid = "obj:1";
         Document doc = makeLuceneDocument( pid );
 
-        WriteAheadLog.DocumentData docData = new WriteAheadLog.DocumentData( pid, doc );
+        WriteAheadLog.DocumentData docData = new WriteAheadLog.DocumentData( 1, pid, doc );
 
+        assertEquals((int) 1, (int) docData.logEntryId);
         assertEquals( pid, docData.pid );
         assertEquals( doc.toString(), docData.docOrNull.toString() );
     }
@@ -172,8 +176,9 @@ public class WriteAheadLogTest
     {
         String pid = "obj:1";
 
-        WriteAheadLog.DocumentData docData = new WriteAheadLog.DocumentData( pid, null );
+        WriteAheadLog.DocumentData docData = new WriteAheadLog.DocumentData( 1, pid, null );
 
+        assertEquals((int)1, (int)docData.logEntryId);
         assertEquals( pid, docData.pid );
         assertNull( docData.docOrNull );
     }
@@ -188,9 +193,10 @@ public class WriteAheadLogTest
         String pid = "obj:1";
         Document doc = makeLuceneDocument( pid );
 
-        WriteAheadLog.writeDocumentData( fileAccess, pid, doc );
+        WriteAheadLog.writeDocumentData( fileAccess, 1, pid, doc );
         fileAccess.seek( 0 );
         DocumentData docData1 = WriteAheadLog.readDocumentData( fileAccess );
+        assertEquals((int) 1l, (int) docData1.logEntryId);
         assertEquals( pid, docData1.pid );
         assertEquals( doc.toString(), docData1.docOrNull.toString() );
     }
@@ -199,7 +205,7 @@ public class WriteAheadLogTest
     @Test ( expected = IOException.class )
     public void testUpdateDocumentOnUnitializedWriteAheadLogThrowsException() throws Exception
     {
-        WriteAheadLog wal = new WriteAheadLog( writer, folder.getRoot(), 1000, true );
+        WriteAheadLog wal = new WriteAheadLog( writer, folder.getRoot(), 1000, true, 1 );
 
         String pid = "obj:1";
         Document doc = makeLuceneDocument( pid );
@@ -211,7 +217,7 @@ public class WriteAheadLogTest
     @Test ( expected = IOException.class )
     public void testUpdateDocumentOnClosedWriteAheadLogThrowsException() throws Exception
     {
-        WriteAheadLog wal = new WriteAheadLog( writer, folder.getRoot(), 1000, true );
+        WriteAheadLog wal = new WriteAheadLog( writer, folder.getRoot(), 1000, true, 1 );
         wal.initialize();
         wal.shutdown();
 
@@ -230,7 +236,7 @@ public class WriteAheadLogTest
 
         String pid = "obj:1";
 
-        WriteAheadLog.writeDocumentData( fileAccess, pid, null );
+        WriteAheadLog.writeDocumentData( fileAccess, 1, pid, null );
         fileAccess.seek( 0 );
         DocumentData docData = WriteAheadLog.readDocumentData( fileAccess );
         assertEquals( pid, docData.pid );
@@ -241,7 +247,7 @@ public class WriteAheadLogTest
     @Test
     public void testUpdateTwoDocumentsAndDeleteOneOfThem() throws Exception
     {
-        WriteAheadLog wal = new WriteAheadLog( writer, folder.getRoot(), 1000, true );
+        WriteAheadLog wal = new WriteAheadLog( writer, folder.getRoot(), 1000, true, 1 );
         wal.initialize();
 
         String pid1 = "obj:1";
@@ -260,7 +266,7 @@ public class WriteAheadLogTest
 
         // Verify data written to log file:
 
-        File objectFile = new File( folder.getRoot(), "writeaheadlog.log");
+        File objectFile = new File( folder.getRoot(), "0_writeaheadlog.log");
 
         assertTrue( objectFile + " exists", objectFile.exists() );
 
@@ -282,48 +288,6 @@ public class WriteAheadLogTest
         assertFalse( "Log files is deleted at shutdown", objectFile.exists() );
 
         assertEquals( 1, writer.numDocs() );
-    }
-
-
-    @Test
-    public void testRecoverUncomittedLogFile() throws Exception
-    {
-        File objectFile = new File( folder.getRoot(), "writeaheadlog.log");
-        RandomAccessFile fileAccess = new RandomAccessFile( objectFile, "rwd" );
-
-        String pid1 = "obj:1";
-        Document doc1 = makeLuceneDocument( pid1 );
-
-        String pid2 = "obj:2";
-        Document doc2 = makeLuceneDocument( pid2 );
-
-        // Given a writer with one document
-
-        writer.updateDocument( WriteAheadLog.getPidTerm( pid1 ), doc1 );
-        writer.commit();
-
-        // And a log file with that document deleted and a new document added
-
-        WriteAheadLog.writeDocumentData( fileAccess, pid1, null );
-        WriteAheadLog.writeDocumentData( fileAccess, pid2, doc2 );
-
-        fileAccess.close();
-        // Recover the log file
-        int recovered = WriteAheadLog.recoverUncomittedFile( objectFile, writer );
-
-        // Verify that
-        assertEquals( 2, recovered );
-
-        IndexReader reader = IndexReader.open( writer, false );
-        IndexSearcher searcher = new IndexSearcher( reader );
-
-        TopDocs result = searcher.search( new TermQuery( WriteAheadLog.getPidTerm( pid1 ) ), 100 );
-
-        assertEquals( 0, result.scoreDocs.length );
-
-        result = searcher.search( new TermQuery( WriteAheadLog.getPidTerm( pid2 ) ), 100 );
-
-        assertEquals( 1, result.scoreDocs.length );
     }
 
     @Test
@@ -351,20 +315,20 @@ public class WriteAheadLogTest
 
         // And a comitting file with that document deleted and a new document added
 
-        WriteAheadLog.writeDocumentData( comittingRaf, pid1, null );
-        WriteAheadLog.writeDocumentData( comittingRaf, pid2, doc2a );
+        WriteAheadLog.writeDocumentData( comittingRaf, 0, pid1, null );
+        WriteAheadLog.writeDocumentData( comittingRaf, 1, pid2, doc2a );
 
         // And a log file with one new document and one updated document
 
-        WriteAheadLog.writeDocumentData( writeaheadlogRaf, pid2, doc2b );
-        WriteAheadLog.writeDocumentData( writeaheadlogRaf, pid3, doc3 );
+        WriteAheadLog.writeDocumentData( writeaheadlogRaf, 0, pid2, doc2b );
+        WriteAheadLog.writeDocumentData( writeaheadlogRaf, 1, pid3, doc3 );
 
         comittingRaf.close();
         writeaheadlogRaf.close();
 
         // Initialize the WAL to recover the lost files
 
-        WriteAheadLog wal = new WriteAheadLog( writer, folder.getRoot(), 1000, true );
+        WriteAheadLog wal = new WriteAheadLog( writer, folder.getRoot(), 1000, true, 1 );
         int recovered = wal.initialize();
         assertEquals( 4, recovered );
 
@@ -405,6 +369,100 @@ public class WriteAheadLogTest
         result = searcher.search( new TermQuery( WriteAheadLog.getPidTerm( pid3 ) ), 100 );
         assertEquals( 1, result.scoreDocs.length );
 
+    }
+    
+    @Test
+    public void testInitializeRecoversUncomittedFiles_2() throws Exception
+    {
+        RandomAccessFile[] committingRafs = new RandomAccessFile[4];
+        for (int i = 0; i < committingRafs.length; i++) {
+            File f = new File( folder.getRoot(), i+"_writeaheadlog.committing");
+            committingRafs[i] = new RandomAccessFile( f, "rwd" );
+        }
+        RandomAccessFile currentRaf = new RandomAccessFile( new File( folder.getRoot(), "0_writeaheadlog.log"), "rwd");
+        
+        
+        WriteAheadLog.writeDocumentData(committingRafs[0], 0, "obj:1", makeLuceneDocument( "obj:1" ) );
+        WriteAheadLog.writeDocumentData(committingRafs[0], 1, "obj:2", makeLuceneDocument( "obj:2" ) );
+        WriteAheadLog.writeDocumentData(committingRafs[1], 2, "obj:3", makeLuceneDocument( "obj:3" ) );
+        WriteAheadLog.writeDocumentData(committingRafs[3], 3, "obj:1", null );
+        WriteAheadLog.writeDocumentData(committingRafs[2], 4, "obj:2", null );
+        WriteAheadLog.writeDocumentData(committingRafs[3], 5, "obj:3", null );
+        
+        WriteAheadLog.writeDocumentData(currentRaf, 0, "obj:3", makeLuceneDocument( "obj:3" ) );
+         
+        for (RandomAccessFile raf : committingRafs) {
+            raf.close();
+        }
+        currentRaf.close();
+        
+        WriteAheadLog wal2 = new WriteAheadLog( writer, folder.getRoot(), 2000, true, 10 );
+        int recovered = wal2.initialize();
+        assertEquals(7, recovered);
+        
+        IndexReader reader = DirectoryReader.open( writer, false );
+        IndexSearcher searcher = new IndexSearcher( reader );
+        
+        TopDocs result = searcher.search( new TermQuery( WriteAheadLog.getPidTerm( "obj:1" ) ), 100 );
+        assertEquals( 0, result.scoreDocs.length );
+        result = searcher.search( new TermQuery( WriteAheadLog.getPidTerm( "obj:2" ) ), 100 );
+        assertEquals( 0, result.scoreDocs.length );
+        result = searcher.search( new TermQuery( WriteAheadLog.getPidTerm( "obj:3" ) ), 100 );
+        assertEquals( 1, result.scoreDocs.length );
+    }
+    
+    @Test(timeout = 15000)
+    public void testInitializeRecoversUncomittedFiles_concurrent() throws Exception
+    {
+        final WriteAheadLog wal = new WriteAheadLog( writer, folder.getRoot(), 2000, true, 5 );
+
+        wal.initialize();
+        doConcurrentWork(10, 100, wal, 1);
+        
+        final WriteAheadLog wal2 = new WriteAheadLog( writer, folder.getRoot(), 2000, true, 10 );
+        int recovered = wal2.initialize();
+        
+        assertEquals(1000, recovered);
+
+    }
+    
+    @Test(timeout = 15000)
+    public void testCommittedFilesAreDeleted_concurrent() throws Exception
+    {
+        final WriteAheadLog wal = new WriteAheadLog( writer, folder.getRoot(), 1001, true, 5 );
+
+        wal.initialize();
+        doConcurrentWork(10, 100, wal, 1);
+
+        assertTrue("files have been created", folder.getRoot().listFiles().length > 0);
+        wal.updateDocument("pid:0", makeLuceneDocument("pid:0"));
+        assertEquals("files are deleted", 0, folder.getRoot().listFiles().length);
+        
+    }
+    
+    private void doConcurrentWork(int threads, final int docsPerThread, final WriteAheadLog wal, int timeoutMinutes) throws InterruptedException{
+        ExecutorService es = Executors.newFixedThreadPool(10);
+        for (int i = 0; i < threads; i++) {
+            es.execute(new Runnable() {
+                @Override
+                public void run() {
+                    for (int j = 0; j < docsPerThread; j++) {
+                        try {
+                            
+                            String pid = "obj:" + j;
+                            Document d = makeLuceneDocument(pid);
+                            
+                            wal.updateDocument(pid, d);
+                            
+                        } catch (IOException ex) {
+                            throw new RuntimeException(ex);
+                        }
+                    }
+                }
+            });
+        }
+        es.shutdown();
+        es.awaitTermination(timeoutMinutes, TimeUnit.MINUTES);
     }
 
 
