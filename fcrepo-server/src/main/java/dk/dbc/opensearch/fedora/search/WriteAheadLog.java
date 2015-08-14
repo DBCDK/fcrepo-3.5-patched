@@ -48,7 +48,7 @@ public class WriteAheadLog extends WriteAheadLogStats
 
     private final File storageDirectory;
 
-    private boolean isOpen = false;
+    private volatile boolean isOpen = false;
     
     private final boolean keepFileOpen;
 
@@ -254,12 +254,9 @@ public class WriteAheadLog extends WriteAheadLogStats
         numberOfUncomittedDocuments.incrementAndGet();
         int updates = numberOfUpdatedDocuments.incrementAndGet(); 
 
-        synchronized ( this )
+        if ( !isOpen )
         {
-            if ( !isOpen )
-            {
-                throw new IOException( "Write Ahead Log is not open");
-            }
+            throw new IOException( "Write Ahead Log is not open");
         }
         
         TLogFile tlog = null;
@@ -288,38 +285,42 @@ public class WriteAheadLog extends WriteAheadLogStats
         if (updates % commitSize == 0) 
         {
             // Time to commit.
-            synchronized(this)
-            {
-                // Reserve all log files. This will wait for other threads to finish writing.
-                List<TLogFile> logFiles = obtainLogFiles();
-                
-                // Make commit files
-                List<File> commitFiles = new ArrayList<File>();
-                for (TLogFile l : logFiles) 
-                {
-                    commitFiles.add(l.makeCommitFile());
-                }
-                
-                // Reset tLogEntryId, and release log files
-                tLogEntryId.set(0);
-                for (TLogFile l : logFiles) 
-                {
-                    tLogPool.addLast(l);
-                }
-
-                // Commit and delete commit files
-                commitWriter();
-                for (File commitFile : commitFiles) 
-                {
-                    commitFile.delete();
-                    log.debug("Deleted commit file {}", commitFile.getAbsolutePath());
-                }              
-            }
+            commitNow();
         }
         
         long updateEnd = System.nanoTime();
 
         totalUpdateTimeMicroS.addAndGet( (updateEnd - updateStart)/1000 );
+    }
+
+    private void commitNow() throws IOException {
+        synchronized(this)
+        {
+            // Reserve all log files. This will wait for other threads to finish writing.
+            List<TLogFile> logFiles = obtainLogFiles();
+
+            // Make commit files
+            List<File> commitFiles = new ArrayList<File>();
+            for (TLogFile l : logFiles)
+            {
+                commitFiles.add(l.makeCommitFile());
+            }
+
+            // Reset tLogEntryId, and release log files
+            tLogEntryId.set(0);
+            for (TLogFile l : logFiles)
+            {
+                tLogPool.addLast(l);
+            }
+
+            // Commit and delete commit files
+            commitWriter();
+            for (File commitFile : commitFiles)
+            {
+                commitFile.delete();
+                log.debug("Deleted commit file {}", commitFile.getAbsolutePath());
+            }
+        }
     }
     
     private List<TLogFile> obtainLogFiles(){
