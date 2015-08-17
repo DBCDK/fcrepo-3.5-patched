@@ -73,13 +73,7 @@ public class BaseRestResource {
     protected String fedoraServerHost;
     protected ObjectMapper mapper;
 
-    protected Server m_server;
-    protected Management m_management;
-    protected Access m_access;
-    protected String m_hostname;
-    protected ObjectMapper m_mapper;
-    
-    protected DatastreamFilenameHelper m_datastreamFilenameHelper;
+    protected DatastreamFilenameHelper datastreamFilenameHelper;
 
     @javax.ws.rs.core.Context
     protected HttpServletRequest servletRequest;

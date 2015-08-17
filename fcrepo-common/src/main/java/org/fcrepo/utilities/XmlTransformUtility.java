@@ -18,6 +18,7 @@ import javax.xml.transform.Templates;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.stream.StreamSource;
 
 import net.sf.saxon.FeatureKeys;
 import org.apache.commons.pool.impl.SoftReferenceObjectPool;
