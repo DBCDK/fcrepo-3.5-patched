@@ -20,9 +20,7 @@ import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.stream.StreamSource;
 
-import net.sf.saxon.FeatureKeys;
 import org.apache.commons.pool.impl.SoftReferenceObjectPool;
-import org.apache.commons.pool.impl.StackObjectPool;
 import org.fcrepo.utilities.xml.PoolableDocumentBuilderFactory;
 import org.fcrepo.utilities.xml.PoolableSAXParserFactory;
 import org.fcrepo.utilities.xml.PoolableTransformerFactoryFactory;

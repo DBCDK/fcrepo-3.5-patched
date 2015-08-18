@@ -17,12 +17,10 @@ import java.util.Date;
 import java.util.Iterator;
 
 import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
 
 import com.sun.org.apache.xml.internal.serialize.OutputFormat;
 import com.sun.org.apache.xml.internal.serialize.XMLSerializer;
 
-import org.w3c.dom.Document;
 
 import org.fcrepo.common.Constants;
 import org.fcrepo.server.storage.types.BasicDigitalObject;
@@ -30,7 +28,6 @@ import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.DigitalObject;
 import org.fcrepo.utilities.LogConfig;
 import org.fcrepo.utilities.XmlTransformUtility;
-import org.trippi.io.TripleIteratorFactory;
 import org.w3c.dom.Document;
 
 

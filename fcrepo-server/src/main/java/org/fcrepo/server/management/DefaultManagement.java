@@ -30,7 +30,6 @@ import java.util.Set;
 import java.util.Map.Entry;
 import java.util.regex.Pattern;
 
-import javax.xml.parsers.DocumentBuilder;
 
 import com.sun.org.apache.xml.internal.serialize.OutputFormat;
 import com.sun.org.apache.xml.internal.serialize.XMLSerializer;
@@ -39,12 +38,6 @@ import org.apache.commons.betwixt.XMLUtils;
 
 import org.apache.commons.io.IOUtils;
 
-import org.jrdf.graph.URIReference;
-
-import org.w3c.dom.Document;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import org.fcrepo.common.Constants;
 import org.fcrepo.common.PID;
@@ -72,7 +65,6 @@ import org.fcrepo.server.storage.DOManager;
 import org.fcrepo.server.storage.DOReader;
 import org.fcrepo.server.storage.DOWriter;
 import org.fcrepo.server.storage.ExternalContentManager;
-import org.fcrepo.server.storage.types.AuditRecord;
 import org.fcrepo.server.storage.types.Datastream;
 import org.fcrepo.server.storage.types.DatastreamManagedContent;
 import org.fcrepo.server.storage.types.DatastreamReferencedContent;

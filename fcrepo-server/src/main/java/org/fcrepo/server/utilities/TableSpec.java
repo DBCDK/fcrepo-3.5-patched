@@ -10,8 +10,6 @@ import java.io.InputStream;
 import java.util.Iterator;
 import java.util.List;
 
-import javax.xml.parsers.SAXParser;
-import javax.xml.parsers.SAXParserFactory;
 
 import org.fcrepo.server.errors.InconsistentTableSpecException;
 import org.fcrepo.utilities.XmlTransformUtility;
