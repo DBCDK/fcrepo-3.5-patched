@@ -328,7 +328,7 @@ public class DefaultSerializer {
             }
         }
 
-        html.append("<html><head><title>Search Repository</title></head>");
+        html.append("<html><head><title>Search Repository</title><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"></head>");
         html.append("<body><center>");
         html.append("<table width=\"784\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">");
         html.append("<tr><td width=\"141\" height=\"134\" valign=\"top\"><img src=\"" + "/" + fedoraAppServerContext +
